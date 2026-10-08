@@ -1,17 +1,10 @@
-import { resolveMutationSink } from './resource-mutation';
 import type { Collection } from '../config/open-collection';
 import type { TerminologyFinding, TerminologyFindings } from '../config/project-terms';
 import { ResourceAlreadyExistsError } from '../errors/lingo-tracker-error';
-import {
-  type AddResourceOptions,
-  type AddResourceParams,
-  type PreparedResourceAdd,
-  prepareResourceAdd,
-  type ResolvedResourceAdd,
-  resolveResourceAdd,
-  assertPreparedResourceCanWrite,
-  writePreparedResourceAdd,
-} from './add-resource';
+import type { AddResourceOptions, AddResourceParams } from './add-resource';
+import { type AddPreflight, commitPrepared, type PreparedAdd, preflightAdd, prepareAdd } from './resource-entry';
+import { resolveCheckedResourceKey } from './resource-key';
+import { resolveMutationSink } from './resource-mutation';
 
 export interface AddResourcesResult {
   readonly entriesCreated: number;
@@ -42,22 +35,22 @@ export async function addResources(
 ): Promise<AddResourcesResult> {
   const onExisting = options.onExisting ?? 'fail';
   const batchKeys = new Set<string>();
-  const resolved: ResolvedResourceAdd[] = [];
-  const prepared: PreparedResourceAdd[] = [];
+  const resolved: AddPreflight[] = [];
+  const prepared: PreparedAdd[] = [];
 
   for (const item of items) {
-    const candidate = resolveResourceAdd(collection, item, onExisting);
-    const key = candidate.paths.resolvedKey;
+    const key = resolveCheckedResourceKey(item.key, item.targetFolder);
+    const candidate = preflightAdd(collection, key, item, onExisting);
     if (batchKeys.has(key)) throw new ResourceAlreadyExistsError(key);
     batchKeys.add(key);
     resolved.push(candidate);
   }
   for (const candidate of resolved) {
-    prepared.push(await prepareResourceAdd(collection, candidate, options));
+    prepared.push(await prepareAdd(candidate, options));
   }
   // No await separates this check from the write loop, so a late conflict writes nothing.
   for (const candidate of prepared) {
-    assertPreparedResourceCanWrite(collection, candidate, onExisting);
+    candidate.recheck();
   }
 
   let entriesCreated = 0;
@@ -65,12 +58,7 @@ export async function addResources(
   const findings: TerminologyFinding[] = [];
   const problems = new Set<string>();
   for (const candidate of prepared) {
-    const result = writePreparedResourceAdd(
-      collection,
-      candidate,
-      onExisting,
-      resolveMutationSink(collection, options),
-    );
+    const result = commitPrepared(candidate, resolveMutationSink(collection, options));
     if (result.created) entriesCreated++;
     for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
     findings.push(...result.terminology.findings);

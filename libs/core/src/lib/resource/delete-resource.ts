@@ -1,16 +1,11 @@
-import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import {
-  CoreOperationError,
-  FolderNotFoundError,
-  InvalidCollectionFolderError,
-  ResourceNotFoundError,
-} from '../errors/lingo-tracker-error';
+import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import type { RunOutcome } from '../run-outcome';
-import { openResourceEntry } from './resource-entry';
+import { describeFolderProblem } from './collection-folders';
+import { pruneEmptiedFolders } from './folder-pruning';
+import { removeEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
-import { resourceFolderPresence } from './resource-folder';
-import { resolveMutationSink, type MutationSink, type MutationSinkOptions } from './resource-mutation';
+import type { MutationSinkOptions } from './resource-mutation';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -20,6 +15,8 @@ export interface DeleteResourceResult {
   /** `failed` when any key could not be deleted, even if others were; same rule as a Move Report. */
   readonly outcome: RunOutcome;
   entriesDeleted: number;
+  /** Folder cleanup problems do not change the outcome of entry deletion. */
+  warnings?: string[];
   errors?: Array<{
     key: string;
     error: string;
@@ -36,10 +33,11 @@ export function deleteResource(
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
 
+  const emptiedFolders = new Set<string>();
+
   // Refuse the whole request before writes or mutations if any key targets an inaccessible folder.
   for (const key of params.keys) {
     try {
-      validateKey(key);
       resolveResourcePaths({ key, translationsFolder });
     } catch (error) {
       if (error instanceof InvalidCollectionFolderError) throw error;
@@ -49,7 +47,8 @@ export function deleteResource(
 
   for (const key of params.keys) {
     try {
-      deleteSingleResource(collection, key, resolveMutationSink(collection, options));
+      const { emptied } = removeEntry(collection, key, options);
+      if (emptied) emptiedFolders.add(emptied);
       entriesDeleted++;
     } catch (caughtError) {
       if (caughtError instanceof InvalidCollectionFolderError) throw caughtError;
@@ -61,37 +60,12 @@ export function deleteResource(
     }
   }
 
+  const pruning = pruneEmptiedFolders(collection, emptiedFolders, options);
+  const warnings = pruning.problems.map((problem) => describeFolderProblem(problem));
   return {
+    ...(warnings.length > 0 ? { warnings } : {}),
     outcome: errors.length > 0 ? 'failed' : 'succeeded',
     entriesDeleted,
     errors: errors.length > 0 ? errors : undefined,
   };
-}
-
-function deleteSingleResource(collection: Collection, key: string, onMutation?: MutationSink): void {
-  validateKey(key);
-  const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
-  const folderAddress = paths.folderPathSegments.join('.') || '.';
-  const presence = resourceFolderPresence(paths.folderPath);
-  if (!presence.folder) throw new FolderNotFoundError(folderAddress);
-  if (!presence.entries) throw new ResourceNotFoundError(paths.resolvedKey);
-
-  const deletionStep = <T>(run: () => T, detail: string): T => {
-    try {
-      return run();
-    } catch (error) {
-      if (error instanceof InvalidCollectionFolderError) throw error;
-      throw new CoreOperationError(`Failed to delete resource ${paths.resolvedKey}: ${detail}`, { cause: error });
-    }
-  };
-  const resource = deletionStep(
-    () => openResourceEntry(collection, paths.resolvedKey),
-    `folder ${folderAddress} has unreadable resource files`,
-  );
-  const removed = deletionStep(
-    () => resource.folder.remove(resource.entryKey),
-    `could not update folder ${folderAddress}`,
-  );
-  if (!removed) throw new ResourceNotFoundError(paths.resolvedKey);
-  deletionStep(() => resource.save(onMutation), `could not write folder ${folderAddress}`);
 }

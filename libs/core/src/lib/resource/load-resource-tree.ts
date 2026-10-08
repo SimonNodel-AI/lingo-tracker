@@ -1,10 +1,11 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ResourceTreeNode } from './resource-tree-types';
-import { checkCollectionFolderPath } from './folder-address';
+import { folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { CollectionFolderProblem } from './collection-folders';
+import { checkCollectionFolderPath } from './folder-address';
 import { readCollectionFolders } from './read-collection';
+import type { ResourceTreeNode } from './resource-tree-types';
 
 export interface LoadResourceTreeOptions {
   /** Receives unreadable folder problems; core never logs them. */
@@ -38,7 +39,7 @@ export interface LoadResourceTreeOptions {
 export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTreeNode {
   const { baseLocale, path: folderPath = '', depth = 2, cwd = process.cwd() } = options;
   const translationsFolder = path.resolve(cwd, options.translationsFolder);
-  const pathSegments = folderPath ? folderPath.split('.').filter(Boolean) : [];
+  const pathSegments = folderPathSegments(folderPath).filter(Boolean);
   const absoluteFolderPath = path.resolve(translationsFolder, ...pathSegments);
   const startProblem = checkCollectionFolderPath(translationsFolder, absoluteFolderPath);
   if (startProblem) {
@@ -62,7 +63,7 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
 
   const folders = readCollectionFolders(
     { translationsFolder, baseLocale, tags: [] },
-    { startPath: pathSegments.join('.'), maxDepth: depth },
+    { startPath: folderPathFromSegments(pathSegments), maxDepth: depth },
   );
 
   // Parents are visited before their children, and siblings in directory order.

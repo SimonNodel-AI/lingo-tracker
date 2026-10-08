@@ -3,7 +3,7 @@ import type { ExportRunOptions } from '@simoncodes-ca/core';
 import { TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import type { ExportCommandOptions, ExportOptionsContext } from './export-options';
-import type { parseListSelection, selectionNames, selectionPrompt } from '../utils/prompt-utils';
+import type { selectionPrompt } from '../utils/prompt-utils';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { mergeRunOptions } from './run-option-defaults';
 import { resolveOption, type CommandOptionTable } from './option-table';
@@ -16,8 +16,6 @@ export type ExportAnswers = ExportCommandOptions & {
 export interface ExportTableContext extends ExportOptionsContext {
   readonly outputInitial: string;
   readonly selectionPrompt: typeof selectionPrompt;
-  readonly selectionNames: typeof selectionNames;
-  readonly parseListSelection: typeof parseListSelection;
 }
 export type ResolvedExportOptions = Required<
   Omit<ExportRunOptions, 'format' | 'cwd' | 'exportFolder' | 'onStart' | 'onProgress'>
@@ -57,9 +55,6 @@ const STATUS_TITLES: Record<TranslationStatus, string> = {
 // Keep the established prompt order while deriving the choices from domain.
 const statusOrder = (status: TranslationStatus) =>
   status === 'stale' ? 1 : status === 'translated' ? 2 : TRANSLATION_STATUSES.indexOf(status);
-export function stringList(value: unknown): string[] | undefined {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : undefined;
-}
 function resolveStatuses(values: ExportAnswers, defaultValue: string): string[] {
   const status = values.status;
   if (status !== undefined && Array.isArray(status) === false) {
@@ -67,11 +62,7 @@ function resolveStatuses(values: ExportAnswers, defaultValue: string): string[] 
       `Invalid ${flagName(EXPORT_OPTION_TABLE.status)} "${status.input}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
     );
   }
-  const statuses =
-    (Array.isArray(status) ? status : undefined) ??
-    stringList(values.statusFilter) ??
-    parseCommaSeparatedList(defaultValue) ??
-    [];
+  const statuses = (Array.isArray(status) ? status : undefined) ?? parseCommaSeparatedList(defaultValue) ?? [];
   if (statuses.length === 0)
     throw new Error(
       `Invalid ${flagName(EXPORT_OPTION_TABLE.status)} "". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
@@ -108,6 +99,11 @@ export const EXPORT_OPTION_TABLE: CommandOptionTable<
     resolve: (values) => ({ format: values.format }),
   },
   collection: {
+    selection: {
+      prompt: 'collections',
+      defaultAll: true,
+      emptyPromptError: 'Select at least one collection.',
+    },
     flags: '-c, --collection <names>',
     description: 'Specific collection(s) to export (comma-separated)',
     list: 'optional',
@@ -128,6 +124,11 @@ export const EXPORT_OPTION_TABLE: CommandOptionTable<
     resolve: () => ({}),
   },
   locale: {
+    selection: {
+      prompt: 'locales',
+      defaultAll: true,
+      emptyPromptError: 'Select at least one target locale.',
+    },
     flags: '-l, --locale <locales>',
     description: 'Target locale(s) to export (comma-separated)',
     list: 'optional',
@@ -145,11 +146,13 @@ export const EXPORT_OPTION_TABLE: CommandOptionTable<
             }),
           ];
     },
-    resolve: (values, _defaultValue, context) => ({
-      locales: context.selectionNames(context.parseListSelection(values.locale, stringList(values.locales))),
-    }),
+    resolve: (values) => ({ locales: values.locale }),
   },
   status: {
+    selection: {
+      prompt: 'statusFilter',
+      emptyPromptError: 'Select at least one translation status.',
+    },
     flags: '-s, --status <statuses>',
     description: 'Filter by translation status (comma-separated)',
     list: 'preserve',

@@ -3,10 +3,11 @@ import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { CacheStatusType } from '@simoncodes-ca/data-transfer';
-import { catchError, interval, of, pipe, startWith, switchMap, takeWhile, tap } from 'rxjs';
+import { catchError, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
+import { IndexReadiness } from '../../services/index-readiness';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 
 export interface CacheStatusState {
@@ -45,6 +46,7 @@ export function withCacheStatusFeature<_>() {
     })),
     withMethods((store) => {
       const api = inject(BrowserApiService);
+      const indexReadiness = inject(IndexReadiness);
       const transloco = inject(TranslocoService);
 
       return {
@@ -60,39 +62,39 @@ export function withCacheStatusFeature<_>() {
               const collection = store.selectedCollection();
               if (!collection) return of(null);
 
-              return interval(2000).pipe(
-                startWith(0),
-                switchMap(() => api.getCacheStatus(collection)),
-                tap((statusDto) => {
-                  patchState(store, {
-                    cacheStatus: statusDto.status,
-                    cacheError: statusDto.error || null,
-                    collectionStats: statusDto.stats
-                      ? {
-                          totalKeys: statusDto.stats.totalKeys,
-                          localeCount: statusDto.stats.localeCount,
-                        }
-                      : null,
-                  });
+              return indexReadiness
+                .whenReady(() => api.getCacheStatus(collection))
+                .pipe(
+                  tap((statusDto) => {
+                    patchState(store, {
+                      cacheStatus: statusDto.status,
+                      cacheError: statusDto.error || null,
+                      collectionStats: statusDto.stats
+                        ? {
+                            totalKeys: statusDto.stats.totalKeys,
+                            localeCount: statusDto.stats.localeCount,
+                          }
+                        : null,
+                    });
 
-                  if (statusDto.status === 'ready') {
-                    if (!store.listLoaded()) store.reloadList();
-                    if (!store.folderTreeLoaded()) store.loadRootFolders();
-                  }
-                }),
-                takeWhile((statusDto) => statusDto.status === 'indexing' || statusDto.status === 'not-started', true),
-                catchError((error: unknown) => {
-                  patchState(store, {
-                    cacheStatus: 'error',
-                    cacheError: apiErrorMessage(
-                      error,
-                      transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CHECKCACHESTATUSFAILED),
-                    ),
-                    collectionStats: null,
-                  });
-                  return of(null);
-                }),
-              );
+                    if (statusDto.status === 'ready') {
+                      if (!store.listLoaded()) store.reloadList();
+                      if (!store.folderTreeLoaded()) store.loadRootFolders();
+                    }
+                  }),
+                  catchError((error: unknown) => {
+                    patchState(store, {
+                      cacheStatus: 'error',
+                      cacheError:
+                        apiErrorMessage(
+                          error,
+                          transloco.translate(TRACKER_TOKENS.BROWSER.TOAST.CHECKCACHESTATUSFAILED),
+                        ) || null,
+                      collectionStats: null,
+                    });
+                    return of(null);
+                  }),
+                );
             }),
           ),
         ),

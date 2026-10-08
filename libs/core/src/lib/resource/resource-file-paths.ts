@@ -1,5 +1,5 @@
-import { resolveResourceKey, splitResolvedKey, validateKey, validateTargetFolder } from '@simoncodes-ca/domain';
-import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { splitResolvedKey } from '@simoncodes-ca/domain';
+import { resolveCheckedResourceKey } from './resource-key';
 import { resolveFolderAddress } from './folder-address';
 
 export interface ResolvedResourcePaths {
@@ -28,12 +28,13 @@ export interface ResourcePathResolutionParams {
  * Resolves a resource key to its entry key and folder address.
  *
  * This function encapsulates the logic for:
- * 1. Combining targetFolder and key into a resolved key
+ * 1. Validating and combining targetFolder and key into a resolved key
  * 2. Splitting the resolved key into folder path and entry key
  * 3. Resolving the absolute folder path
  *
  * @param params - Path resolution parameters
  * @returns The folder address, resolved full key, entry key, and folder path segments
+ * @throws {InvalidResourceKeyError} The key or target folder is malformed (domain message unchanged).
  *
  * @example
  * ```typescript
@@ -52,9 +53,21 @@ export interface ResourcePathResolutionParams {
  * ```
  */
 export function resolveResourcePaths(params: ResourcePathResolutionParams): ResolvedResourcePaths {
-  const { key, translationsFolder, targetFolder, cwd = process.cwd() } = params;
+  return resolveResolvedResourcePaths({
+    key: resolveCheckedResourceKey(params.key, params.targetFolder),
+    translationsFolder: params.translationsFolder,
+    cwd: params.cwd,
+  });
+}
 
-  const resolvedKey = resolveResourceKey(key, targetFolder);
+/**
+ * Maps a full key already validated by its caller or read from storage to its paths.
+ * Does not validate key syntax. Collection folder policy still applies.
+ */
+export function resolveResolvedResourcePaths(
+  params: Omit<ResourcePathResolutionParams, 'targetFolder'>,
+): ResolvedResourcePaths {
+  const { key: resolvedKey, translationsFolder, cwd = process.cwd() } = params;
   const { folderPath: folderPathSegments, entryKey } = splitResolvedKey(resolvedKey);
 
   const folderPath = resolveFolderAddress(translationsFolder, folderPathSegments.join('.'), cwd);
@@ -65,23 +78,4 @@ export function resolveResourcePaths(params: ResourcePathResolutionParams): Reso
     folderPathSegments,
     folderPath,
   };
-}
-
-/**
- * Validates a key and resolves all paths in one operation.
- * Throws `InvalidResourceKeyError` (with the domain validator's message) if the key or
- * targetFolder is invalid.
- */
-export function validateAndResolvePaths(params: ResourcePathResolutionParams): ResolvedResourcePaths {
-  try {
-    validateKey(params.key);
-
-    if (params.targetFolder) {
-      validateTargetFolder(params.targetFolder);
-    }
-  } catch (error: unknown) {
-    throw new InvalidResourceKeyError(params.key, error instanceof Error ? error.message : String(error));
-  }
-
-  return resolveResourcePaths(params);
 }

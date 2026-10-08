@@ -16,7 +16,6 @@ import type { NotificationService } from '../../../shared/notification';
 import { hasSearchLength } from '../../../shared/search/search-minimum';
 import { createFlash, createRestartableDelay } from '../../../shared/timed-transients';
 import type { TokenTranslator } from '../../../shared/translate-token';
-import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
 import type { Feedback } from '../../feedback';
 import type { SimilarValues } from '../../services/similar-values';
 import type { BrowserStore } from '../../store/browser.store';
@@ -27,6 +26,7 @@ import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import { type EditorFocusTarget, EditorPanels } from './editor-panels';
 import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
+import { EditorPresentation } from './editor-presentation';
 import { resolveDraftKey } from './resource-entry-draft';
 
 export interface TranslationEditorDialogData {
@@ -66,9 +66,23 @@ export class EditorSession {
   readonly #copyFlash = createFlash(1500);
   readonly #locationDelay = createRestartableDelay(900);
 
+  readonly presentation: EditorPresentation;
+
   readonly errorMessage = signal<string | null>(null);
-  readonly entry = new EditorEntryForm();
-  readonly advisories: EditorAdvisories;
+  private readonly entry = new EditorEntryForm();
+  private readonly advisories: EditorAdvisories;
+
+  readonly form = this.entry.form;
+  readonly localeSummaries = this.entry.localeSummaries;
+  readonly localesNeedingWork = this.entry.localesNeedingWork;
+  readonly tags = this.entry.tags;
+  readonly contextTree: EditorLocation['contextTree'];
+  readonly folderSegments: EditorLocation['folderSegments'];
+  readonly fullKeyPreview: EditorLocation['fullKeyPreview'];
+  readonly keyCollision: EditorLocation['keyCollision'];
+  readonly isSearchingSimilar: EditorAdvisories['isSearchingSimilar'];
+  readonly preferredTermFindings: EditorAdvisories['preferredTermFindings'];
+  readonly similarResources: EditorAdvisories['similarResources'];
   /** True while the location pill is highlighting a folder it just absorbed from the key field. */
   readonly locationAbsorbedFlash = signal(false);
   /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
@@ -84,25 +98,12 @@ export class EditorSession {
     canOpenLocalesDrawer: () => this.otherLocales().length > 0,
   });
 
-  readonly preferredTermAdvisoriesId = 'translation-editor-preferred-terms';
-
-  /**
-   * The base value's `aria-describedby`: the error or ICU hint as before, plus
-   * the advisories while there are any.
-   */
-  readonly baseValueDescribedBy = computed(() => {
-    const ids = [this.showBaseValueError() ? 'translation-editor-base-value-error' : 'translation-editor-icu-hint'];
-    if (this.advisories.preferredTermFindings().length > 0) {
-      ids.push(this.preferredTermAdvisoriesId);
-    }
-    return ids.join(' ');
-  });
-
   readonly tagInputText = signal('');
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
 
-  readonly location: EditorLocation;
-  readonly submit: EditorSubmitSession;
+  private readonly location: EditorLocation;
+  private readonly submit: EditorSubmitSession;
+  readonly isSubmitting: Signal<boolean>;
 
   readonly otherLocales = computed(() =>
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
@@ -113,21 +114,6 @@ export class EditorSession {
   readonly isEditMode = computed(() => this.data.mode === 'edit');
   /** Whether the dialog is view-only because the collection is read-only. */
   readonly isReadOnly = computed(() => this.data.readOnly === true);
-  readonly dialogTitle = computed(() =>
-    this.isEditMode()
-      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE
-      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATETITLE,
-  );
-  readonly dialogSubtitle = computed(() =>
-    this.isEditMode()
-      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX
-      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATESUBTITLEX,
-  );
-  readonly saveButtonLabel = computed(() =>
-    this.isEditMode()
-      ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON
-      : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON,
-  );
   readonly hasSearchQuery = computed(() => hasSearchLength(this.advisories.baseValueText().trim()));
 
   /** Live form validity, for the footer's earned check glyph. */
@@ -151,35 +137,6 @@ export class EditorSession {
     );
   });
 
-  /** Transloco token for a status label, from the shared status presentation, so the spine never shows raw enum text. */
-  readonly statusLabelToken = statusLabelTokenFor;
-
-  /** Explains a disabled Other locales row instead of leaving it silently grey. */
-  readonly otherLocalesDisabledTooltip = computed(() =>
-    this.otherLocales().length === 0
-      ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NOOTHERLOCALESTOOLTIP)
-      : '',
-  );
-
-  /** Explains a disabled location trigger instead of leaving it silently grey. */
-  readonly locationDisabledTooltip = computed(() =>
-    this.isReadOnly() ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.READONLYTABTOOLTIP) : '',
-  );
-
-  /** The base locale under a name a reader recognises ("English"), for the value label. */
-  readonly baseLocaleName = computed(() => this.getLocaleDisplayName(this.data.baseLocale));
-
-  /** The right-hand summary on the "Other locales" row, already localized. */
-  readonly otherLocalesSummary = computed(() =>
-    this.isEditMode()
-      ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NEEDWORKX, {
-          count: this.entry.needWorkCount(),
-        })
-      : this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.AUTOTRANSLATEDX, {
-          count: this.otherLocales().length,
-        }),
-  );
-
   /** How many similar values are pinned in the context column right now. */
   readonly similarCount = computed(() => this.advisories.similarResources().length);
 
@@ -193,23 +150,6 @@ export class EditorSession {
   /** The key carrying the exact same text, or '' when no hit matches verbatim. */
   readonly exactMatchKey = computed(() => this.advisories.exactMatch()?.fullKey ?? '');
 
-  /** The one-line summary the narrow "Context" disclosure carries. */
-  readonly contextSummary = computed(() => {
-    // The key itself is not summarised here: the footer carries it in full, and
-    // the form's own key error carries the collision.
-    const parts = [
-      this.location.selectedFolderPath() || this.options.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
-    ];
-    if (this.similarCount() > 0) {
-      parts.push(
-        this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.SIMILARCOUNTX, {
-          count: this.similarCount(),
-        }),
-      );
-    }
-    return parts.join(' · ');
-  });
-
   /** Root folders narrowed by the popover's filter, pruned to the matching subtrees. */
   readonly filteredRootFolders = computed(() =>
     filterFolderTree(this.options.browser.rootFolders(), this.panels.folderFilter()),
@@ -217,13 +157,6 @@ export class EditorSession {
 
   /** The folder the popover's primary button would commit. */
   readonly popoverFolderPath = computed(() => this.panels.stagedFolderPath() ?? this.location.selectedFolderPath());
-
-  /**
-   * App-owned markup, never translator input, so the ICU hint can carry a <code>
-   * run. The braces are HTML entities: a literal `{count}` handed to Transloco
-   * as a parameter is re-read as an ICU argument and resolves to `undefined`.
-   */
-  readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
 
   readonly #tagSuggestions: Signal<string[]>;
 
@@ -252,6 +185,13 @@ export class EditorSession {
       moreLabel: (count) =>
         this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
     });
+    this.contextTree = this.location.contextTree;
+    this.folderSegments = this.location.folderSegments;
+    this.fullKeyPreview = this.location.fullKeyPreview;
+    this.keyCollision = this.location.keyCollision;
+    this.isSearchingSimilar = this.advisories.isSearchingSimilar;
+    this.preferredTermFindings = this.advisories.preferredTermFindings;
+    this.similarResources = this.advisories.similarResources;
     this.submit = new EditorSubmitSession({
       writes: {
         create: (dto) => this.options.browser.createResource(this.data.collectionName, dto),
@@ -261,7 +201,22 @@ export class EditorSession {
       chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
       onWriteStart: () => this.errorMessage.set(null),
     });
+    this.isSubmitting = this.submit.isSubmitting;
     this.#tagSuggestions = editorTagSuggestions(options.browser);
+    this.presentation = new EditorPresentation(
+      {
+        isEditMode: this.isEditMode,
+        isReadOnly: this.isReadOnly,
+        showBaseValueError: this.showBaseValueError,
+        otherLocales: this.otherLocales,
+        similarCount: this.similarCount,
+        entry: this.entry,
+        advisories: this.advisories,
+        location: this.location,
+      },
+      data,
+      options,
+    );
     this.#initialize();
   }
 
@@ -570,38 +525,5 @@ export class EditorSession {
       value: FormControl<string>;
       status: FormControl<TranslationStatus>;
     }>;
-  }
-
-  /**
-   * Renders a locale as a name the reader recognises ("French (Canada)") with
-   * the raw code as the fallback, rather than shouting `FR-CA` at them.
-   */
-  getLocaleDisplayName(locale: string | undefined): string {
-    if (!locale) {
-      return '';
-    }
-
-    const code = locale.toUpperCase();
-    try {
-      const names = new Intl.DisplayNames([this.options.activeLang()], { type: 'language' });
-      const name = names.of(locale);
-      return name && name.toLowerCase() !== locale.toLowerCase() ? name : code;
-    } catch {
-      return code;
-    }
-  }
-
-  getKeyErrorMessage(): string {
-    const keyControl = this.entry.form.controls.key;
-
-    if (keyControl.hasError('required')) {
-      return TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYREQUIRED;
-    }
-
-    if (keyControl.hasError('pattern')) {
-      return TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR;
-    }
-
-    return '';
   }
 }

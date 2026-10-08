@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { effectiveTags } from '@simoncodes-ca/domain';
+import { effectiveTags, joinFolderPath } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
@@ -9,8 +9,8 @@ import {
   type WalkCollectionFoldersOptions,
   walkCollectionFolders,
 } from './collection-folders';
-import type { ResourceTreeEntry } from './resource-tree-types';
 import { openResourceFolder } from './resource-folder';
+import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
  * Collection Reader — the read side of the Resource Folder.
@@ -154,7 +154,7 @@ function readFolder(
     if (!entry) continue;
 
     resources.push({
-      fullKey: folderPath ? `${folderPath}.${entryKey}` : entryKey,
+      fullKey: joinFolderPath(folderPath, entryKey),
       folderPath,
       entryKey,
       entry,

@@ -1,9 +1,10 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
-import { BUNDLE_REGISTRATION } from './bundle-flags';
+import { BUNDLE_REGISTRATION, BUNDLE_FLAGS } from './bundle-flags';
+import { flagValues, registerFlags } from '../runner/flag-record';
 import { registerCommand } from '../runner/register-command';
 import { CommandCancelledError } from '../runner/command-runner';
 import { createCommandProject, type CommandProject } from '../testing/command-project';
@@ -19,6 +20,12 @@ const noBundles =
 
 describe('bundleCommand (real project)', () => {
   let project: CommandProject;
+  const parsedFlags = (...args: string[]) => {
+    const command = new Command();
+    registerFlags(command, BUNDLE_FLAGS);
+    command.parse(args, { from: 'user' });
+    return flagValues(BUNDLE_FLAGS, command.opts(), []);
+  };
   const configure = (bundles: Bundles) => project.configure({ ...project.config, bundles });
   const files = (folder: string) => (project.exists(folder) ? readdirSync(`${project.cwd}/${folder}`).sort() : []);
   const expectLocales = (folder: string, locales = ['en', 'fr', 'es']) => {
@@ -62,7 +69,10 @@ describe('bundleCommand (real project)', () => {
     });
     await project.seed('buttons.save', 'Save');
   });
-  afterEach(() => project.cleanup());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    project.cleanup();
+  });
 
   it('errors when config is missing', async () => {
     project.remove('.lingo-tracker.json');
@@ -324,6 +334,22 @@ describe('bundleCommand (real project)', () => {
     expectLocales('out');
     expect(files('second')).toEqual([]);
   });
+  it('uses submitted bundle and locale selections after parsed empty name and locale flags', async () => {
+    const flags = parsedFlags('--name', '', '--locale', '');
+    expect(flags).toMatchObject({ name: undefined, locale: undefined });
+    const questions: unknown[] = [];
+    const result = await project.run(bundleCommand, flags, {
+      interactive: true,
+      ask: async (asked) => {
+        questions.push(asked);
+        return { bundleOrAll: 'main', locale: ['fr'] };
+      },
+    });
+    expectPrompt(questions);
+    expect(result.exitCode).toBe(0);
+    expectLocales('out', ['fr']);
+    expect(files('second')).toEqual([]);
+  });
   it('processes both bundles from interactive all selection', async () => {
     const questions: unknown[] = [];
     const result = await project.run(
@@ -376,13 +402,18 @@ describe('bundleCommand (real project)', () => {
     expect(files('second')).toEqual([]);
   });
   it('falls back from empty name flags to the supplied selection answer', async () => {
-    const flags: BundleOptions & { bundleOrAll: string } = { name: [], bundleOrAll: 'main' };
+    const flags: BundleOptions = { name: [] };
+    const question = BUNDLE_FLAGS.name.prompt({}, { config: project.config } as Parameters<
+      typeof BUNDLE_FLAGS.name.prompt
+    >[1]);
+    // Exercise an answer submitted alongside the empty flag without changing prompt visibility.
+    vi.spyOn(BUNDLE_FLAGS.name, 'prompt').mockReturnValue(question);
+    const ask = vi.fn(async () => ({ bundleOrAll: 'main' }));
     const result = await project.run(bundleCommand, flags, {
       interactive: true,
-      ask: async () => {
-        throw new Error('Unexpected prompt');
-      },
+      ask,
     });
+    expect(ask).toHaveBeenCalledOnce();
     expect(result.exitCode).toBe(0);
     expectLocales('out');
     expect(files('second')).toEqual([]);

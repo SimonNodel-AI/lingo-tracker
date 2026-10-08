@@ -13,12 +13,14 @@ import {
 import {
   addResources,
   type Collection,
+  type OpenedCollection,
   deleteResource,
   editResource,
   executeMoves,
   prepareTranslationRun,
   translateExistingResource,
 } from '@simoncodes-ca/core';
+import { entryChange } from '@simoncodes-ca/domain';
 import type {
   CacheStatusDto,
   CreateResourceDto,
@@ -39,8 +41,7 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { ConfigService } from '../../config/config.service';
-import { describeIndexStatus } from '../../mappers/index-status.mapper';
+import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import {
   mapCreateResourcesResultToDto,
   mapDeleteResourceResultToDto,
@@ -48,7 +49,6 @@ import {
   mapTranslateResourceResultToDto,
   mapUpdateResourceResultToDto,
 } from '../../mappers/resource-response.mapper';
-import { mapGetTreeResultToDto } from '../../mappers/resource-tree.mapper';
 import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import {
@@ -68,12 +68,10 @@ import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/resources')
 export class ResourcesController {
-  readonly #configService: ConfigService;
   readonly #index: CollectionIndex;
   readonly #translationJobService: TranslationJobService;
 
-  constructor(configService: ConfigService, index: CollectionIndex, translationJobService: TranslationJobService) {
-    this.#configService = configService;
+  constructor(index: CollectionIndex, translationJobService: TranslationJobService) {
     this.#index = index;
     this.#translationJobService = translationJobService;
   }
@@ -112,13 +110,10 @@ export class ResourcesController {
 
   @Post('move')
   async move(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(moveResourcesBody) dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
-    // Cross-collection moves need the config to resolve destination collections.
-    const config = this.#configService.getConfig();
-
-    const result = executeMoves(collection, dto.moves, { config });
+    const result = executeMoves(collection, dto.moves);
     return mapMoveResourcesResultToDto(result);
   }
 
@@ -129,8 +124,7 @@ export class ResourcesController {
   ): Promise<UpdateResourceResponseDto> {
     const result = await editResource(collection, dto.key, {
       baseValue: dto.baseValue,
-      comment: dto.comment,
-      tags: dto.tags,
+      ...entryChange('edit', dto),
       translations: dto.locales,
       moveTo: dto.moveTo,
     });
@@ -146,16 +140,13 @@ export class ResourcesController {
     const { path, includeNested } = query;
     const read = this.#index.tree(collection, path ?? '');
 
-    if (read.status !== 'ready') {
-      response.status(HttpStatus.ACCEPTED);
-      return describeIndexStatus(read.status);
-    }
-
-    if (!read.tree) {
+    if (read.status === 'ready' && !read.tree) {
       throw new NotFoundException(`Path "${path}" not found in collection tree`);
     }
 
-    return mapGetTreeResultToDto(read.tree, collection, includeNested);
+    const answer = describeTreeRead(read, collection, includeNested);
+    response.status(answer.httpStatus);
+    return answer.body;
   }
 
   @Get('cache/status')

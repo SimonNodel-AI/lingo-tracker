@@ -59,6 +59,159 @@ describe('updateProjectTerms', () => {
     rmSync(cwd, { recursive: true, force: true });
   });
 
+  it('keeps protected list-only and file-only outcomes unchanged for empty and populated files', () => {
+    for (const terms of [[], ['Old']]) {
+      writeFileSync(protectedFile, JSON.stringify(terms));
+      const listed = updateProjectTerms(project(), {
+        protectedTerms: { target: {}, change: { kind: 'edit', edit: {} }, list: true },
+      });
+      expect(listed.lists.protectedTerms).toBe(true);
+      expect(listed.protectedTermsResult).toBeUndefined();
+      expect(listed.protectedTermsResult?.action).toBeUndefined();
+      const pointed = updateProjectTerms(project(), {
+        protectedTerms: { target: {}, change: { kind: 'edit', edit: {} }, file: 'pointed.json' },
+      });
+      expect(pointed.protectedTermsFileChange?.filePath).toBe(join(cwd, 'pointed.json'));
+      expect(pointed.protectedTermsResult).toBeUndefined();
+      expect(pointed.protectedTermsResult?.action).toBeUndefined();
+      config = loadConfig({ cwd });
+    }
+  });
+
+  it('reports an empty completion for an addition that normalizes to empty', () => {
+    writeFileSync(protectedFile, '[]');
+    const report = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: [' '] } } },
+    });
+    expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual([]);
+    expect(report.protectedTermsResult?.action).toBe('cleared');
+    expect(report.protectedTermsResult?.terms).toEqual([]);
+  });
+
+  it('reports an empty completion when applied additions and removals cancel out', () => {
+    const report = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'], remove: ['Old', 'Brand'] } } },
+    });
+    expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual([]);
+    expect(report.protectedTermsResult?.action).toBe('cleared');
+    expect(report.protectedTermsResult?.terms).toEqual([]);
+  });
+
+  it('refuses a populated add with set but accepts an empty add with set', () => {
+    expect(() =>
+      updateProjectTerms(project(), {
+        protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'], set: [] } } },
+      }),
+    ).toThrow(InvalidProjectTermsEditError);
+    expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['Old']);
+    const report = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: [], set: [] } } },
+    });
+    expect(report.protectedTermsResult?.action).toBe('cleared');
+    expect(report.protectedTermsResult?.terms).toEqual([]);
+  });
+
+  it('keeps preferred list-only outcomes unchanged for empty and populated rule files', () => {
+    for (const rules of [[], [{ discouraged: 'Old', preferred: 'New' }]]) {
+      writeFileSync(preferredFile, JSON.stringify(rules));
+      const report = updateProjectTerms(project(), { preferredTerminology: { list: true } });
+      expect(report.lists.preferredTerminology).toBe(true);
+      expect(report.preferredTerminologyResult).toBeUndefined();
+      expect(report.preferredTerminologyResult?.action).toBeUndefined();
+    }
+  });
+
+  it('reports protected empty replacements as cleared over both empty and non-empty files', () => {
+    for (const terms of [[], ['Old']]) {
+      writeFileSync(protectedFile, JSON.stringify(terms));
+      const report = updateProjectTerms(project(), {
+        protectedTerms: { target: {}, change: { kind: 'replace', replace: [] } },
+      });
+      expect(report.protectedTermsResult).toEqual({ action: 'cleared', terms: [], filePath: protectedFile });
+    }
+  });
+
+  it('reports preferred empty replacements as cleared over both empty and non-empty files', () => {
+    for (const rules of [[], [{ discouraged: 'Old', preferred: 'New' }]]) {
+      writeFileSync(preferredFile, JSON.stringify(rules));
+      const report = updateProjectTerms(project(), { preferredTerminology: { set: [] } });
+      expect(report.preferredTerminologyResult?.action).toBe('cleared');
+      expect(report.preferredTerminologyResult?.rules).toEqual([]);
+      expect(JSON.parse(readFileSync(preferredFile, 'utf8'))).toEqual([]);
+    }
+  });
+
+  it.each([
+    [{ kind: 'edit', edit: { add: ['Brand'] } }, 'updated', ['Old', 'Brand']],
+    [{ kind: 'edit', edit: { remove: ['Other'] } }, 'updated', ['Old']],
+    [{ kind: 'edit', edit: { add: ['Brand'], remove: ['Old'] } }, 'updated', ['Brand']],
+    [{ kind: 'edit', edit: { set: ['Brand'] } }, 'updated', ['Brand']],
+    [{ kind: 'replace', replace: ['Brand'] }, 'updated', ['Brand']],
+    [{ kind: 'edit', edit: { set: [] } }, 'cleared', []],
+    [{ kind: 'edit', edit: { remove: ['Old'] } }, 'cleared', []],
+    [{ kind: 'view' }, undefined, undefined],
+  ] as const)('names protected completion and the requested preview: %j', (change, action, terms) => {
+    const plan = planProjectTermsUpdate(project(), { protectedTerms: { target: {}, change, list: true } });
+    expect(plan.view.lists).toEqual({ protectedTerms: true, preferredTerminology: false });
+    const preview = vi.fn();
+    const report = plan.report(preview);
+    expect(preview).toHaveBeenCalledWith(plan.view);
+    expect(report.protectedTermsResult?.action).toBe(action);
+    expect(report.protectedTermsResult?.terms).toEqual(terms);
+    expect(report.preferredTerminologyResult).toBeUndefined();
+  });
+
+  it.each([
+    [{ upsert: { discouraged: 'Other', preferred: 'Better' } }, 'added'],
+    [{ upsert: { discouraged: 'Old', preferred: 'Better' } }, 'updated'],
+    [{ remove: 'Old' }, 'removed'],
+    [{ set: [{ discouraged: 'Other', preferred: 'Better' }] }, 'set'],
+    [{ set: [] }, 'cleared'],
+    [{}, undefined],
+  ] as const)('names preferred completion including replacements: %j', (edit, action) => {
+    const report = updateProjectTerms(project(), { preferredTerminology: { ...edit, list: true } });
+    expect(report.preferredTerminologyResult?.action).toBe(action);
+    expect(report.protectedTermsResult).toBeUndefined();
+    expect(report.lists.preferredTerminology).toBe(true);
+  });
+
+  it('names a combined pointer and list edit without conflating the operations', () => {
+    const report = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, file: 'new.json', change: { kind: 'edit', edit: { add: ['Brand'] } } },
+    });
+    expect(report.protectedTermsResult?.action).toBe('updated');
+    expect(report.protectedTermsResult?.terms).toEqual(['Old', 'Brand']);
+    expect(report.protectedTermsFileChange?.filePath).toBe(join(cwd, 'new.json'));
+    config = {
+      ...loadConfig({ cwd }),
+      collections: { app: { translationsFolder: 'app', protectedTermsFile: 'new.json' } },
+    };
+    writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify(config));
+    const cleared = updateProjectTerms(project(), {
+      protectedTerms: { target: { collection: 'app' }, file: '', change: { kind: 'view' } },
+    });
+    expect(cleared.protectedTermsResult).toBeUndefined();
+    expect(cleared.protectedTermsFileChange?.filePath).toBeUndefined();
+    expect(cleared.protectedTermsFileChange?.message).toContain('cleared');
+  });
+
+  it('prints the preview before a write fails and reports no successful outcomes', () => {
+    const events: string[] = [];
+    const plan = planProjectTermsUpdate(project(), {
+      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'] } } },
+    });
+    vi.mocked(fileSystem.writeFileSync).mockImplementation(() => {
+      events.push('write');
+      throw new Error('write failed');
+    });
+    const report = plan.report(() => events.push('preview'));
+    expect(events[0]).toBe('preview');
+    expect(events[1]).toBe('write');
+    expect(report.status).toBe('failed');
+    expect(report.protectedTermsResult).toBeUndefined();
+    expect(report.preferredTerminologyResult).toBeUndefined();
+  });
+
   it('leaves protected terms untouched when a submitted rule is invalid', () => {
     const before = readFileSync(protectedFile, 'utf8');
     expect(() =>
@@ -291,7 +444,7 @@ describe('updateProjectTerms', () => {
     expect(report.status).toBe('failed');
     expect(report.error).toBeInstanceOf(CoreOperationError);
     expect((report.error as CoreOperationError).cause).toBeUndefined();
-    expect((report.error as CoreOperationError).message).toBe(report.preferredTerminology?.error);
+    expect((report.error as CoreOperationError).message).toBe(report.preferredTerminologyError?.message);
     expect(report.reverted).toBe(false);
     expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
   });
@@ -300,7 +453,9 @@ describe('updateProjectTerms', () => {
     writeFileSync(preferredFile, '{bad');
     const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: { list: true } });
     expect(report.status).toBe('succeeded');
-    expect(report.preferredTerminology?.error).toContain('not valid JSON');
+    expect(report.preferredTerminologyError?.message).toContain('not valid JSON');
+    expect(report.preferredTerminologyError).toBeInstanceOf(CoreOperationError);
+    expect(report.preferredTerminology).not.toHaveProperty('error');
     expect(report.error).toBeUndefined();
   });
 
@@ -311,7 +466,9 @@ describe('updateProjectTerms', () => {
       preferredTerminology: { list: true },
     });
     expect(report.status).toBe('succeeded');
-    expect(report.preferredTerminology?.error).toContain('not valid JSON');
+    expect(report.preferredTerminologyError?.message).toContain('not valid JSON');
+    expect(report.preferredTerminologyError).toBeInstanceOf(CoreOperationError);
+    expect(report.preferredTerminology).not.toHaveProperty('error');
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['Brand']);
     expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
   });

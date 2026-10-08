@@ -1,5 +1,5 @@
 import { Controller, Post, Delete } from '@nestjs/common';
-import { type Collection, createFolder, deleteFolder, executeMove } from '@simoncodes-ca/core';
+import { type Collection, type OpenedCollection, createFolder, deleteFolder, executeMove } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
   CreateFolderResponseDto,
@@ -13,15 +13,12 @@ import {
   mapDeleteFolderResultToDto,
   mapMoveFolderResultToDto,
 } from '../../mappers/folder-response.mapper';
-import { ConfigService } from '../../config/config.service';
 import { RouteCollection } from '../route-collection';
 import { createFolderBody, deleteFolderBody, moveFolderBody } from '../../validation/dto-schemas';
 import { ValidBody } from '../../validation/valid-body';
 
 @Controller('collections/:collectionName/folders')
 export class FoldersController {
-  constructor(private readonly configService: ConfigService) {}
-
   @Post()
   async create(
     @RouteCollection() collection: Collection,
@@ -49,24 +46,17 @@ export class FoldersController {
    */
   @Post('move')
   async move(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(moveFolderBody) moveFolderDto: MoveFolderDto,
   ): Promise<MoveFolderResponseDto> {
-    // Cross-collection moves need the config to resolve the destination.
-    const config = this.configService.getConfig();
-
-    const result = executeMove(
-      collection,
-      {
-        kind: 'folder',
-        source: moveFolderDto.sourceFolderPath,
-        destination: moveFolderDto.destinationFolderPath,
-        override: moveFolderDto.override,
-        toCollection: moveFolderDto.toCollection,
-        nestUnderDestination: moveFolderDto.nestUnderDestination,
-      },
-      { config },
-    );
+    const result = executeMove(collection, {
+      kind: 'folder',
+      source: moveFolderDto.sourceFolderPath,
+      destination: moveFolderDto.destinationFolderPath,
+      override: moveFolderDto.override,
+      toCollection: moveFolderDto.toCollection,
+      nestUnderDestination: moveFolderDto.nestUnderDestination,
+    });
 
     return mapMoveFolderResultToDto(result);
   }

@@ -188,10 +188,12 @@ export class ExampleComponent implements OnInit {
 ### Adding a Resource (libs/core/src/lib/resource/add-resource.ts)
 
 1. Validate the key (and optional `targetFolder`) and resolve it to a folder path
-2. Check whether the resolved key exists; fail by default before locale seeding, or replace only when requested
-3. Normalize values to ICU and seed every target locale (supplied value, else auto-translation, else a `new` copy of the base) before touching the disk
-4. Write through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
-5. `save()` writes both files together (not atomically)
+2. Core `preflightAdd` validates supplied locales and statuses, then checks whether the resolved key exists; fail by default before locale seeding, or replace only when requested
+3. Core `prepareAdd` produces a Prepared Add: an ICU base value, every target locale (supplied value, else auto-translation, else a `new` copy of the base), skipped locales and terminology with Translator problems, before writing any resource file
+4. `commitPrepared` reopens fresh state, checks existence again and writes through `openResourceFolder` (`libs/core/src/lib/resource/resource-folder.ts`), the one read-modify-write path for `resource_entries.json` + `tracker_meta.json`: it computes MD5 checksums and applies the staleness rule
+5. `save()` writes both files together (not atomically) and reports through the Mutation Sink
+
+`addResources` preflights every item before preparing any. Each preflight precedes the batch duplicate-key check. After preparation, it rechecks every item without an await before committing in input order; a preparation failure or late conflict writes no batch item.
 
 ### CLI Command Pattern (apps/cli/src/runner/command-runner.ts)
 
@@ -211,7 +213,7 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 - The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes (`process.exitCode`, never `process.exit`). `run` returns `{ exitCode: 1 }` for a failure it has already reported, or throws.
 - Diagnostics go to stderr via `ConsoleFormatter.error/warning`; the payload goes to stdout.
 - Command tests use `runCommand(command, flags, { cwd, ask?, interactive?, stdin? })` with a temporary project and real core. Use `testing/command-project.ts` to create and clean up the config, collection and summary files; assert on stored files and captured output rather than mocking core. For commands that accept piped text, supply `stdin: { isTTY, read() }` to control input without reading the test runner's stdin. Production defaults to `process.stdin.isTTY` and a deferred `readFileSync(0, 'utf8')`.
-- Commands are registered (flags, help text, lazy import) in `apps/cli/src/main.ts`; `main.spec.ts` covers the flag wiring.
+- Commands are registered (flags, help text, lazy import) in the Command Manifest `apps/cli/src/command-manifest.ts`, which `createCli()` in `apps/cli/src/program.ts` registers; `main.ts` only supplies argv. `main.spec.ts` and `main.handlers.spec.ts` cover the flag wiring and every manifest entry, and `program.lazy.spec.ts` checks that help loads without core.
 
 ### API Controller Pattern (apps/api/src/app/<feature>/<feature>.controller.ts)
 

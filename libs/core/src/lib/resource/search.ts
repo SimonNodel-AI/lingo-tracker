@@ -1,8 +1,8 @@
-import { normalizedLevenshtein } from '@simoncodes-ca/domain';
+import { folderPathFromSegments, joinFolderPath, normalizedLevenshtein } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { ResourceTreeNode } from './resource-tree-types';
 import type { StoredResource } from './read-collection';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import type { ResourceTreeNode } from './resource-tree-types';
 
 /**
  * Resource Search — the one matcher over a collection's resources.
@@ -190,9 +190,9 @@ function rankCandidates(
 
 /** Every resource of an index tree with its full key, from the loaded folders only. */
 export function* treeResources(tree: ResourceTreeNode): Generator<SearchableResource> {
-  const prefix = tree.folderPathSegments.join('.');
+  const prefix = folderPathFromSegments(tree.folderPathSegments);
   for (const entry of tree.resources) {
-    yield { fullKey: prefix ? `${prefix}.${entry.key}` : entry.key, entry };
+    yield { fullKey: joinFolderPath(prefix, entry.key), entry };
   }
   for (const child of tree.children) {
     if (child.loaded && child.tree) yield* treeResources(child.tree);

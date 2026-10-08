@@ -1,3 +1,6 @@
+import { FIND_SIMILAR_FLAGS } from './commands/find-similar-flags';
+import { resolveFlagValues } from './runner/flag-record';
+import { createCommandProject } from './testing/command-project';
 import { createCli } from './program';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -85,7 +88,6 @@ describe('main.ts flag wiring', () => {
     await runCli('validate', '--skip-protected-terms');
     expect(validateCommand).toHaveBeenCalledWith({
       allowTranslated: false,
-      skipLocales: [],
       skipIcu: false,
       skipPlaceholders: false,
       skipProtectedTerms: true,
@@ -137,7 +139,31 @@ describe('main.ts flag wiring', () => {
   it('keeps the default --max-results value passed to find-similar', async () => {
     await runCli('find-similar', '--value', 'Hello');
 
-    expect(findSimilarCommand).toHaveBeenCalledWith({ value: 'Hello', maxResults: 5 });
+    expect(findSimilarCommand).toHaveBeenCalledWith({ value: 'Hello' });
+    expect(
+      resolveFlagValues(FIND_SIMILAR_FLAGS, vi.mocked(findSimilarCommand).mock.calls[0]?.[0] ?? {}).values,
+    ).toEqual({ value: 'Hello', maxResults: 5 });
+  });
+
+  it.each(['0', '-3'])('keeps the search limit of five for unusable --max-results %j', async (value) => {
+    await runCli('find-similar', '--value', 'Hello', '--max-results', value);
+    expect(findSimilarCommand).toHaveBeenCalledWith({ value: 'Hello', maxResults: Number(value) });
+    const options = vi.mocked(findSimilarCommand).mock.calls[0]?.[0];
+    if (!options) throw new Error('Find-similar was not called.');
+    const actual = await vi.importActual<typeof import('./commands/find-similar')>('./commands/find-similar');
+    const project = createCommandProject();
+    try {
+      project.write(
+        'translations/main/resource_entries.json',
+        Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`key${i}`, { source: 'Hello' }])),
+      );
+      const result = await project.run(actual.findSimilarCommand, options);
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe('');
+      expect(result.stdout.split('\n').filter((line) => line.startsWith('  '))).toHaveLength(5);
+    } finally {
+      project.cleanup();
+    }
   });
 
   it.each(['8.9', '8suffix', ' 8 '])('keeps parseInt conversion for --max-results %j', async (value) => {

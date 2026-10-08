@@ -2,13 +2,11 @@ import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { describe, expect, it } from 'vitest';
 import { folderDrop } from './folder-drop';
 import {
-  collectAncestorPaths,
   collectExpandablePaths,
   collectVisibleFolderPaths,
   filterFolderTree,
   findFolderInTree,
   insertFolderIntoTree,
-  parentFolderPath,
   prunePathsUnder,
   rebaseExpandedPaths,
   rebaseFolderPaths,
@@ -52,11 +50,6 @@ describe('shared folder navigation', () => {
       'errors',
       'errors.http',
     ]);
-  });
-
-  it('finds the parent path, including the root boundary', () => {
-    expect(parentFolderPath('common.buttons.ok')).toBe('common.buttons');
-    expect(parentFolderPath('common')).toBeNull();
   });
 
   it('identifies folder moves that cannot change the tree', () => {
@@ -297,20 +290,6 @@ describe('collectExpandablePaths', () => {
 
   it('returns nothing for an empty tree', () => {
     expect(collectExpandablePaths([])).toEqual([]);
-  });
-});
-
-describe('collectAncestorPaths', () => {
-  it('returns strict ancestors outermost first', () => {
-    expect(collectAncestorPaths('apps.common.buttons')).toEqual(['apps', 'apps.common']);
-  });
-
-  it('excludes the path itself, so revealing a folder does not open it', () => {
-    expect(collectAncestorPaths('apps')).toEqual([]);
-  });
-
-  it('returns nothing for the root path', () => {
-    expect(collectAncestorPaths('')).toEqual([]);
   });
 });
 

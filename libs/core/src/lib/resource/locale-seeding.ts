@@ -2,7 +2,7 @@ import type { TranslationStatus } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { TerminologyFindings } from '../config/project-terms';
 import { LocaleNotFoundError } from '../errors/lingo-tracker-error';
-import { type OpenTranslatorOptions, openTranslator } from '../translation/translator';
+import { type OpenTranslatorOptions, openTranslator } from '../machine-translation/translator';
 
 /** A value for one locale and the status it is stored with. */
 export interface ResourceTranslation {

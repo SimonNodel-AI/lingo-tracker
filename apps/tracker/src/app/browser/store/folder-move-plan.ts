@@ -1,10 +1,8 @@
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { extractFolderNameFromPath } from '../utils/folder-path.utils';
+import { collectAncestorPaths, folderPathLeaf, joinFolderPath, parentFolderPath } from '@simoncodes-ca/domain';
 import {
-  collectAncestorPaths,
   findFolderInTree,
   insertFolderIntoTree,
-  parentFolderPath,
   rebaseExpandedPaths,
   rebaseFolderPaths,
   removeFolderFromTree,
@@ -36,9 +34,7 @@ export function planFolderMove(input: FolderMoveInput, sourcePath: string, desti
 
   const effects = {
     expanded,
-    showPath: destinationPath
-      ? `${destinationPath}.${extractFolderNameFromPath(sourcePath)}`
-      : extractFolderNameFromPath(sourcePath),
+    showPath: joinFolderPath(destinationPath, folderPathLeaf(sourcePath)),
   };
   if (!sourceNode) return { kind: 'reload-root', ...effects };
 

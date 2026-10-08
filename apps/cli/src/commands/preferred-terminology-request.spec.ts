@@ -3,7 +3,7 @@ import {
   InvalidProjectTermsEditError,
   isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
-} from '../errors/lingo-tracker-error';
+} from '@simoncodes-ca/core';
 import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
 
 describe('preferredTerminologyRequestFromFlags', () => {

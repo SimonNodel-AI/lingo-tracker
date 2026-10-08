@@ -1,6 +1,8 @@
-import { validateKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
+import { InvalidCollectionFolderError, InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { resolveCheckedResourceKey } from './resource-key';
+import { describeFolderProblem } from './collection-folders';
+import { pruneEmptiedFolders } from './folder-pruning';
 import { openFolders } from './folder-batch';
 import type { ResourceTreeEntry } from './resource-tree-types';
 import type { MovePlan } from './move-plan';
@@ -43,6 +45,8 @@ export interface Relocation {
 }
 
 export interface RelocateEntriesOptions extends MutationSinkOptions {
+  /** A containing move batch collects these paths and prunes once after all selections. */
+  readonly emptiedFolders?: Set<string>;
   /** Replace an entry that holds a destination key. Default: false (the relocation is a collision). */
   readonly override?: boolean;
 }
@@ -55,6 +59,7 @@ export interface RelocatedEntry {
 }
 
 export interface RelocationResult {
+  readonly warnings?: string[];
   /** The relocations done, in the order they were given. */
   readonly moved: RelocatedEntry[];
   /** The relocations not done because the destination key is taken. */
@@ -150,17 +155,27 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
     to.folder.setEntry(to.entryKey, stored.entry, stored.meta ?? {}, fit);
   }
 
+  const emptiedFolders = options.emptiedFolders ?? new Set<string>();
+  const pruneWarnings = (): string[] =>
+    options.emptiedFolders
+      ? []
+      : pruneEmptiedFolders(source, emptiedFolders, { onMutation: resolveMutationSink(source, options) }).problems.map(
+          (problem) => describeFolderProblem(problem),
+        );
+
   // 4. Save each folder once, after every folder it sends entries to.
   try {
     for (const folder of saveOrder(pending)) {
-      folder.save();
+      const saved = folder.save();
+      if (saved.emptied) emptiedFolders.add(folder.folderPath);
     }
   } catch (error) {
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
     // Some folders may be written: the index reads both collections again.
-    resolveMutationSink(source, options)?.(reindexMutation(destination.translationsFolder));
+    resolveMutationSink(destination, options)?.(reindexMutation(destination.translationsFolder));
     if (!sameCollection) resolveMutationSink(source, options)?.(reindexMutation(source.translationsFolder));
-    return { moved: [], collisions, errors };
+    const warnings = pruneWarnings();
+    return { moved: [], collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
   }
 
   const moved: RelocatedEntry[] = [];
@@ -171,8 +186,9 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
 
   for (const { from } of moved) resolveMutationSink(source, options)?.(removeMutation(source.translationsFolder, from));
   for (const { to, entry } of moved)
-    resolveMutationSink(source, options)?.(upsertMutation(destination.translationsFolder, to, entry));
-  return { moved, collisions, errors };
+    resolveMutationSink(destination, options)?.(upsertMutation(destination.translationsFolder, to, entry));
+  const warnings = pruneWarnings();
+  return { moved, collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
 }
 
 /**
@@ -212,10 +228,11 @@ function plan(
 ): Planned | string {
   const { from, to } = relocation;
   try {
-    validateKey(from);
-    validateKey(to);
+    resolveCheckedResourceKey(from);
+    resolveCheckedResourceKey(to);
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    if (error instanceof InvalidResourceKeyError) return error.message;
+    throw error;
   }
 
   let fromSlot: Slot;

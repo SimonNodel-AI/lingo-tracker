@@ -8,7 +8,6 @@ import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { provideTrackerHttpClient } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
-import { TREE_NOT_READY_RETRIES, TREE_NOT_READY_RETRY_DELAY_MS } from '../../services/browser-api.service';
 import { BrowserStore } from '../browser.store';
 
 const entry = (fullKey: string): ResourceSummaryDto => {
@@ -252,10 +251,9 @@ describe('BrowserStore List Scope', () => {
     open('app', 'welcome');
 
     store.showFolder('a');
-    for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
-      listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
-      vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
-    }
+    listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
+    http.expectOne(url('app', 'cache/status')).flush({ status: 'ready' });
+    listRead('app', 'a').flush(notReady, { status: 202, statusText: 'Accepted' });
 
     expect(store.currentFolderPath()).toBe('');
     expect(keys(store.sortedTranslations())).toEqual(['welcome']);
@@ -272,10 +270,9 @@ describe('BrowserStore List Scope', () => {
     const cancelled = listRead('app', 'a');
     store.showFolder('b');
     expect(cancelled.cancelled).toBe(true);
-    for (let attempt = 0; attempt <= TREE_NOT_READY_RETRIES; attempt++) {
-      listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
-      vi.advanceTimersByTime(TREE_NOT_READY_RETRY_DELAY_MS);
-    }
+    listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
+    http.expectOne(url('app', 'cache/status')).flush({ status: 'ready' });
+    listRead('app', 'b').flush(notReady, { status: 202, statusText: 'Accepted' });
 
     // `a` never loaded: the rows on screen are the root's, so the list goes back to the root.
     expect(store.listScope()).toEqual({ kind: 'folder', path: '' });
@@ -317,10 +314,12 @@ describe('BrowserStore List Scope', () => {
 
     store.showFolder('slow');
     listRead('a', 'slow').flush(notReady, { status: 202, statusText: 'Accepted' });
+    const cancelledStatus = http.expectOne(url('a', 'cache/status'));
     // B's index is still being checked, so B has sent no list load that could cancel A's.
     store.openCollection(collectionSettings({ name: 'b' }));
     http.expectOne(url('b', 'cache/status'));
-    vi.advanceTimersByTime(TREE_NOT_READY_RETRIES * TREE_NOT_READY_RETRY_DELAY_MS);
+    expect(cancelledStatus.cancelled).toBe(true);
+    vi.advanceTimersByTime(5000);
 
     http.expectNone((req) => req.url.startsWith('/api/collections/a/'));
     // B's status poll kept asking meanwhile; it is not what this test is about.
@@ -331,40 +330,44 @@ describe('BrowserStore List Scope', () => {
   });
   it('restores only the removed row against newer rows in the same loaded folder', () => {
     open('app', 'a.one', 'a.two');
-    const removed = store.removeRow('a.one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'a.one' });
     expect(removed.atFolder).toBe('');
     expect(keys(store.translations())).toEqual(['a.two']);
     patchState(unprotected(store), { translations: [entry('a.new')] });
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['a.new', 'a.one']);
   });
 
   it('does not restore a row after another folder loads or nesting invalidates its folder', () => {
     open('app', 'one');
-    const removed = store.removeRow('one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'one' });
     store.showFolder('b');
     listRead('app', 'b').flush(folder('b', 'b.two'));
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['b.two']);
-    const second = store.removeRow('b.two');
+    const second = store.beginMirrorMove({ kind: 'row', key: 'b.two' });
     store.setNestedResources(false);
-    store.restoreRow(second);
+    store.rollbackMirrorMove(second);
     expect(store.translations()).toEqual([]);
     http.expectOne((req) => req.params.get('path') === 'b').flush(folder('b', 'b.three'));
   });
 
   it('keeps a newer copy, ignores missing rows, and allows rollback while search is shown', () => {
     open('app', 'one');
-    const removed = store.removeRow('one');
+    const removed = store.beginMirrorMove({ kind: 'row', key: 'one' });
     store.showQuery('one');
     searchRead('app', 'one').flush(found('one', 'one'));
-    store.restoreRow(removed);
+    store.rollbackMirrorMove(removed);
     expect(keys(store.translations())).toEqual(['one']);
-    store.replaceEntry('one', { ...entry('one'), base: { locale: 'en', value: 'newer' } });
-    store.restoreRow(removed);
-    store.restoreRow(store.removeRow('missing'));
+    store.mirrorWrite({
+      kind: 'entry-replaced',
+      key: 'one',
+      resource: { ...entry('one'), base: { locale: 'en', value: 'newer' } },
+    });
+    store.rollbackMirrorMove(removed);
+    store.rollbackMirrorMove(store.beginMirrorMove({ kind: 'row', key: 'missing' }));
     expect(store.translations()[0]?.base.value).toBe('newer');
     expect(store.searchResults()[0]?.matchType).toBe('partial-value');
     expect(store.searchResults()[0]?.base.value).toBe('newer');
@@ -374,10 +377,10 @@ describe('BrowserStore List Scope', () => {
     open('app', 'one', 'two');
     store.showQuery('one');
     searchRead('app', 'one').flush(found('one', 'one', 'other'));
-    store.replaceEntry('missing', entry('missing'));
+    store.mirrorWrite({ kind: 'entry-replaced', key: 'missing', resource: entry('missing') });
     expect(keys(store.translations())).toEqual(['one', 'two']);
     expect(keys(store.searchResults())).toEqual(['one', 'other']);
-    store.removeEntry('one');
+    store.mirrorWrite({ kind: 'entry-removed', key: 'one' });
     expect(keys(store.translations())).toEqual(['two']);
     expect(keys(store.searchResults())).toEqual(['other']);
   });

@@ -14,6 +14,7 @@ Return to [architecture README](README.md).
   - [tracker_meta.json](#tracker_metajson)
   - [Folder layout example](#folder-layout-example)
 - [Entity Diagram](#entity-diagram)
+- [Entry Change](#entry-change)
 - [Bundle Definition](#bundle-definition)
 - [ICU vs Transloco Format](#icu-vs-transloco-format)
 - [Translation Status Lifecycle](#translation-status-lifecycle)
@@ -275,6 +276,14 @@ interface ResourceSummary {
 A target locale without a value still has a row. Values for locales the collection does not have are not shown.
 
 ---
+
+## Entry Change
+
+`entryChange(intent, input)` in `libs/domain/src/lib/entry-change.ts` owns the comment and tags presence rule. CLI add-resource, CLI edit-resource and API update use this pure function. It has no platform dependencies. Missing values return `undefined`. Non-empty values pass through without normalization.
+
+On edit, `comment: ''` clears the comment and `tags: []` removes tags. On add, empty values return `undefined` because there is nothing to clear. Core retains all storage and tag normalization rules. API update preserves its existing behavior.
+
+Edit-resource prompts only for missing key and base value. Comment and tags come from flags. The flag-record boundary converts exactly empty `--tags ""` to `undefined`, while comma-only `--tags ,` supplies an empty list.
 
 ## Bundle Definition
 

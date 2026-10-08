@@ -38,8 +38,6 @@ const context: ExportTableContext = {
   targetLocales: ['fr'],
   outputInitial: 'custom/export',
   selectionPrompt: ({ name, message }) => ({ type: 'multiselect', name, message }),
-  selectionNames: vi.fn(() => undefined),
-  parseListSelection: vi.fn(() => undefined),
 };
 
 // @ts-expect-error A list registration cannot silently discard a custom parser.
@@ -54,6 +52,17 @@ const _invalidList: TableRegistration = {
 const _missingStatusRule: typeof EXPORT_OPTION_TABLE.status = { ...EXPORT_OPTION_TABLE.status, resolve: () => ({}) };
 // @ts-expect-error The locale record must return its locales field.
 const _missingLocalesRule: typeof EXPORT_OPTION_TABLE.locale = { ...EXPORT_OPTION_TABLE.locale, resolve: () => ({}) };
+
+const _invalidSelectionPrompt: typeof EXPORT_OPTION_TABLE.collection = {
+  ...EXPORT_OPTION_TABLE.collection,
+  // @ts-expect-error A selection prompt must name an actual export answer key.
+  selection: { prompt: 'collectons' },
+};
+const _invalidAllFlag: typeof EXPORT_OPTION_TABLE.collection = {
+  ...EXPORT_OPTION_TABLE.collection,
+  // @ts-expect-error An all flag must name an actual command option key.
+  selection: { allFlag: 'collections' },
+};
 
 describe('export option table', () => {
   for (const [key, record] of Object.entries(EXPORT_OPTION_TABLE)) {

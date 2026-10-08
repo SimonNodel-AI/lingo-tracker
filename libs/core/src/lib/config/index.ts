@@ -14,6 +14,7 @@ export {
   type OpenedCollection,
   type OpenedProject,
   openCollection,
+  openProjectCollection,
   type TermFiles,
 } from './open-collection';
 export {
@@ -43,4 +44,3 @@ export {
 } from './update-project-terms';
 
 export { readProjectTermsView, type ProjectTermsConfigView, type ProjectTermsView } from './project-terms-view';
-export { preferredTerminologyRequestFromFlags, type PreferredTerminologyFlags } from './preferred-terminology-request';

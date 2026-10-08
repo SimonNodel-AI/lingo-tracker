@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { splitResolvedKey } from '@simoncodes-ca/domain';
+import { parentFolderPath, splitResolvedKey } from '@simoncodes-ca/domain';
 import { catchError, firstValueFrom, map, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { NotificationService } from '../../shared/notification';
@@ -63,7 +63,7 @@ export class TranslationEditorLauncher {
   async openByFullKey(fullKey: string): Promise<EditorOutcome> {
     const collectionName = this.#browserStore.selectedCollection();
     if (!collectionName) return { kind: 'cancelled' };
-    const folderPath = splitResolvedKey(fullKey).folderPath.join('.');
+    const folderPath = parentFolderPath(fullKey) ?? '';
 
     // A lookup, not a list load: the List Scope loads the rows once the entry is known to exist.
     // It is session-guarded: `null` means another collection opened meanwhile, so that one gets

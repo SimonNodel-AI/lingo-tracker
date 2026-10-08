@@ -1,7 +1,8 @@
 import type { Signal } from '@angular/core';
 import { patchState, signalStoreFeature, type, withMethods } from '@ngrx/signals';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { collectExpandablePaths, toggleExpandedPath } from '../folder-tree.utils';
+import { collectExpandablePaths } from '../folder-tree.utils';
+import { expandTreePath } from '../tree-navigation';
 
 /** User intent from the folder tree. Programmatic navigation stays in the List Scope. */
 export function withFolderTreeInteractionsFeature<_>() {
@@ -57,14 +58,14 @@ export function withFolderTreeInteractionsFeature<_>() {
 
       toggleFolderExpanded(path: string): void {
         if (store.isDisabled()) return;
-        patchState(store, { expandedFolders: toggleExpandedPath(store.expandedFolders(), path) });
+        patchState(store, { expandedFolders: expandTreePath(store.expandedFolders(), path) });
       },
 
       /** Opens a folder without closing it if it is already open — used when selecting a row. */
       expandFolder(path: string): void {
         if (store.isDisabled()) return;
         if (!path || store.expandedFolders().has(path)) return;
-        patchState(store, { expandedFolders: new Set(store.expandedFolders()).add(path) });
+        patchState(store, { expandedFolders: expandTreePath(store.expandedFolders(), path, true) });
       },
 
       /** Returns whether the root changed, so no-op keydowns keep their default behavior. */

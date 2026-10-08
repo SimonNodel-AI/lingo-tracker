@@ -114,6 +114,12 @@ describe('Move Plan', () => {
       ],
     },
     {
+      name: 'maps a key equal to the pattern prefix without a trailing dot',
+      selection: { kind: 'pattern', prefix: 'common', keys: ['common'] },
+      destination: 'shared',
+      expected: [{ from: 'common', to: 'shared' }],
+    },
+    {
       name: 'expands a root resource pattern',
       selection: { kind: 'pattern', prefix: '', keys: ['common.ok'] },
       destination: '',

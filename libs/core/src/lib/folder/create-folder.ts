@@ -1,11 +1,12 @@
+import { joinFolderPath } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import { folderAddressExists, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import {
-  resolveMutationSink,
   folderMutation,
   type MutationSinkOptions,
   reindexMutation,
+  resolveMutationSink,
 } from '../resource/resource-mutation';
 
 export interface CreateFolderParams {
@@ -79,7 +80,7 @@ export function createFolder(
   }
 
   // Combine parent path and folder name
-  const fullDotPath = resolvedParent ? `${resolvedParent}.${folderName}` : folderName;
+  const fullDotPath = joinFolderPath(resolvedParent ?? '', folderName);
 
   // Resolve the dot-delimited address to an absolute filesystem path.
   const absoluteFolderPath = resolveFolderAddress(translationsFolder, fullDotPath);

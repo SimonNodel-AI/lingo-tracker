@@ -1,5 +1,4 @@
-import { flagName } from '../runner/flag-record';
-import { NORMALIZE_FLAGS } from './normalize-flags';
+import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 import {
   describeFolderProblem,
   emptyNormalizeCollectionsResult,
@@ -10,7 +9,7 @@ import {
 import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, parseNameSelection, printRunReport } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -25,18 +24,10 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
   name: 'Normalize',
   collection: 'many',
   many: {
-    select: async (answers, { interactive, ask }) => {
-      const answerSelection = parseNameSelection(undefined, answers.collectionOrAll);
-      // An explicit all answer takes precedence over --collection.
-      const selection =
-        answers.all === true || answerSelection?.kind === 'all'
-          ? { kind: 'all' as const }
-          : parseNameSelection(answers.collection, answers.collectionOrAll);
+    select: async (answers, { interactive, ask }, selections) => {
+      const selection = selections.collection;
       // Normalize requires a name or an explicit all choice.
-      if (!selection)
-        throw new Error(
-          `Missing required option in non-interactive mode: ${flagName(NORMALIZE_FLAGS.collection)} or ${flagName(NORMALIZE_FLAGS.all)}`,
-        );
+      if (!selection) throw new Error(NORMALIZE_SELECTION_ERROR);
       if (selection.kind === 'all') {
         await confirmOrCancel({
           ask,

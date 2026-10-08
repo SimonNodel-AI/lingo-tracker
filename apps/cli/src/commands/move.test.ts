@@ -29,8 +29,6 @@ const CONFIG: LingoTrackerConfig = {
   },
 };
 
-const collectionNamed = (name: string) => expect.objectContaining({ name });
-
 describe('moveResourceCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -49,14 +47,13 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', override: true });
 
     expect(executeMove).toHaveBeenCalledWith(
-      collectionNamed('main'),
+      expect.objectContaining({ name: 'main', sourceConfig: CONFIG, projectRoot: '/project' }),
       {
         source: 'a.ok',
         destination: 'b.ok',
         override: true,
         toCollection: undefined,
       },
-      { config: CONFIG, cwd: '/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
     expect(process.exitCode).toBe(0);
@@ -66,9 +63,8 @@ describe('moveResourceCommand', () => {
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'admin' });
 
     expect(executeMove).toHaveBeenCalledWith(
-      collectionNamed('main'),
+      expect.objectContaining({ name: 'main', sourceConfig: CONFIG, projectRoot: '/project' }),
       { source: 'a.ok', destination: 'b.ok', override: undefined, toCollection: 'admin' },
-      { config: CONFIG, cwd: '/project' },
     );
     expect(console.log).toHaveBeenCalledWith('✅ Moved 1 resource(s)');
     expect(process.exitCode).toBe(0);
@@ -171,9 +167,8 @@ describe('moveResourceCommand', () => {
       await moveResourceCommand({ collection: 'main' });
 
       expect(executeMove).toHaveBeenCalledWith(
-        collectionNamed('main'),
+        expect.objectContaining({ name: 'main', sourceConfig: CONFIG, projectRoot: '/project' }),
         expect.objectContaining({ source: 'a.*', destination: 'b' }),
-        { config: CONFIG, cwd: '/project' },
       );
     });
 

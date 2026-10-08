@@ -1,26 +1,25 @@
-import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { type Collection, openCollection } from '../config/open-collection';
+import { isFolderPathUnder } from '@simoncodes-ca/domain';
+import { type Collection, type OpenedCollection, openProjectCollection } from '../config/open-collection';
 import {
   CollectionNotFoundError,
-  ReadOnlyCollectionError,
-  MoveConfigRequiredError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
+  ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from './collection-folders';
-import { sweepKeys } from './collection-sweep';
+import { sweepCollection, sweepKeys } from './collection-sweep';
 import {
   folderAddressExists,
   inspectFolderAddress,
   resolveFolderAddress,
   validateFolderAddress,
 } from './folder-address';
-import { pruneEmptyFolders } from './folder-pruning';
+import { pruneEmptiedFolders } from './folder-pruning';
 import { movePatternPrefix, validateMoveInput } from './move-input';
 import { planMove } from './move-plan';
 import { MoveReport, type MoveResult } from './move-report';
 import { relocateEntries } from './relocate-entries';
-import { type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
+import type { MutationSinkOptions } from './resource-mutation';
 
 /** Submitted addresses; patterns retain the trailing `*` syntax (including root `*`). */
 export type MoveRequest = {
@@ -30,16 +29,18 @@ export type MoveRequest = {
   readonly toCollection?: string;
 } & ({ readonly kind?: 'resource' } | { readonly kind: 'folder'; readonly nestUnderDestination?: boolean });
 
-export type MoveOptions = MutationSinkOptions & {
-  readonly config?: LingoTrackerConfig;
-  readonly cwd?: string;
-};
+export type MoveOptions = MutationSinkOptions;
 
 export type ExecuteMoveResult = MoveResult;
 
 type Selection = Omit<MoveRequest, 'kind'> &
   ({ readonly kind: 'key' | 'pattern' } | { readonly kind: 'folder'; readonly nestUnderDestination?: boolean });
 type FolderSelection = Extract<Selection, { kind: 'folder' }>;
+interface MoveBatch {
+  readonly emptiedFolders: Set<string>;
+  readonly folderSources: Array<{ source: string; empty: boolean }>;
+}
+
 type PreparedMove = { readonly destinationCollection: Collection } & (
   | { readonly kind: 'resource'; readonly selection: Exclude<Selection, { kind: 'folder' }> }
   | { readonly kind: 'folder'; readonly selection: FolderSelection; readonly plan: ReturnType<typeof prepareFolder> }
@@ -47,40 +48,79 @@ type PreparedMove = { readonly destinationCollection: Collection } & (
 
 /** Synchronous move; selection/destination preconditions throw, operational failures enter the report. */
 export function executeMove(
-  collection: Collection,
+  collection: OpenedCollection,
   request: MoveRequest,
   options: MoveOptions = {},
 ): ExecuteMoveResult {
-  return executePreparedMove(collection, prepareMove(collection, validateSelection(request), options), options);
+  const selection = validateSelection(request);
+  const prepared = prepareMove(collection, selection);
+  return finishMoves(collection, [prepared], options, selection.kind === 'folder');
 }
 
 /** Preflight addresses, destinations and folder sources before writes; unavailable destinations are per-operation errors. */
 export function executeMoves(
-  collection: Collection,
+  collection: OpenedCollection,
   requests: readonly MoveRequest[],
   options: MoveOptions = {},
 ): ExecuteMoveResult {
   const selections = requests.map(validateSelection);
   const prepared = selections.map((selection): PreparedMove | { readonly error: string } => {
     try {
-      return prepareMove(collection, selection, options);
+      return prepareMove(collection, selection);
     } catch (error) {
-      if (
-        error instanceof CollectionNotFoundError ||
-        error instanceof ReadOnlyCollectionError ||
-        error instanceof MoveConfigRequiredError
-      ) {
+      if (error instanceof CollectionNotFoundError || error instanceof ReadOnlyCollectionError) {
         return { error: error.message };
       }
       throw error;
     }
   });
+  return finishMoves(
+    collection,
+    prepared,
+    options,
+    selections.some(({ kind }) => kind === 'folder'),
+  );
+}
+
+function finishMoves(
+  collection: Collection,
+  prepared: readonly (PreparedMove | { readonly error: string })[],
+  options: MoveOptions,
+  includesFolder: boolean,
+): ExecuteMoveResult {
   const report = new MoveReport();
-  for (const move of prepared) {
-    if ('error' in move) report.fail(move.error);
-    else report.merge(executePreparedMove(collection, move, options));
+  const batch: MoveBatch = { emptiedFolders: new Set(), folderSources: [] };
+  try {
+    for (const move of prepared) {
+      if ('error' in move) report.fail(move.error);
+      else report.merge(executePreparedMove(collection, move, options, batch));
+    }
+  } finally {
+    const pruning = pruneEmptiedFolders(collection, batch.emptiedFolders, options);
+    const failedEmptySourceProblems = new Set<(typeof pruning.problems)[number]>();
+    // validateSelection rejects root folder sources with validateFolderAddress(..., false)
+    // before either executeMove or executeMoves can populate this batch.
+    for (const { source, empty } of batch.folderSources) {
+      const problems =
+        empty && !pruning.removed.includes(source)
+          ? pruning.problems.filter(({ folderPath }) => isFolderPathUnder(source, folderPath))
+          : [];
+      for (const problem of problems) failedEmptySourceProblems.add(problem);
+      report.prune(
+        source,
+        {
+          removed: pruning.removed,
+          kept: pruning.kept.filter(({ folderPath }) => isFolderPathUnder(source, folderPath)),
+          problems,
+        },
+        empty,
+      );
+    }
+    for (const problem of pruning.problems) {
+      if (!failedEmptySourceProblems.has(problem)) report.warn(describeFolderProblem(problem));
+    }
   }
-  return selections.some(({ kind }) => kind === 'folder') ? report.finish(true) : report.finish();
+  return includesFolder ? report.finish(true) : report.finish();
 }
 
 function validateSelection(request: MoveRequest): Selection {
@@ -93,8 +133,8 @@ function validateSelection(request: MoveRequest): Selection {
   return { ...request, kind };
 }
 
-function prepareMove(collection: Collection, selection: Selection, options: MoveOptions): PreparedMove {
-  const destinationCollection = resolveDestination(collection, selection.toCollection, options);
+function prepareMove(collection: OpenedCollection, selection: Selection): PreparedMove {
+  const destinationCollection = resolveDestination(collection, selection.toCollection);
   if (selection.kind === 'folder') {
     return {
       kind: 'folder',
@@ -106,21 +146,25 @@ function prepareMove(collection: Collection, selection: Selection, options: Move
   return { kind: 'resource', selection, destinationCollection };
 }
 
-function resolveDestination(source: Collection, name: string | undefined, options: MoveOptions): Collection {
+function resolveDestination(source: OpenedCollection, name: string | undefined): Collection {
   if (!name) return source;
-  if (!options.config) throw new MoveConfigRequiredError();
   try {
-    return openCollection(options.config, name, { cwd: options.cwd, writable: true });
+    return openProjectCollection(source, name, { writable: true });
   } catch (error) {
     if (error instanceof CollectionNotFoundError) throw new CollectionNotFoundError(name, 'destination');
     throw error;
   }
 }
 
-function executePreparedMove(collection: Collection, move: PreparedMove, options: MoveOptions): ExecuteMoveResult {
+function executePreparedMove(
+  collection: Collection,
+  move: PreparedMove,
+  options: MoveOptions,
+  batch: MoveBatch,
+): ExecuteMoveResult {
   const report = new MoveReport();
   const { destinationCollection, selection } = move;
-  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, options, report);
+  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, options, report, batch);
 
   const { source, destination, override = false } = selection;
   let plannedSelection: { kind: 'key'; key: string } | { kind: 'pattern'; prefix: string; keys: readonly string[] };
@@ -142,7 +186,13 @@ function executePreparedMove(collection: Collection, move: PreparedMove, options
     selection: plannedSelection,
     destinationPath: destination,
   });
-  report.merge(relocateEntries(plan, { override, onMutation: resolveMutationSink(collection, options) }));
+  report.merge(
+    relocateEntries(plan, {
+      override,
+      emptiedFolders: batch.emptiedFolders,
+      onMutation: options.onMutation,
+    }),
+  );
   return report.finish();
 }
 
@@ -184,6 +234,7 @@ function executeFolder(
   plan: ReturnType<typeof prepareFolder>,
   options: MoveOptions,
   report: MoveReport,
+  batch: MoveBatch,
 ): ExecuteMoveResult {
   const { source: sourceFolderPath, override = false } = selection;
   if (plan.kind === 'refused') {
@@ -192,7 +243,11 @@ function executeFolder(
   }
 
   // Extract all resource keys from the source folder tree
-  const { keys: resourceKeys, problems } = sweepKeys(collection, { startPath: sourceFolderPath });
+  const folders = [...sweepCollection(collection, { startPath: sourceFolderPath })];
+  const resourceKeys = folders.flatMap((folder) =>
+    folder.folder ? folder.folder.keys().map((key) => `${folder.folderPath}.${key}`) : [],
+  );
+  const problems = folders.flatMap((folder) => (folder.problem ? [folder.problem] : []));
   const enumerationErrors = problems.map(
     (problem) => new InvalidCollectionFolderError(problem, 'move', sourceFolderPath).message,
   );
@@ -211,7 +266,8 @@ function executeFolder(
     ? { moved: [], collisions: [], errors: [] }
     : relocateEntries(plan.forKeys(resourceKeys), {
         override,
-        onMutation: resolveMutationSink(collection, options),
+        emptiedFolders: batch.emptiedFolders,
+        onMutation: options.onMutation,
       });
   report.merge(relocation);
 
@@ -223,20 +279,10 @@ function executeFolder(
     report.warn(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
   }
 
-  // Only remove the source folder when every resource in it was moved
   if (keptKeys.length === 0 && report.hasErrors === false) {
-    try {
-      report.prune(
-        sourceFolderPath,
-        pruneEmptyFolders(collection, {
-          startPath: sourceFolderPath,
-          onMutation: resolveMutationSink(collection, options),
-        }),
-        empty,
-      );
-    } catch (error) {
-      report.pruningFailed(error, empty);
-    }
+    // Include folders that were already empty, so folder moves retain their batch repair behaviour.
+    for (const folder of folders) batch.emptiedFolders.add(folder.absolutePath);
+    batch.folderSources.push({ source: sourceFolderPath, empty });
   }
 
   return report.finish(true);

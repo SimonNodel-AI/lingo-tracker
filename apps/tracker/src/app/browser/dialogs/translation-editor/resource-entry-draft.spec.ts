@@ -72,9 +72,9 @@ describe('absorbDottedKey', () => {
       { leaf: 'ok', folder: 'apps.common.buttons' },
     ],
     ['a folder typed with its trailing dot', 'apps.', 'common.buttons', null, { leaf: '', folder: 'apps' }],
-    ['consecutive dots', 'apps..common...ok', 'common.buttons', null, { leaf: 'ok', folder: 'apps.common' }],
-    ['a leading dot', '.ok', 'common.buttons', null, { leaf: 'ok' }],
-    ['a lone dot', '.', 'common.buttons', null, { leaf: '' }],
+    ['consecutive dots', 'apps..common...ok', 'common.buttons', null, null],
+    ['a leading dot', '.ok', 'common.buttons', null, null],
+    ['a lone dot', '.', 'common.buttons', null, null],
     [
       'a prefix pasted before an existing leaf',
       'apps.common.ok',

@@ -4,7 +4,7 @@ import { registerFlags, flagValues, type FlagRecords } from './flag-record';
 export interface CommandRegistration<Options> {
   readonly name: string;
   readonly description: string;
-  readonly flags: FlagRecords<Options>;
+  readonly flags: FlagRecords<Options, never, Record<string, unknown>>;
   readonly helpText?: () => string;
   readonly load: () => Promise<(options: Options) => Promise<void> | void>;
 }

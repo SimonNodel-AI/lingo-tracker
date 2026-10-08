@@ -1,6 +1,7 @@
 import { computed } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods } from '@ngrx/signals';
 import { withCollectionResetRegistry, withCollectionState } from './collection-reset';
+import { withBrowserMirrorFeature } from './features/with-browser-mirror.feature';
 import { withBrowserSessionFeature } from './features/with-browser-session.feature';
 import { withCacheStatusFeature } from './features/with-cache-status.feature';
 import { withEntryWritesFeature } from './features/with-entry-writes.feature';
@@ -20,8 +21,9 @@ export const BrowserStore = signalStore(
   withListScopeFeature(),
   withFilterFeature(),
   withTranslationsFeature(),
-  withEntryWritesFeature(),
   withFolderTreeFeature(),
+  withBrowserMirrorFeature(),
+  withEntryWritesFeature(),
   withFolderWritesFeature(),
   withCacheStatusFeature(),
   withViewPreferencesFeature(),

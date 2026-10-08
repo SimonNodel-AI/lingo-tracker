@@ -27,7 +27,17 @@ export { effectiveTags } from './lib/effective-tags';
 // Utilities
 export { escapeRegExp } from './lib/escape-regexp';
 // Folder paths
-export { isDescendantFolderPath } from './lib/folder-path';
+export {
+  collectAncestorPaths,
+  folderPathFromSegments,
+  folderPathLeaf,
+  folderPathSegments,
+  isDescendantFolderPath,
+  isFolderPathUnder,
+  joinFolderPath,
+  parentFolderPath,
+  rebaseFolderPath,
+} from './lib/folder-path';
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
 export { type ArgumentMismatch, compareIcuArguments } from './lib/icu-arguments';
 export {
@@ -170,3 +180,6 @@ export {
   DEFAULT_BUNDLE_NAME,
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/project-defaults';
+
+// Presence-aware optional entry details
+export { entryChange, type EntryChange } from './lib/entry-change';

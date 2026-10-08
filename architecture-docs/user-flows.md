@@ -258,7 +258,7 @@ sequenceDiagram
     TB->>BS: openCollection(settings) — resolveCollectionSettings(config, name)
     BS->>BS: bump sessionId; reset every feature to its initial state
     BS->>BS: restoreViewPreferences(collectionName) — restore from localStorage,<br/>dropping any saved locale the collection no longer has
-    BS->>CS: checkCacheStatus() [rxMethod — starts interval(2000)]
+    BS->>CS: checkCacheStatus() [rxMethod — starts Index Readiness]
 
     Note over CS,API: B. Cache indexing poll (every 2 s until "ready")
     CS->>API: GET /api/collections/{name}/resources/cache/status
@@ -418,7 +418,7 @@ sequenceDiagram
     API-->>BS: MoveFolderResponseDto
     BS->>BS: rebaseFolderPaths(sourceNode, destinationFolderPath)<br/>insertFolderIntoTree(rootFolders, rebasedFolder, dest)
     BS->>BS: showFolder(movedFolderPath) — the List Scope loads it
-    Note right of BS: Folder move clears API cache;<br/>BrowserApiService retries a 202 (up to 5×, 1 s delay)<br/>before handing the tree over. A failure follows<br/>the List Scope's one error rule.
+    Note right of BS: Folder move clears API cache;<br/>Index Readiness waits up to 5 s after a tree 202;<br/>BrowserApiService then requests the tree once more<br/>before handing the tree over. A failure follows<br/>the List Scope's one error rule.
     alt API call fails
         API-->>BS: HTTP error
         BS->>BS: patchState({ rootFolders: snapshotFolders })<br/>isDeletingFolder=false; movesInFlight - 1
@@ -430,7 +430,7 @@ sequenceDiagram
 
 ## 6. Cache Indexing Flow
 
-The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus` (which polls every 2 seconds using `interval(2000)`) and the [Collection Index](glossary.md#collection-index) (`CollectionIndex`) on the API. The state machine is documented in [api.md — Index State Machine](api.md#index-state-machine).
+The sequence from opening a collection to having a fully populated resource tree in the browser store. This flow is driven by `withCacheStatusFeature.checkCacheStatus`, which delegates to [Index Readiness](glossary.md#index-readiness) (synchronous first polling, then every 2 seconds using `interval(intervalMs)` with `startWith(0)`, without an overlay limit) and the [Collection Index](glossary.md#collection-index) (`CollectionIndex`) on the API. The state machine is documented in [api.md — Index State Machine](api.md#index-state-machine).
 
 <!-- Cache indexing flowchart: app opens collection → poll cache status → wait for READY → load tree into store -->
 
@@ -460,7 +460,7 @@ flowchart TD
     STATUS_CHECK -- "error" --> SHOW_ERROR
     SHOW_ERROR["patchState({ cacheStatus: 'error', cacheError })\nError shown in UI\nNext /tree request will retry indexing"]
 
-    STATUS_CHECK -- "ready" --> MARK_READY["patchState({ cacheStatus: 'ready', collectionStats })\ntakeWhile stops the interval — polling ends"]
+    STATUS_CHECK -- "ready" --> MARK_READY["patchState({ cacheStatus: 'ready', collectionStats })\nIndex Readiness completes — polling ends"]
 
     MARK_READY --> HAS_FOLDERS{"folderTreeLoaded?\n(and listLoaded?)"}
 
@@ -473,9 +473,12 @@ flowchart TD
 
     TREE_RESPONSE -- "ResourceTreeDto\n(200 OK, cache READY)" --> POPULATE["patchState({\n  rootFolders: tree.children,\n  translations: list.resources\n})\nIndexingOverlay hidden"]
 
-    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["BrowserApiService.getResourceTree\nasks again (up to 5×, 1 s apart);\nthe store only ever receives a tree"]
+    TREE_RESPONSE -- "TreeStatusResponseDto\n(202, not ready yet)" --> LOAD_TREE_RETRY["BrowserApiService.getResourceTree\nwaits up to 5 s for readiness, then asks once more on ready or deadline;\nthe store only ever receives a tree"]
 
-    LOAD_TREE_RETRY --> POLL_START
+    LOAD_TREE_RETRY -- "ready or deadline" --> SECOND_TREE{"One more tree request"}
+    LOAD_TREE_RETRY -- "index error or polling HTTP failure" --> TREE_ERROR["CollectionIndexNotReadyError\nKeep loaded content + toast; first load shows error"]
+    SECOND_TREE -- "200" --> POPULATE
+    SECOND_TREE -- "202" --> TREE_ERROR
 
     POPULATE --> DONE([UI ready: folder tree visible,\ntranslation list populated,\ncollectionStats shown in AppHeader])
 
@@ -486,7 +489,7 @@ flowchart TD
 ```
 
 **Key timing details:**
-- Poll interval: `2000 ms` (hard-coded in `withCacheStatusFeature` via `interval(2000)`)
-- The interval uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers the first list load (`reloadList()`) and `loadRootFolders()`
-- There is no WebSocket or server-sent event. The retry loop is entirely client-driven.
+- Poll interval: `INDEX_WAIT_POLICY.overlay`: `2000 ms`, synchronous first poll, no maximum poll count
+- Index Readiness uses `takeWhile(..., true)` — the final `"ready"` emission is included before the stream completes, which is what triggers the first list load (`reloadList()`) and `loadRootFolders()`
+- There is no WebSocket or server-sent event. Index Readiness owns the client wait. A tree 202 uses `INDEX_WAIT_POLICY.treeRead`: sequential polls, 1 s after each response, and a five-second deadline. On ready or deadline completion, it requests the tree once more. An index `error` fails the wait immediately rather than retrying for five seconds. Polling HTTP errors have the same `CollectionIndexNotReadyError` type and preserve the API Error message; tree-request HTTP errors pass through; a second 202 fails with `CollectionIndexNotReadyError`.
 - `CollectionIndex` holds up to `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` (default 4) collections and evicts the least recently used one. Switching back to a recently opened collection does not re-index it. See [api.md — Bounded Multi-Collection Design](api.md#bounded-multi-collection-design).

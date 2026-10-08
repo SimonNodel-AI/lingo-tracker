@@ -5,10 +5,12 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoModule } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { isDescendantFolderPath } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
 import { folderDrop } from '../../../store/folder-drop';
+import { navigateTree, SIDEBAR_NAVIGATION } from '../../../store/tree-navigation';
 import type { DragData } from '../../../types/drag-data';
 import { InlineFolderInput } from '../inline-folder-input/inline-folder-input';
 
@@ -144,7 +146,7 @@ export class FolderNode {
     const selected = this.selectedPath();
     const myPath = this.folder().fullPath;
     if (!selected || !myPath) return false;
-    return myPath.startsWith(`${selected}.`);
+    return isDescendantFolderPath(selected, myPath);
   });
 
   /** Determines which icon to display for the folder */
@@ -178,18 +180,34 @@ export class FolderNode {
     this.toggleExpanded.emit(this.folder().fullPath);
   }
 
-  /** ArrowRight opens a shut folder; on an open one it does nothing. */
-  onExpandKeydown(event: Event): void {
-    if (!this.hasChildren() || this.isExpanded()) return;
-    event.preventDefault();
-    this.expandRequested.emit(this.folder().fullPath);
-  }
-
-  /** ArrowLeft shuts an open folder; on a shut one it does nothing. */
-  onCollapseKeydown(event: Event): void {
-    if (!this.isExpanded()) return;
-    event.preventDefault();
-    this.toggleExpanded.emit(this.folder().fullPath);
+  onTreeKeydown(event: Event, key: string): void {
+    const next = navigateTree(
+      {
+        focusedPath: this.folder().fullPath,
+        expanded: this.isExpanded(),
+        hasChildren: this.hasChildren(),
+        hasRows: true,
+      },
+      key,
+      SIDEBAR_NAVIGATION,
+    );
+    if (next.preventDefault) event.preventDefault();
+    const intent = next.intent;
+    switch (intent.kind) {
+      case 'expand':
+        this.expandRequested.emit(intent.path);
+        break;
+      case 'collapse':
+        this.toggleExpanded.emit(intent.path);
+        break;
+      case 'select':
+        this.folderClick.emit(this.folder());
+        if (intent.open) this.expandRequested.emit(intent.path);
+        break;
+      case 'focus':
+      case 'none':
+        break;
+    }
   }
 
   /**

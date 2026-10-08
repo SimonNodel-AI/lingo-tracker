@@ -4,7 +4,7 @@ import { addCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import type { OpenedProject } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/protected-terms-request';
-import { type MutationSinkOptions, reindexMutation } from '../lib/resource/resource-mutation';
+import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../lib/resource/resource-mutation';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 
 export interface AddCollectionOptions extends MutationSinkOptions {
@@ -40,7 +40,10 @@ export function addCollection(
     project.projectRoot,
   );
   configWrite.transaction(nextConfig, writeTerms === undefined ? [] : [writeTerms]);
-  options.onMutation?.(reindexMutation(resolve(project.projectRoot, collection.translationsFolder.trim())));
+  resolveMutationSink(
+    { translationsFolder: project.projectRoot, onMutation: project.onMutation },
+    options,
+  )?.(reindexMutation(resolve(project.projectRoot, collection.translationsFolder.trim())));
 
   return { message: `Collection "${collectionName}" added successfully` };
 }

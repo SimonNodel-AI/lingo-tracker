@@ -111,50 +111,38 @@ describe('EditorSession', () => {
   });
   describe('Form Validation - Key Field', () => {
     it('should require key field', () => {
-      session.entry.form.controls.key.setValue('');
-      expect(session.entry.form.controls.key.hasError('required')).toBe(true);
-    });
-
-    it('should return correct error message for required key', () => {
-      session.entry.form.controls.key.setValue('');
-      session.entry.form.controls.key.markAsTouched();
-      expect(session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYREQUIRED);
-    });
-
-    it('should return correct error message for invalid pattern', () => {
-      session.entry.form.controls.key.setValue('test key');
-      session.entry.form.controls.key.markAsTouched();
-      expect(session.getKeyErrorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYPATTERNERROR);
+      session.form.controls.key.setValue('');
+      expect(session.form.controls.key.hasError('required')).toBe(true);
     });
   });
   describe('Dotted Keys - Location Absorption', () => {
     it('should split a pasted full key into folder path and leaf', () => {
-      session.entry.form.controls.key.setValue('apps.common.buttons.ok');
+      session.form.controls.key.setValue('apps.common.buttons.ok');
 
-      expect(session.entry.form.controls.key.value).toBe('ok');
-      expect(session.location.selectedFolderPath()).toBe('apps.common.buttons');
-      expect(session.entry.form.controls.key.valid).toBe(true);
+      expect(session.form.controls.key.value).toBe('ok');
+      expect(session.folderSegments().join('.')).toBe('apps.common.buttons');
+      expect(session.form.controls.key.valid).toBe(true);
     });
 
     it('should extend the derived folder while the user keeps typing dots', () => {
-      session.entry.form.controls.key.setValue('apps.');
-      expect(session.location.selectedFolderPath()).toBe('apps');
-      expect(session.entry.form.controls.key.value).toBe('');
+      session.form.controls.key.setValue('apps.');
+      expect(session.folderSegments().join('.')).toBe('apps');
+      expect(session.form.controls.key.value).toBe('');
 
-      session.entry.form.controls.key.setValue('common.');
-      expect(session.location.selectedFolderPath()).toBe('apps.common');
+      session.form.controls.key.setValue('common.');
+      expect(session.folderSegments().join('.')).toBe('apps.common');
 
-      session.entry.form.controls.key.setValue('ok');
-      expect(session.location.selectedFolderPath()).toBe('apps.common');
-      expect(session.entry.form.controls.key.value).toBe('ok');
+      session.form.controls.key.setValue('ok');
+      expect(session.folderSegments().join('.')).toBe('apps.common');
+      expect(session.form.controls.key.value).toBe('ok');
     });
 
     it('should submit the absorbed folder as part of the full key', async () => {
       apiSpies.createResource.mockReturnValue(of({ entriesCreated: 1, created: true }));
 
-      session.entry.form.controls.key.setValue('apps.common.buttons.ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('A comment');
+      session.form.controls.key.setValue('apps.common.buttons.ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('A comment');
       await session.onSubmit();
 
       expect(apiSpies.createResource).toHaveBeenCalledWith(
@@ -164,7 +152,7 @@ describe('EditorSession', () => {
     });
 
     it('should announce the move for screen readers', () => {
-      session.entry.form.controls.key.setValue('apps.common.ok');
+      session.form.controls.key.setValue('apps.common.ok');
 
       expect(session.locationAbsorbedMessage()).toContain('apps.common');
     });
@@ -173,35 +161,35 @@ describe('EditorSession', () => {
       const mockResource = summary('common.buttons.existing_key', 'Existing Value');
       openSession(createMockData('edit', mockResource));
 
-      session.entry.form.controls.key.setValue('apps.common.ok');
+      session.form.controls.key.setValue('apps.common.ok');
 
-      expect(session.entry.form.controls.key.value).toBe('apps.common.ok');
-      expect(session.location.selectedFolderPath()).toBe('common.buttons');
+      expect(session.form.controls.key.value).toBe('apps.common.ok');
+      expect(session.folderSegments().join('.')).toBe('common.buttons');
     });
   });
   describe('Form Validation - Base Value Field', () => {
     it('should require base value field', () => {
-      session.entry.form.controls.baseValue.setValue('');
-      expect(session.entry.form.controls.baseValue.hasError('required')).toBe(true);
+      session.form.controls.baseValue.setValue('');
+      expect(session.form.controls.baseValue.hasError('required')).toBe(true);
     });
 
     it('should accept non-empty base value', () => {
-      session.entry.form.controls.baseValue.setValue('Test translation');
-      expect(session.entry.form.controls.baseValue.valid).toBe(true);
+      session.form.controls.baseValue.setValue('Test translation');
+      expect(session.form.controls.baseValue.valid).toBe(true);
     });
   });
   describe('Form Submission', () => {
     it('should block submission when form is invalid', () => {
-      session.entry.form.controls.key.setValue('');
-      session.entry.form.controls.baseValue.setValue('');
+      session.form.controls.key.setValue('');
+      session.form.controls.baseValue.setValue('');
       session.onSubmit();
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
     it('should allow submission when form is valid', async () => {
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('Test comment');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('Test comment');
 
       await session.onSubmit();
 
@@ -220,9 +208,9 @@ describe('EditorSession', () => {
       // Accept Save Anyway.
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('   ');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('   ');
 
       await session.onSubmit();
 
@@ -235,9 +223,9 @@ describe('EditorSession', () => {
       dataWithoutFolder.folderPath = undefined;
       openSession(dataWithoutFolder);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('Test comment'); // Add comment to skip confirmation
       await session.onSubmit();
 
       expect(closedWith()).toEqual({ kind: 'created', fullKey: 'test_key', skippedLocales: [] });
@@ -250,8 +238,8 @@ describe('EditorSession', () => {
     });
 
     it('should confirm before discarding unsaved edits', async () => {
-      session.entry.form.controls.baseValue.setValue('Half-written value');
-      session.entry.form.controls.baseValue.markAsDirty();
+      session.form.controls.baseValue.setValue('Half-written value');
+      session.form.controls.baseValue.markAsDirty();
 
       // The confirmation fake accepts discard.
       await session.onCancel();
@@ -271,33 +259,19 @@ describe('EditorSession', () => {
 
     it('should keep the dialog open when the user chooses to keep editing', async () => {
       confirm.mockResolvedValue(false);
-      session.entry.form.controls.baseValue.setValue('Half-written value');
-      session.entry.form.controls.baseValue.markAsDirty();
+      session.form.controls.baseValue.setValue('Half-written value');
+      session.form.controls.baseValue.markAsDirty();
 
       await session.onCancel();
 
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
   });
-  describe('Edit Mode', () => {
-    it('should display correct save button label in edit mode', async () => {
-      const mockResource = summary('common.buttons.existing_key', 'Existing Value');
-
-      const editData = createMockData('edit', mockResource);
-      openSession(editData);
-
-      expect(session.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON);
-    });
-
-    it('should display correct save button label in create mode', () => {
-      expect(session.saveButtonLabel()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON);
-    });
-  });
   describe('Comment Confirmation Flow', () => {
     it('should save directly when comment is present', async () => {
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('Test comment');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('Test comment');
 
       await session.onSubmit();
 
@@ -314,9 +288,9 @@ describe('EditorSession', () => {
     it('should show confirmation dialog when comment is empty', async () => {
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -334,9 +308,9 @@ describe('EditorSession', () => {
     it('should show confirmation dialog when comment is whitespace only', async () => {
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('   ');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('   ');
 
       await session.onSubmit();
 
@@ -346,9 +320,9 @@ describe('EditorSession', () => {
     it('should complete save when user clicks "Save Anyway"', async () => {
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -361,9 +335,9 @@ describe('EditorSession', () => {
     it('should not save when user clicks "Add Comment"', async () => {
       confirm.mockResolvedValue(false);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -374,9 +348,9 @@ describe('EditorSession', () => {
       // A cancelled confirmation resolves false at the confirmation seam.
       confirm.mockResolvedValue(false);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -386,9 +360,9 @@ describe('EditorSession', () => {
     it('should ignore another save after Save Anyway has completed', async () => {
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -408,9 +382,9 @@ describe('EditorSession', () => {
       apiSpies.createResource
         .mockReturnValueOnce(throwError(() => toApiError(new HttpErrorResponse({ status: 503 }))))
         .mockReturnValueOnce(of({ entriesCreated: 1, created: true }));
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
       expect(session.errorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.CREATEFAILED);
@@ -425,9 +399,9 @@ describe('EditorSession', () => {
     it('should allow showing confirmation again if user cancelled previously', async () => {
       confirm.mockResolvedValue(false);
 
-      session.entry.form.controls.key.setValue('test_key');
-      session.entry.form.controls.baseValue.setValue('Test Value');
-      session.entry.form.controls.comment.setValue('');
+      session.form.controls.key.setValue('test_key');
+      session.form.controls.baseValue.setValue('Test Value');
+      session.form.controls.comment.setValue('');
 
       await session.onSubmit();
 
@@ -449,7 +423,7 @@ describe('EditorSession', () => {
       session.panels.stageFolder('common.errors');
 
       expect(session.panels.stagedFolderPath()).toBe('common.errors');
-      expect(session.location.selectedFolderPath()).toBe('common.buttons');
+      expect(session.folderSegments().join('.')).toBe('common.buttons');
       expect(session.popoverFolderPath()).toBe('common.errors');
     });
 
@@ -459,24 +433,24 @@ describe('EditorSession', () => {
 
       session.confirmStagedFolder();
 
-      expect(session.location.selectedFolderPath()).toBe('common.errors');
+      expect(session.folderSegments().join('.')).toBe('common.errors');
       expect(session.panels.isFolderPopoverOpen()).toBe(false);
       expect(session.panels.stagedFolderPath()).toBeNull();
     });
 
     it('should select and stage a newly created folder', () => {
-      session.entry.form.controls.key.setValue('a.');
+      session.form.controls.key.setValue('a.');
       session.panels.openFolderPopover();
 
       session.onFolderCreated({ name: 'new', fullPath: 'common.new', loaded: false });
 
-      expect(session.location.selectedFolderPath()).toBe('common.new');
+      expect(session.folderSegments().join('.')).toBe('common.new');
       expect(session.panels.stagedFolderPath()).toBe('common.new');
       expect(session.popoverFolderPath()).toBe('common.new');
 
       session.panels.closeFolderPopover();
-      session.entry.form.controls.key.setValue('b.ok');
-      expect(session.location.selectedFolderPath()).toBe('b');
+      session.form.controls.key.setValue('b.ok');
+      expect(session.folderSegments().join('.')).toBe('b');
     });
 
     it('should keep the current folder when nothing was staged', () => {
@@ -484,7 +458,7 @@ describe('EditorSession', () => {
 
       session.confirmStagedFolder();
 
-      expect(session.location.selectedFolderPath()).toBe('common.buttons');
+      expect(session.folderSegments().join('.')).toBe('common.buttons');
       expect(session.panels.isFolderPopoverOpen()).toBe(false);
     });
 
@@ -526,9 +500,9 @@ describe('EditorSession', () => {
   describe('Create errors from the server', () => {
     it('should show the unexpected-error token for a non-API failure', async () => {
       apiSpies.createResource.mockReturnValue(throwError(() => new Error('Unexpected')));
-      session.entry.form.controls.key.setValue('ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('A comment');
+      session.form.controls.key.setValue('ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('A comment');
 
       await session.onSubmit();
 
@@ -550,9 +524,9 @@ describe('EditorSession', () => {
       );
       confirm.mockResolvedValue(true);
 
-      session.entry.form.controls.key.setValue('ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('The affirmative button');
+      session.form.controls.key.setValue('ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('The affirmative button');
 
       await session.onSubmit();
 
@@ -573,9 +547,9 @@ describe('EditorSession', () => {
         ),
       );
 
-      session.entry.form.controls.key.setValue('ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('A comment');
+      session.form.controls.key.setValue('ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('A comment');
 
       await session.onSubmit();
 
@@ -589,9 +563,9 @@ describe('EditorSession', () => {
         throwError(() => toApiError(new HttpErrorResponse({ status: 0, error: new ProgressEvent('error') }))),
       );
 
-      session.entry.form.controls.key.setValue('ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('A comment');
+      session.form.controls.key.setValue('ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('A comment');
 
       await session.onSubmit();
 
@@ -602,9 +576,9 @@ describe('EditorSession', () => {
   describe('Edit Mode API Integration', () => {
     it('should show the missing-resource token when an edit has no original entry', async () => {
       openSession(createMockData('edit'));
-      session.entry.form.controls.key.setValue('ok');
-      session.entry.form.controls.baseValue.setValue('OK');
-      session.entry.form.controls.comment.setValue('A comment');
+      session.form.controls.key.setValue('ok');
+      session.form.controls.baseValue.setValue('OK');
+      session.form.controls.comment.setValue('A comment');
 
       await session.onSubmit();
 
@@ -645,8 +619,8 @@ describe('EditorSession', () => {
       apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       openSession(editData);
 
-      session.entry.form.controls.baseValue.setValue('Updated Value');
-      session.entry.form.controls.comment.setValue('Updated comment');
+      session.form.controls.baseValue.setValue('Updated Value');
+      session.form.controls.comment.setValue('Updated comment');
 
       await session.onSubmit();
 
@@ -670,7 +644,7 @@ describe('EditorSession', () => {
       apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       openSession(editData);
 
-      const translationsArray = session.entry.form.controls.translations;
+      const translationsArray = session.form.controls.translations;
       const frControl = translationsArray.controls.find((c) => c.value.locale === 'fr');
       frControl?.patchValue({ value: 'Nouvelle valeur' });
 
@@ -721,7 +695,7 @@ describe('EditorSession', () => {
       apiSpies.updateResource.mockReturnValue(of({ resolvedKey: 'common.buttons.existing_key', updated: true }));
       openSession(editData);
 
-      session.entry.form.controls.baseValue.setValue('Updated Value');
+      session.form.controls.baseValue.setValue('Updated Value');
 
       await session.onSubmit();
 
@@ -737,12 +711,12 @@ describe('EditorSession', () => {
     entries.set([summary('a.b.c', 'Existing value')]);
     browserFolderPath.set('a.b');
 
-    session.entry.form.controls.key.setValue('a.b.c');
+    session.form.controls.key.setValue('a.b.c');
 
-    expect(session.entry.form.controls.key.value).toBe('c');
-    expect(session.location.selectedFolderPath()).toBe('a.b');
-    expect(session.location.fullKeyPreview()).toBe('a.b.c');
-    expect(session.location.keyCollision()).toBe(true);
+    expect(session.form.controls.key.value).toBe('c');
+    expect(session.folderSegments().join('.')).toBe('a.b');
+    expect(session.fullKeyPreview()).toBe('a.b.c');
+    expect(session.keyCollision()).toBe(true);
   });
 
   it('should dismiss the popover before the drawer before the dialog', async () => {
@@ -766,8 +740,8 @@ describe('EditorSession', () => {
     session.panels.openFolderPopover();
     await session.onSubmit();
     expect(session.submitAttempted()).toBe(true);
-    expect(session.entry.form.controls.key.touched).toBe(true);
-    expect(session.entry.form.controls.baseValue.touched).toBe(true);
+    expect(session.form.controls.key.touched).toBe(true);
+    expect(session.form.controls.baseValue.touched).toBe(true);
     expect(session.errorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS);
     expect(session.panels.isFolderPopoverOpen()).toBe(false);
     expect(session.panels.isLocalesDrawerOpen()).toBe(false);
@@ -776,14 +750,14 @@ describe('EditorSession', () => {
   });
 
   it('focuses the base value when the key is valid', async () => {
-    session.entry.form.controls.key.setValue('valid');
+    session.form.controls.key.setValue('valid');
     await session.onSubmit();
     expect(focus).toHaveBeenCalledExactlyOnceWith('base-value');
   });
 
   it('requests comment focus after a refused comment confirmation', async () => {
     confirm.mockResolvedValue(false);
-    session.entry.form.patchValue({ key: 'valid', baseValue: 'Value' });
+    session.form.patchValue({ key: 'valid', baseValue: 'Value' });
     await session.onSubmit();
     expect(session.panels.focusRequest()?.target).toBe('comment');
     expect(dialogRef.close).not.toHaveBeenCalled();
@@ -792,29 +766,29 @@ describe('EditorSession', () => {
   it('restarts the absorption highlight delay and releases pending work on destroy', () => {
     vi.useFakeTimers();
     try {
-      session.entry.form.controls.key.setValue('first.key');
+      session.form.controls.key.setValue('first.key');
       vi.advanceTimersByTime(20);
       expect(session.locationAbsorbedFlash()).toBe(true);
       vi.advanceTimersByTime(800);
-      session.entry.form.controls.key.setValue('second.key');
+      session.form.controls.key.setValue('second.key');
       vi.advanceTimersByTime(100);
       expect(session.locationAbsorbedFlash()).toBe(true);
       vi.advanceTimersByTime(800);
       expect(session.locationAbsorbedFlash()).toBe(false);
-      session.entry.form.controls.key.setValue('third.key');
+      session.form.controls.key.setValue('third.key');
       session.destroy();
       vi.runAllTimers();
       expect(session.locationAbsorbedFlash()).toBe(false);
-      session.entry.form.controls.key.setValue('unchanged.key');
-      expect(session.entry.form.controls.key.value).toBe('unchanged.key');
+      session.form.controls.key.setValue('unchanged.key');
+      expect(session.form.controls.key.value).toBe('unchanged.key');
     } finally {
       vi.useRealTimers();
     }
   });
 
   it('guards an existing-entry hand-off with the same discard decision', async () => {
-    session.entry.form.controls.key.setValue('existing');
-    session.entry.form.controls.baseValue.markAsDirty();
+    session.form.controls.key.setValue('existing');
+    session.form.controls.baseValue.markAsDirty();
     confirm.mockResolvedValue(false);
     await session.openExistingResource();
     expect(dialogRef.close).not.toHaveBeenCalled();
@@ -840,8 +814,8 @@ describe('EditorSession', () => {
 
   it('locks a read-only form and closes it without a discard prompt or write', async () => {
     openSession({ ...createMockData('create'), readOnly: true });
-    session.entry.form.controls.baseValue.markAsDirty();
-    expect(session.entry.form.disabled).toBe(true);
+    session.form.controls.baseValue.markAsDirty();
+    expect(session.form.disabled).toBe(true);
     expect(session.hasUnsavedChanges()).toBe(false);
     await session.onSubmit();
     expect(apiSpies.createResource).not.toHaveBeenCalled();

@@ -1,8 +1,8 @@
-import { Pipe, type PipeTransform, inject } from '@angular/core';
+import { inject, Pipe, type PipeTransform } from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
-import { escapeRegExp } from '@simoncodes-ca/domain';
-import { truncateKey } from '../utils/truncate-key';
+import { escapeRegExp, parentFolderPath } from '@simoncodes-ca/domain';
 import { hasSearchLength } from '../search/search-minimum';
+import { truncateKey } from '../utils/truncate-key';
 
 const HTML_ESCAPES: Record<string, string> = {
   '&': '&amp;',
@@ -40,8 +40,8 @@ export type KeyMarkupPart = 'full' | 'head' | 'tail';
  * tail is `.leafSegment`. A key with no dot is all head and has no tail.
  */
 export function keyLeafSplitIndex(key: string): number {
-  const lastDot = key.lastIndexOf('.');
-  return lastDot < 0 ? key.length : lastDot;
+  const parent = parentFolderPath(key);
+  return parent === null ? key.length : parent.length;
 }
 
 /** Whether splitting `key` into head and tail would actually produce a tail. */

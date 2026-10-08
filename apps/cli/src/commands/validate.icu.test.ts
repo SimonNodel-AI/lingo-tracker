@@ -87,7 +87,7 @@ describe('validateCommand ICU flag forwarding', () => {
 
   it('does not request portability by default', async () => {
     await validateCommand({});
-    expect(mockRunValidate.mock.calls[0]?.[1].requirePortablePlurals).toBeUndefined();
+    expect(mockRunValidate.mock.calls[0]?.[1].requirePortablePlurals).toBe(false);
   });
 
   it('forwards a portability request', async () => {
@@ -97,7 +97,7 @@ describe('validateCommand ICU flag forwarding', () => {
 
   it('leaves ICU enabled by default', async () => {
     await validateCommand({});
-    expect(mockRunValidate.mock.calls[0]?.[1].skipIcu).toBeUndefined();
+    expect(mockRunValidate.mock.calls[0]?.[1].skipIcu).toBe(false);
   });
 
   it('forwards --skip-icu', async () => {

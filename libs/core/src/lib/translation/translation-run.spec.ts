@@ -9,10 +9,10 @@ import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
-import { InMemoryTranslationProvider } from './in-memory-translation-provider';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import type { TranslateLocaleProgress } from './translation-run';
 
-import * as batchModule from './translation-batch';
+import * as batchModule from '../resource/translation-batch';
 import {
   prepareTranslationRun,
   type TranslationRunExecutionOptions,

@@ -1,18 +1,16 @@
 import { Controller, Get, Put } from '@nestjs/common';
-import { readProjectTermsView, updateProjectTerms } from '@simoncodes-ca/core';
+import { type OpenedProject, readProjectTermsView, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
-import { ConfigService } from './config.service';
+import { RouteProject } from './route-project';
 import { updateConfigBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
 
 @Controller('config')
 export class ConfigController {
-  constructor(private readonly configService: ConfigService) {}
-
   @Get()
-  getConfig(): LingoTrackerConfigDto {
-    const snapshot = readProjectTermsView(this.configService.openProject());
+  getConfig(@RouteProject() project: OpenedProject): LingoTrackerConfigDto {
+    const snapshot = readProjectTermsView(project);
     return mapConfigToDto(snapshot.forConfig());
   }
 
@@ -29,12 +27,15 @@ export class ConfigController {
    * filter too.
    */
   @Put()
-  updateConfig(@ValidBody(updateConfigBody) dto: UpdateConfigDto | undefined): { message: string } {
+  updateConfig(
+    @ValidBody(updateConfigBody) dto: UpdateConfigDto | undefined,
+    @RouteProject() project: OpenedProject,
+  ): { message: string } {
     const update = mapDtoToConfigUpdate(dto ?? {});
     if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
       return { message: 'Configuration updated successfully' };
     }
-    updateProjectTerms(this.configService.openProject(), {
+    updateProjectTerms(project, {
       ...(update.protectedTerms !== undefined && {
         protectedTerms: { target: {}, change: { kind: 'replace', replace: update.protectedTerms } },
       }),

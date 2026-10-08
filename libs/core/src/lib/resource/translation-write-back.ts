@@ -1,13 +1,13 @@
 import { type LocaleMetadata, needsTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { calculateChecksum } from '../resource/checksum';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from '../resource/resource-folder';
+import { calculateChecksum } from './checksum';
+import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
 import {
-  resolveMutationSink,
   type MutationSinkOptions,
   type ResourceMutation,
+  resolveMutationSink,
   saveReporting,
-} from '../resource/resource-mutation';
+} from './resource-mutation';
 
 /** The entry as read before the provider call; what a write is compared against. */
 export interface TranslationSnapshot {
@@ -60,7 +60,7 @@ function isStale(current: ResourceFolderEntry | undefined, locale: string, snaps
 /**
  * Reopens the folder, writes pending values whose entries still match their snapshots and need
  * translation, and saves once through saveReporting, only when something was written.
- * The caller supplies saved mutations, sent after a successful save.
+ * The caller supplies its resolved mutation sink and saved mutations, sent after a successful save.
  * Missing entries, changed base checksums, and changed target checksums or statuses are skipped.
  * A synchronous TOCTOU gap remains between reopening and saving; there is no await inside.
  * This does not lock the files or make the two-file save atomic.
@@ -73,6 +73,7 @@ export function writeBackTranslations(
   pending: readonly PendingTranslation[],
   options: TranslationWriteBackOptions,
 ): TranslationWriteBack {
+  const onMutation = 'onMutation' in options ? options.onMutation : resolveMutationSink(collection, options);
   const folder = openResourceFolder(folderPath, collection);
   const written: PendingTranslation[] = [];
   const skipped: PendingTranslation[] = [];
@@ -86,9 +87,7 @@ export function writeBackTranslations(
     written.push(translation);
   }
   if (written.length > 0) {
-    saveReporting(folder, collection.translationsFolder, resolveMutationSink(collection, options), () =>
-      options.saved(folder, written),
-    );
+    saveReporting(folder, collection.translationsFolder, onMutation, () => options.saved(folder, written));
   }
   return { folder, written, skipped };
 }

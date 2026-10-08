@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { map, type Observable, retry, throwError, timer } from 'rxjs';
+import { HttpClient, HttpParams, type HttpResponse } from '@angular/common/http';
+import { concatWith, ignoreElements, map, type Observable, defer, switchMap } from 'rxjs';
+import { CollectionIndexNotReadyError, INDEX_NOT_READY_MESSAGE, IndexReadiness } from './index-readiness';
 import type {
   ResourceTreeDto,
   TreeStatusResponseDto,
@@ -25,21 +26,9 @@ import type {
   TranslateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
 
-/** How many times a tree read is asked again while the collection is still being indexed. */
-export const TREE_NOT_READY_RETRIES = 5;
-
-/** Pause between those attempts, in milliseconds. */
-export const TREE_NOT_READY_RETRY_DELAY_MS = 1000;
-
-/**
- * The collection's index was still not ready after every retry (the tree endpoint kept
- * answering HTTP 202 with a {@link TreeStatusResponseDto}).
- */
-export class CollectionIndexNotReadyError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'CollectionIndexNotReadyError';
-  }
+function treeStatusMessage(body: ResourceTreeDto | TreeStatusResponseDto | null): string {
+  const status = body && 'message' in body ? body : null;
+  return status?.message || INDEX_NOT_READY_MESSAGE;
 }
 
 /**
@@ -50,6 +39,7 @@ export class CollectionIndexNotReadyError extends Error {
 })
 export class BrowserApiService {
   readonly #http = inject(HttpClient);
+  readonly #indexReadiness = inject(IndexReadiness);
   readonly #baseUrl = '/api/collections';
 
   /**
@@ -67,10 +57,10 @@ export class BrowserApiService {
    * Gets the resource tree (or the subtree at `path`) for a collection.
    *
    * While the collection is still being indexed the endpoint answers HTTP 202 with a
-   * status body instead of a tree. That wait is handled here: the read is asked again
-   * up to {@link TREE_NOT_READY_RETRIES} times, {@link TREE_NOT_READY_RETRY_DELAY_MS}
-   * apart, so callers only ever receive a tree. When the index is still not ready after
-   * that, the observable errors with {@link CollectionIndexNotReadyError}.
+   * status body instead of a tree. Index Readiness waits up to five seconds for readiness,
+   * then this service requests the tree once more on readiness or at the deadline.
+   * A second 202 fails with CollectionIndexNotReadyError. Polling failures have that
+   * error type too; tree-request HTTP failures pass through without retry.
    *
    * @param collectionName - Name of the collection
    * @param path - Folder path (empty string for root)
@@ -80,21 +70,27 @@ export class BrowserApiService {
     const encodedName = encodeURIComponent(collectionName);
     const params = new HttpParams().set('path', path).set('includeNested', includeNested.toString());
 
-    return this.#http
-      .get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, { params })
-      .pipe(
-        map((body) => {
-          if ('resources' in body) return body;
-          throw new CollectionIndexNotReadyError(body.message);
-        }),
-        retry({
-          count: TREE_NOT_READY_RETRIES,
-          delay: (error: unknown) =>
-            error instanceof CollectionIndexNotReadyError
-              ? timer(TREE_NOT_READY_RETRY_DELAY_MS)
-              : throwError(() => error),
-        }),
-      );
+    const request = () =>
+      this.#http.get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, {
+        params,
+        observe: 'response',
+      });
+    const treeBody = (response: HttpResponse<ResourceTreeDto | TreeStatusResponseDto>) => {
+      if (response.status === 202) {
+        throw new CollectionIndexNotReadyError(treeStatusMessage(response.body));
+      }
+      return response.body as ResourceTreeDto;
+    };
+
+    return request().pipe(
+      switchMap((response) =>
+        response.status === 202
+          ? this.#indexReadiness
+              .whenReady(() => this.getCacheStatus(collectionName), 'treeRead', treeStatusMessage(response.body))
+              .pipe(ignoreElements(), concatWith(defer(request).pipe(map(treeBody))))
+          : [treeBody(response)],
+      ),
+    );
   }
 
   /**

@@ -8,6 +8,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
   CoreOperationError,
+  type LingoTrackerError,
   InvalidProjectTermsEditError,
   InvalidCollectionError,
   PreferredTerminologyValidationError,
@@ -59,8 +60,11 @@ export interface ProjectTermsUpdate {
 }
 
 export interface ProjectTermsUpdateView {
+  readonly lists: { readonly protectedTerms: boolean; readonly preferredTerminology: boolean };
   readonly protectedTerms?: ProtectedTermsView;
-  readonly preferredTerminology?: LoadPreferredTerminologyResult;
+  readonly preferredTerminology?: Omit<LoadPreferredTerminologyResult, 'error'>;
+  /** Typed advisory load failure; list-only core requests still succeed. */
+  readonly preferredTerminologyError?: LingoTrackerError;
   readonly protectedTermsFileChange?: { readonly message: string; readonly filePath?: string };
 }
 
@@ -72,8 +76,16 @@ export interface ProjectTermsUpdatePlan {
 
 /** Completed update with its pre-write display and original error, if application failed. */
 export interface ProjectTermsUpdateReport extends ProjectTermsUpdateView {
-  readonly protectedTermsResult?: ProtectedTermsEditResult;
-  readonly preferredTerminologyResult?: PreferredTerminologyEditResult;
+  /** An applied list edit; `cleared` means its written list is empty, even when already empty. */
+  readonly protectedTermsResult?: ProtectedTermsEditResult & { readonly action: 'updated' | 'cleared' };
+  /**
+   * Empty replacements are `cleared` for both term kinds; preferred non-empty replacements are `set`.
+   * Single-rule `added`/`updated`/`removed` mean requested and applied, not a change in list contents.
+   * A single-rule removal remains `removed` when it removes the last rule.
+   */
+  readonly preferredTerminologyResult?: Omit<PreferredTerminologyEditResult, 'error' | 'action'> & {
+    readonly action: 'added' | 'updated' | 'removed' | 'set' | 'cleared';
+  };
   readonly status: 'succeeded' | 'failed';
   /** True only when every attempted write was successfully restored. */
   readonly reverted: boolean;
@@ -91,6 +103,7 @@ interface ResolvedProjectTermsUpdate {
   readonly nextConfig: LingoTrackerConfig;
   readonly view: ProjectTermsUpdateView;
   readonly preferredPath?: string;
+  readonly preferredSnapshot?: LoadPreferredTerminologyResult;
   readonly protectedPath?: string;
 }
 
@@ -295,12 +308,27 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
     }
   }
   if (protectedPath !== undefined) assertWritableProtectedTermsPath(protectedPath);
-  const view = { protectedTerms, preferredTerminology, protectedTermsFileChange };
+  const view = {
+    protectedTerms,
+    preferredTerminology:
+      preferredTerminology === undefined
+        ? undefined
+        : {
+            rules: preferredTerminology.rules,
+            filePath: preferredTerminology.filePath,
+            warning: preferredTerminology.warning,
+          },
+    preferredTerminologyError:
+      preferredTerminology?.error === undefined ? undefined : new CoreOperationError(preferredTerminology.error),
+    protectedTermsFileChange,
+    lists: { protectedTerms: protectedRequest?.list === true, preferredTerminology: preferredRequest?.list === true },
+  };
   const resolved: ResolvedProjectTermsUpdate = {
     pointer: pointerChange,
     nextConfig,
     view,
     preferredPath,
+    preferredSnapshot: preferredTerminology,
     protectedPath,
   };
   return {
@@ -311,9 +339,9 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
       try {
         if (
           (preferredRequest?.upsert !== undefined || preferredRequest?.remove !== undefined) &&
-          view.preferredTerminology?.error !== undefined
+          view.preferredTerminologyError !== undefined
         ) {
-          throw new CoreOperationError(view.preferredTerminology.error);
+          throw view.preferredTerminologyError;
         }
         const result = applyProjectTermsUpdate(project, update, resolved, (outcome) => {
           reverted = outcome.status === 'failed' && outcome.reverted;
@@ -352,22 +380,29 @@ function applyProjectTermsUpdate(
     const destination = pointer.destination;
     writes.push({ path: destination, write: () => writeProtectedTermsFile(destination, [...pointer.carried]) });
   }
-  let preferredTerminologyResult: PreferredTerminologyEditResult | undefined;
+  let preferredTerminologyResult: ProjectTermsUpdateReport['preferredTerminologyResult'];
   const preferredRequest = update.preferredTerminology;
   if (preferredPath !== undefined && preferredRequest !== undefined) {
     writes.push({
       path: preferredPath,
       write: () => {
-        preferredTerminologyResult = editPreferredTerminology(
+        const written = editPreferredTerminology(
           resolved.nextConfig,
           preferredRequest,
           cwd,
-          view.preferredTerminology,
+          resolved.preferredSnapshot,
         );
+        preferredTerminologyResult = {
+          rules: written.rules,
+          filePath: written.filePath,
+          warning: written.warning,
+          changedRule: written.changedRule,
+          action: written.action ?? (written.rules.length === 0 ? 'cleared' : 'set'),
+        };
       },
     });
   }
-  let protectedTermsResult: ProtectedTermsEditResult | undefined;
+  let protectedTermsResult: ProjectTermsUpdateReport['protectedTermsResult'];
   const protectedRequest = update.protectedTerms;
   if (protectedPath !== undefined && protectedRequest !== undefined) {
     const change = protectedRequest.change;
@@ -390,7 +425,11 @@ function applyProjectTermsUpdate(
         path: protectedPath,
         write: () => {
           writeProtectedTermsFile(protectedPath, nextTerms);
-          protectedTermsResult = { terms: nextTerms, filePath: protectedPath };
+          protectedTermsResult = {
+            terms: nextTerms,
+            filePath: protectedPath,
+            action: nextTerms.length === 0 ? 'cleared' : 'updated',
+          };
         },
       });
     }

@@ -5,15 +5,26 @@ export interface EditorFocusAnchor {
   focus(): void;
 }
 
-/** Lazy anchors follow conditional views as they appear and disappear. */
-export type EditorFocusAnchors = Record<EditorFocusTarget, () => EditorFocusAnchor | undefined>;
-
-/** Resolves a named focus intent; scheduling remains with the dialog. */
+/** Resolves registered view anchors; scheduling remains with the dialog. */
 export class EditorFocus {
-  constructor(private readonly anchors: EditorFocusAnchors) {}
+  readonly #registered = new Map<EditorFocusTarget, { element: EditorFocusAnchor }[]>();
+
+  /** The latest live registration wins; cleanup reveals any earlier live anchor. */
+  register(target: EditorFocusTarget, element: EditorFocusAnchor): () => void {
+    const stack = this.#registered.get(target) ?? [];
+    const registration = { element };
+    stack.push(registration);
+    this.#registered.set(target, stack);
+    return () => {
+      const index = stack.indexOf(registration);
+      if (index < 0) return;
+      stack.splice(index, 1);
+      if (stack.length === 0) this.#registered.delete(target);
+    };
+  }
 
   focus(target: EditorFocusTarget): void {
-    const element = this.anchors[target]();
+    const element = this.#registered.get(target)?.at(-1)?.element;
     if (!element) return;
     element.focus();
     if (target === 'comment' && element instanceof HTMLTextAreaElement) {

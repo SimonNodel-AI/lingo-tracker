@@ -3,23 +3,14 @@ import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { collectAncestorPaths, folderPathSegments } from '@simoncodes-ca/domain';
 import { catchError, of, pipe, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
-import { planFolderMove, planFolderMoveRollback } from '../folder-move-plan';
-import {
-  collectAncestorPaths,
-  collectExpandablePaths,
-  filterFolderTree,
-  findFolderInTree,
-  insertFolderIntoTree,
-  prunePathsUnder,
-  removeFolderFromTree,
-  updateFolderInTree,
-} from '../folder-tree.utils';
+import { collectExpandablePaths, filterFolderTree, updateFolderInTree } from '../folder-tree.utils';
 import { handleLoadFailure } from '../load-failure';
 import { captureSession, withinSession } from '../session-guard';
 
@@ -68,9 +59,7 @@ export function withFolderTreeFeature<_>() {
         filteredFolders: computed(() => filterFolderTree(rootFolders(), folderTreeFilter())),
 
         breadcrumbs: computed(() => {
-          const path = currentFolderPath();
-          if (!path) return [];
-          return path.split('.');
+          return folderPathSegments(currentFolderPath());
         }),
 
         isLoading: computed(() => isFolderTreeLoading() || isTranslationsLoading()),
@@ -186,42 +175,5 @@ export function withFolderTreeFeature<_>() {
         ),
       };
     }),
-    withMethods((store) => ({
-      insertFolder(folder: FolderNodeDto, parentPath: string | null): void {
-        patchState(store, { rootFolders: insertFolderIntoTree(store.rootFolders(), folder, parentPath) });
-      },
-      /** Prunes the deleted subtree and reports whether navigation must leave it. */
-      removeFolder(path: string): boolean {
-        patchState(store, {
-          rootFolders: removeFolderFromTree(store.rootFolders(), path),
-          expandedFolders: prunePathsUnder(store.expandedFolders(), path),
-        });
-        const shown = store.currentFolderPath();
-        return shown === path || shown.startsWith(`${path}.`);
-      },
-      /** Captures only the moved node; concurrent loads can replace the rest of the tree. */
-      detachFolder(path: string): FolderNodeDto | undefined {
-        const node = findFolderInTree(store.rootFolders(), path);
-        patchState(store, { rootFolders: removeFolderFromTree(store.rootFolders(), path) });
-        return node;
-      },
-      applyFolderMove(sourcePath: string, destinationPath: string, sourceNode: FolderNodeDto | undefined): string {
-        const plan = planFolderMove(
-          { tree: store.rootFolders(), expanded: store.expandedFolders(), sourceNode },
-          sourcePath,
-          destinationPath,
-        );
-        if (plan.kind === 'patch-tree') {
-          patchState(store, { rootFolders: plan.tree });
-          if (plan.loadChildrenFor) store.loadFolderChildren(plan.loadChildrenFor);
-        } else store.loadRootFolders();
-        patchState(store, { expandedFolders: plan.expanded });
-        return plan.showPath;
-      },
-      restoreFolder(path: string, node: FolderNodeDto | undefined): void {
-        const tree = planFolderMoveRollback(store.rootFolders(), path, node);
-        if (tree) patchState(store, { rootFolders: tree });
-      },
-    })),
   );
 }

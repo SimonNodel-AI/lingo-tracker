@@ -5,7 +5,6 @@ import {
   type AfterViewInit,
   ChangeDetectionStrategy,
   Component,
-  type ElementRef,
   effect,
   HostListener,
   inject,
@@ -34,6 +33,7 @@ import { FolderPeek } from '../../services/folder-peek';
 import { SimilarValues } from '../../services/similar-values';
 import { BrowserStore } from '../../store/browser.store';
 import { EditorFocus } from './editor-focus';
+import { EditorFocusAnchorDirective } from './editor-focus-anchor';
 import { EditorSession, type TranslationEditorDialogData } from './editor-session';
 import type { EditorOutcome } from './editor-submit';
 import { FolderPicker } from './folder-picker/folder-picker';
@@ -48,6 +48,7 @@ export const TRANSLATION_EDITOR_TITLE_ID = 'translation-editor-title';
   templateUrl: './translation-editor-dialog.html',
   styleUrls: ['./translation-editor-dialog.scss', './translation-editor-context.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  viewProviders: [{ provide: EditorFocus, useFactory: () => new EditorFocus() }],
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -65,6 +66,7 @@ export const TRANSLATION_EDITOR_TITLE_ID = 'translation-editor-title';
     MatTooltipModule,
     PreferredTermAdvisories,
     ChipInput,
+    EditorFocusAnchorDirective,
   ],
 })
 export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit {
@@ -73,27 +75,10 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
   readonly TOKENS = TRACKER_TOKENS;
   readonly titleId = TRANSLATION_EDITOR_TITLE_ID;
   readonly data = inject<TranslationEditorDialogData>(MAT_DIALOG_DATA);
-  @ViewChild('keyInput') keyInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('baseValueInput') baseValueInput?: ElementRef<HTMLTextAreaElement>;
-  /** The Comment field, so the empty-comment confirmation can hand the caret to it. */
-  @ViewChild('commentInput') commentInput?: ElementRef<HTMLTextAreaElement>;
   /** The tree inside the location popover, so "New folder" can reuse its creation flow. */
   @ViewChild(FolderPicker) folderPicker?: FolderPicker;
-  /** Focus anchors: opening a panel moves focus in, closing it hands focus back. */
-  @ViewChild('locationPill') locationPill?: ElementRef<HTMLButtonElement>;
-  @ViewChild('otherLocalesRow') otherLocalesRow?: ElementRef<HTMLButtonElement>;
-  @ViewChild('folderFilterInput') folderFilterInput?: ElementRef<HTMLInputElement>;
-  @ViewChild('drawerFirstControl') drawerFirstControl?: ElementRef<HTMLElement>;
 
-  readonly #focus = new EditorFocus({
-    key: () => this.keyInput?.nativeElement,
-    'base-value': () => this.baseValueInput?.nativeElement,
-    comment: () => this.commentInput?.nativeElement,
-    'location-pill': () => this.locationPill?.nativeElement,
-    'locales-row': () => this.otherLocalesRow?.nativeElement,
-    'folder-filter': () => this.folderFilterInput?.nativeElement,
-    'drawer-first-control': () => this.drawerFirstControl?.nativeElement,
-  });
+  readonly #focus = inject(EditorFocus);
 
   private readonly transloco = inject(TranslocoService);
   readonly session = new EditorSession(this.data, {
@@ -109,6 +94,8 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     feedbackText: injectFeedback().text,
     notifications: inject(NotificationService),
   });
+
+  readonly presentation = this.session.presentation;
 
   constructor() {
     effect((onCleanup) => {

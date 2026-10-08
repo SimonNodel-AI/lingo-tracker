@@ -1,17 +1,6 @@
 import { type CdkDrag, type CdkDragDrop, CdkDropList } from '@angular/cdk/drag-drop';
 import { CommonModule } from '@angular/common';
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  DestroyRef,
-  type ElementRef,
-  inject,
-  input,
-  output,
-  signal,
-  viewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -19,6 +8,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
+import { folderPathLeaf } from '@simoncodes-ca/domain';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
@@ -28,15 +18,13 @@ import { injectMidpointFlip } from '../../../shared/timed-transients';
 import { injectFeedback } from '../../feedback';
 import { BrowserStore } from '../../store/browser.store';
 import { folderDrop } from '../../store/folder-drop';
+import { navigateTree, SIDEBAR_NAVIGATION } from '../../store/tree-navigation';
 import type { DragData } from '../../types/drag-data';
-import { extractFolderNameFromPath } from '../../utils/folder-path.utils';
+import { DragAutoScroll } from './drag-auto-scroll.directive';
 import { FolderNode } from './folder-node/folder-node';
 import { InlineFolderInput } from './inline-folder-input/inline-folder-input';
 
 const NESTED_ANIMATION_DURATION_MS = 250;
-const SCROLL_EDGE_THRESHOLD_PX = 50;
-const SCROLL_SPEED_PX = 15;
-const SCROLL_INTERVAL_MS = 50;
 
 /**
  * FolderTree component for hierarchical folder navigation.
@@ -66,6 +54,7 @@ const SCROLL_INTERVAL_MS = 50;
     TranslocoPipe,
     SearchInput,
     CdkDropList,
+    DragAutoScroll,
   ],
   templateUrl: './folder-tree.html',
   styleUrl: './folder-tree.scss',
@@ -123,9 +112,6 @@ export class FolderTree {
 
   readonly #searchSubject = new Subject<string>();
 
-  /** Reference to the scrollable folder list container */
-  readonly folderListRef = viewChild<ElementRef<HTMLDivElement>>('folderList');
-
   /** Signal tracking the currently dragged item from folder nodes */
   readonly #localActiveDragData = signal<DragData | null>(null);
 
@@ -134,25 +120,10 @@ export class FolderTree {
     return this.#localActiveDragData() || this.activeDragDataFromParent();
   });
 
-  /** Auto-scroll interval handle */
-  #autoScrollInterval: ReturnType<typeof setInterval> | undefined;
-
-  /** Direction currently being auto-scrolled */
-  #autoScrollDirection: 'up' | 'down' | undefined;
-
-  /** Last recorded mouse Y position */
-  #lastMouseY = 0;
-
-  readonly #destroyRef = inject(DestroyRef);
-
   constructor() {
     // Debounce search input
     this.#searchSubject.pipe(debounceTime(300), distinctUntilChanged(), takeUntilDestroyed()).subscribe((value) => {
       this.store.setFolderTreeFilter(value);
-    });
-
-    this.#destroyRef.onDestroy(() => {
-      this.#stopAutoScroll();
     });
   }
 
@@ -185,14 +156,26 @@ export class FolderTree {
     this.store.setRootExpanded();
   }
 
-  /** ArrowRight on the root row opens it. */
-  onRootExpandKeydown(event: Event): void {
-    if (this.store.setRootExpanded(true)) event.preventDefault();
-  }
-
-  /** ArrowLeft on the root row shuts it. */
-  onRootCollapseKeydown(event: Event): void {
-    if (this.store.setRootExpanded(false)) event.preventDefault();
+  onRootTreeKeydown(event: Event, key: string): void {
+    const next = navigateTree(
+      { focusedPath: '', expanded: this.store.isRootExpanded(), hasChildren: false, hasRows: true },
+      key,
+      SIDEBAR_NAVIGATION,
+    );
+    switch (next.intent.kind) {
+      case 'select':
+        this.onRootClick();
+        break;
+      case 'expand':
+        if (this.store.setRootExpanded(true) && next.preventDefault) event.preventDefault();
+        break;
+      case 'collapse':
+        if (this.store.setRootExpanded(false) && next.preventDefault) event.preventDefault();
+        break;
+      case 'focus':
+      case 'none':
+        break;
+    }
   }
 
   /**
@@ -275,7 +258,7 @@ export class FolderTree {
    * Opens confirmation dialog and deletes folder if confirmed.
    */
   onDeleteFolder(folderPath: string): void {
-    const name = extractFolderNameFromPath(folderPath);
+    const name = folderPathLeaf(folderPath);
     const confirm = this.#write.confirmDestructive({
       title: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.TITLE,
       message: { token: TRACKER_TOKENS.BROWSER.DIALOG.DELETEFOLDER.MESSAGEX, params: { name } },
@@ -291,7 +274,7 @@ export class FolderTree {
       message: {
         token: TRACKER_TOKENS.BROWSER.DIALOG.MOVEFOLDER.MESSAGEX,
         params: {
-          name: extractFolderNameFromPath(sourceFolderPath),
+          name: folderPathLeaf(sourceFolderPath),
           dest: destinationFolderPath || { token: TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL },
         },
       },
@@ -352,76 +335,6 @@ export class FolderTree {
    */
   onDragEnded(): void {
     this.#localActiveDragData.set(null);
-    this.#stopAutoScroll();
     this.dragEnded.emit();
-  }
-
-  /**
-   * Handles mouse move events during drag.
-   * Checks if near edges and triggers auto-scroll.
-   */
-  onDragMoved(event: MouseEvent): void {
-    this.#lastMouseY = event.clientY;
-    this.#checkAutoScroll();
-  }
-
-  /**
-   * Checks if mouse is near top or bottom edge and triggers auto-scroll.
-   */
-  #checkAutoScroll(): void {
-    const folderList = this.folderListRef()?.nativeElement;
-    if (!folderList) return;
-
-    const rect = folderList.getBoundingClientRect();
-    const distanceFromTop = this.#lastMouseY - rect.top;
-    const distanceFromBottom = rect.bottom - this.#lastMouseY;
-
-    // Check if near top edge
-    if (distanceFromTop < SCROLL_EDGE_THRESHOLD_PX && distanceFromTop > 0) {
-      this.#startAutoScroll('up');
-      return;
-    }
-
-    // Check if near bottom edge
-    if (distanceFromBottom < SCROLL_EDGE_THRESHOLD_PX && distanceFromBottom > 0) {
-      this.#startAutoScroll('down');
-      return;
-    }
-
-    // Not near any edge, stop auto-scroll
-    this.#stopAutoScroll();
-  }
-
-  /**
-   * Starts auto-scrolling in the specified direction.
-   * If already scrolling in the same direction, this is a no-op.
-   * If scrolling in the opposite direction, the existing interval is stopped first.
-   */
-  #startAutoScroll(direction: 'up' | 'down'): void {
-    if (this.#autoScrollDirection === direction) return;
-    if (this.#autoScrollInterval) this.#stopAutoScroll();
-
-    this.#autoScrollDirection = direction;
-    this.#autoScrollInterval = setInterval(() => {
-      const folderList = this.folderListRef()?.nativeElement;
-      if (!folderList) {
-        this.#stopAutoScroll();
-        return;
-      }
-
-      const scrollAmount = direction === 'up' ? -SCROLL_SPEED_PX : SCROLL_SPEED_PX;
-      folderList.scrollBy({ top: scrollAmount, behavior: 'auto' });
-    }, SCROLL_INTERVAL_MS);
-  }
-
-  /**
-   * Stops auto-scrolling and resets direction tracking.
-   */
-  #stopAutoScroll(): void {
-    if (this.#autoScrollInterval) {
-      clearInterval(this.#autoScrollInterval);
-      this.#autoScrollInterval = undefined;
-    }
-    this.#autoScrollDirection = undefined;
   }
 }

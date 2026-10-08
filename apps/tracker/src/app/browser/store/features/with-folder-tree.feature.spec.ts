@@ -18,29 +18,32 @@ describe('Folder Tree cache edits', () => {
   });
 
   it('inserts folders and deletes only the subtree and its expansion', () => {
-    store.insertFolder(node('a'), null);
-    store.insertFolder(node('ab'), null);
+    store.mirrorWrite({ kind: 'folder-created', folder: node('a'), parentPath: null });
+    store.mirrorWrite({ kind: 'folder-created', folder: node('ab'), parentPath: null });
     patchState(unprotected(store), {
       currentFolderPath: 'a.child',
       expandedFolders: new Set(['a', 'a.child', 'ab']),
     });
-    expect(store.removeFolder('a')).toBe(true);
+    store.mirrorWrite({ kind: 'folder-removed', path: 'a' });
+    expect(store.currentFolderPath()).toBe('');
     expect(store.rootFolders().map((folder) => folder.fullPath)).toEqual(['ab']);
     expect([...store.expandedFolders()]).toEqual(['ab']);
     patchState(unprotected(store), { currentFolderPath: 'ab' });
-    expect(store.removeFolder('a')).toBe(false);
-    expect(store.removeFolder('ab')).toBe(true);
+    store.mirrorWrite({ kind: 'folder-removed', path: 'a' });
+    expect(store.currentFolderPath()).toBe('ab');
+    store.mirrorWrite({ kind: 'folder-removed', path: 'ab' });
+    expect(store.currentFolderPath()).toBe('');
   });
 
   it('restores only a detached node and preserves newer tree data and existing copies', () => {
-    store.insertFolder(node('a'), null);
-    const removed = store.detachFolder('a');
-    store.insertFolder(node('newer'), null);
-    store.restoreFolder('a', removed);
+    store.mirrorWrite({ kind: 'folder-created', folder: node('a'), parentPath: null });
+    const removed = store.beginMirrorMove({ kind: 'folder', path: 'a' });
+    store.mirrorWrite({ kind: 'folder-created', folder: node('newer'), parentPath: null });
+    store.rollbackMirrorMove(removed);
     expect(store.rootFolders().map((folder) => folder.fullPath)).toEqual(['a', 'newer']);
-    store.restoreFolder('a', removed);
+    store.rollbackMirrorMove(removed);
     expect(store.rootFolders()).toHaveLength(2);
-    store.restoreFolder('missing', undefined);
+    store.rollbackMirrorMove(store.beginMirrorMove({ kind: 'folder', path: 'missing' }));
     expect(store.rootFolders()).toHaveLength(2);
   });
 
@@ -58,15 +61,15 @@ describe('Folder Tree cache edits', () => {
         },
       ],
     });
-    const removed = store.detachFolder('a.child');
+    const removed = store.beginMirrorMove({ kind: 'folder', path: 'a.child' });
     patchState(unprotected(store), { rootFolders: [node('a')] });
-    store.restoreFolder('a.child', removed);
+    store.rollbackMirrorMove(removed);
     expect(store.rootFolders()).toEqual([node('a')]);
   });
 
-  it('applies a move against the current tree and rebases expansion without navigating itself', () => {
+  it('applies a move against the current tree, rebases expansion and navigates', () => {
     patchState(unprotected(store), { rootFolders: [node('a'), node('b')], expandedFolders: new Set(['a']) });
-    const removed = store.detachFolder('a');
+    const removed = store.beginMirrorMove({ kind: 'folder', path: 'a' });
     patchState(unprotected(store), { selectedCollection: 'app' });
     const load = vi.spyOn(TestBed.inject(BrowserApiService), 'getResourceTree').mockReturnValue(
       of({
@@ -75,11 +78,11 @@ describe('Folder Tree cache edits', () => {
         children: [node('b.a')],
       }),
     );
-    expect(store.applyFolderMove('a', 'b', removed)).toBe('b.a');
+    store.mirrorWrite({ kind: 'folder-moved', rollback: removed, destinationPath: 'b' });
     expect([...store.expandedFolders()]).toEqual(['b.a', 'b']);
     expect(load).toHaveBeenCalledWith('app', 'b', true);
     expect(store.rootFolders()[0]?.tree?.children).toEqual([node('b.a')]);
-    expect(store.currentFolderPath()).toBe('');
+    expect(store.currentFolderPath()).toBe('b.a');
   });
 
   it('reloads the root when a moved source was absent from the cache', () => {
@@ -88,7 +91,9 @@ describe('Folder Tree cache edits', () => {
       .spyOn(api, 'getResourceTree')
       .mockReturnValue(of({ path: '', resources: [], children: [node('a')] }));
     patchState(unprotected(store), { selectedCollection: 'app' });
-    expect(store.applyFolderMove('a', '', undefined)).toBe('a');
+    const rollback = store.beginMirrorMove({ kind: 'folder', path: 'a' });
+    store.mirrorWrite({ kind: 'folder-moved', rollback, destinationPath: '' });
+    expect(store.currentFolderPath()).toBe('a');
     expect(load).toHaveBeenCalledWith('app', '', false);
     expect(store.rootFolders()).toEqual([node('a')]);
   });

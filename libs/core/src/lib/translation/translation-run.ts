@@ -1,4 +1,3 @@
-import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import {
@@ -6,13 +5,20 @@ import {
   NoTranslationTargetLocalesError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
-import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { readCollection } from '../resource/read-collection';
-import { reindexMutation, resolveMutationSink, type MutationSinkOptions } from '../resource/resource-mutation';
+import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../resource/resource-mutation';
 import type { RunOutcome } from '../run-outcome';
-import { translationBatch, type TranslationBatchOutcome, type TranslationBatchRow } from './translation-batch';
-import { snapshotTranslation } from './translation-write-back';
-import { assertAutoTranslationEnabled, openPreparedTranslator, type OpenTranslatorOptions } from './translator';
+import {
+  type TranslationBatchOutcome,
+  type TranslationBatchRow,
+  selectTranslationRow,
+  translationBatch,
+} from '../resource/translation-batch';
+import {
+  assertAutoTranslationEnabled,
+  type OpenTranslatorOptions,
+  openPreparedTranslator,
+} from '../machine-translation/translator';
 
 export interface TranslateLocaleCounts {
   /**
@@ -77,27 +83,12 @@ export interface TranslationRunOptions extends OpenTranslatorOptions, MutationSi
   readonly delay?: (ms: number) => Promise<void>;
 }
 
-export interface TranslationRunTally {
+interface TranslationRunTally {
   translatedCount: number;
   skippedCount: number;
   failedCount: number;
   readonly skipped: Array<Extract<TranslationBatchOutcome, { status: 'skipped' }>>;
   readonly failures: Array<Extract<TranslationBatchOutcome, { status: 'failed' }>>;
-  /** Last fresh entry returned by write-back, including skips. */
-  entry: ResourceTreeEntry | undefined;
-}
-
-/** Selection and snapshots share the same Staleness rule for both selectors. */
-export function selectTranslationRow(key: string, entry: ResourceTreeEntry, locales: readonly string[]) {
-  const targets = locales.filter((locale) => needsTranslation(entry.metadata[locale]));
-  const row: TranslationBatchRow = {
-    key,
-    source: entry.source,
-    snapshots: Object.fromEntries(
-      targets.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
-    ),
-  };
-  return { row, locales: targets };
 }
 
 interface ExecuteTranslationRunOptions extends TranslationRunOptions {
@@ -105,22 +96,20 @@ interface ExecuteTranslationRunOptions extends TranslationRunOptions {
   readonly translationConfig: TranslationConfig;
   readonly rows: readonly TranslationBatchRow[];
   readonly locales: readonly string[];
-  readonly mutations: 'per-batch-reindex' | 'per-write';
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
 }
 
 /** Execute selected work; each key/locale outcome contributes exactly once. */
-export async function executeTranslationRun(
+async function executeTranslationRun(
   options: ExecuteTranslationRunOptions,
 ): Promise<{ tally: TranslationRunTally; warnings: string[] }> {
-  const { collection, translationConfig, rows, locales, mutations } = options;
+  const { collection, translationConfig, rows, locales } = options;
   const tally: TranslationRunTally = {
     translatedCount: 0,
     skippedCount: 0,
     failedCount: 0,
     skipped: [],
     failures: [],
-    entry: undefined,
   };
   if (rows.length === 0 || locales.length === 0) return { tally, warnings: [] };
   const translator = openPreparedTranslator(collection, translationConfig, options);
@@ -138,9 +127,8 @@ export async function executeTranslationRun(
         locales,
         translator,
         {
-          onMutation: (mutation) => {
-            if (mutations === 'per-write') sink?.(mutation);
-            else mutated = true;
+          onMutation: () => {
+            mutated = true;
           },
         },
       );
@@ -159,7 +147,6 @@ export async function executeTranslationRun(
         tally.failedCount++;
         tally.failures.push(outcome);
       } else {
-        tally.entry = outcome.entry;
         if (outcome.status === 'written') tally.translatedCount++;
         else {
           tally.skippedCount++;
@@ -198,7 +185,6 @@ async function executeLocale(
     translationConfig,
     rows,
     locales: [targetLocale],
-    mutations: 'per-batch-reindex',
   });
   return {
     outcome: tally.failedCount > 0 ? 'failed' : 'succeeded',
