@@ -31,7 +31,7 @@ export class PickerFolderNode {
   readonly selectedPath = input<string | null>(null);
 
   /** Set of expanded folder paths */
-  readonly expandedPaths = input.required<Set<string>>();
+  readonly expandedPaths = input.required<ReadonlySet<string>>();
 
   /** Currently focused folder path for keyboard navigation */
   readonly focusedPath = input<string | null>(null);
