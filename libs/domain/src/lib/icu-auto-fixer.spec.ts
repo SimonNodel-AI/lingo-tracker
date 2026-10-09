@@ -1,3 +1,4 @@
+import MessageFormat from '@messageformat/core';
 import { describe, expect, it } from 'vitest';
 import {
   autoFixICUPlaceholders,
@@ -838,5 +839,44 @@ describe('icu-auto-fixer utility functions', () => {
     expect(validateICUSyntax('{count, plural, one {#} other {#}}')).toBe(true);
     expect(validateICUSyntax('Hello {name')).toBe(false);
     expect(validateICUSyntax('Hello name}')).toBe(false);
+  });
+});
+
+describe('appending placeholders after ICU quotes', () => {
+  it('closes open quotes and preserves the repaired quote content', () => {
+    for (const [translation, closedTranslation] of [
+      ["'{", "'{'"],
+      ["Use '{name}", "Use '{name}'"],
+      ["'{''}", "'{''}'"],
+      ["l''", "l''"],
+      ["don't", "don't"],
+      ["'{''", "'{'''"],
+    ]) {
+      const base = 'Hello {name}';
+      const fixed = autoFixICUPlaceholders(base, translation);
+      const extraction = extractICUPlaceholders(fixed.value);
+      expect(extraction.success).toBe(true);
+      expect(extraction.placeholders.map(({ fullText }) => fullText)).toEqual(['{name}']);
+      expect(validateICUSyntax(fixed.value)).toBe(true);
+      const formatter = new MessageFormat('en');
+      expect(formatter.compile(fixed.value)({ name: 'Ada' })).toBe(`${formatter.compile(closedTranslation)({})} Ada`);
+      expect(autoFixICUPlaceholders(base, fixed.value)).toEqual({ wasFixed: false, value: fixed.value });
+    }
+    // MessageFormat retains the opening apostrophe on unterminated input, unlike a closed quote.
+    expect(new MessageFormat('en').compile("'{")({})).toBe("'{");
+    expect(autoFixICUPlaceholders('Hello {name}', "'{").value).toBe("'{' {name}");
+  });
+
+  it('closes open quotes before appending a Transloco placeholder for the MessageFormat pass', () => {
+    const base = 'Hello {{ name }}';
+    const fixed = autoFixTranslocoPlaceholders(base, "'{");
+    expect(fixed.value).toBe("'{' {{ name }}");
+    expect(extractTranslocoPlaceholders(fixed.value).placeholders.map(({ name }) => name)).toEqual(['name']);
+    expect(autoFixTranslocoPlaceholders(base, fixed.value)).toEqual({ wasFixed: false, value: fixed.value });
+    // Pass 1 substitutes the interpolation even inside ICU quotes; pass 2 must see it outside.
+    const interpolated = fixed.value.replace(/\{\{([^{}]*?)\}\}/, 'Ada');
+    const formatter = new MessageFormat('en');
+    expect(formatter.compile(interpolated)({})).toBe(`${formatter.compile("'{'")({})} Ada`);
+    expect(validateICUSyntax(interpolated)).toBe(true);
   });
 });

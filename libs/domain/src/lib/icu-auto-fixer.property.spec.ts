@@ -3,12 +3,22 @@ import { autoFixICUPlaceholders, extractICUPlaceholders, validateICUSyntax } fro
 import { arbitraryMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
 
 describe('autoFixICUPlaceholders properties', () => {
-  it.fails('does not insert another placeholder inside an open ICU quote on a second fix', () => {
-    // Minimal input "'{": the inserted placeholder stays inside the open ICU quote.
-    // Expected second fix: "'{ {name}", wasFixed: false; actual: "'{ {name} {name}", wasFixed: true.
+  it('does not insert another placeholder inside an open ICU quote on a second fix', () => {
+    // Previously, minimal input "'{": the inserted placeholder stayed inside the open ICU quote.
+    // Closing the quote before insertion prevents the second fix from appending another {name}.
     const base = 'Hello {name}';
     const fixed = autoFixICUPlaceholders(base, "'{");
     expect(autoFixICUPlaceholders(base, fixed.value).wasFixed).toBe(false);
+  });
+
+  it('is idempotent for arbitrary translations of a single-placeholder base', () => {
+    fc.assert(
+      fc.property(identifier, arbitraryMessage, (name, translation) => {
+        const base = `Hello {${name}}`;
+        const fixed = autoFixICUPlaceholders(base, translation);
+        expect(autoFixICUPlaceholders(base, fixed.value)).toMatchObject({ wasFixed: false, value: fixed.value });
+      }),
+    );
   });
 
   it('never throws on arbitrary base and translation strings', () => {

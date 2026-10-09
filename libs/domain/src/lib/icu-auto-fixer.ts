@@ -99,6 +99,30 @@ export function isQuoteToggle(value: string, i: number, inEscapedSection: boolea
   return i + 1 < value.length && ICU_SYNTAX_CHARS.has(value[i + 1]);
 }
 
+/** Advances the shared ICU quote scanner, consuming doubled apostrophes together. */
+function advanceIcuQuote(value: string, index: number, inEscapedSection: boolean) {
+  if (value[index + 1] === "'") {
+    return { index: index + 1, inEscapedSection };
+  }
+  return {
+    index,
+    inEscapedSection: isQuoteToggle(value, index, inEscapedSection) ? !inEscapedSection : inEscapedSection,
+  };
+}
+
+/** Closes an implicit end-of-message quote before adding an active placeholder. */
+function closeOpenIcuQuote(value: string): string {
+  let inEscapedSection = false;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === "'") {
+      const next = advanceIcuQuote(value, i, inEscapedSection);
+      i = next.index;
+      inEscapedSection = next.inEscapedSection;
+    }
+  }
+  return inEscapedSection ? `${value}'` : value;
+}
+
 /**
  * Extracts ICU placeholders from a message string.
  *
@@ -113,8 +137,8 @@ export function isQuoteToggle(value: string, i: number, inEscapedSection: boolea
  * - Nested patterns (recursive extraction)
  *
  * Text segments in the result are raw substrings of the original input,
- * including any ICU quote characters. Call `unescapeIcuLiterals` on each
- * segment at the export layer if clean output is required.
+ * including any ICU quote characters, so the export layer can preserve quoting
+ * for consumers that compile the bundled value as ICU.
  *
  * @param value - The message string to extract placeholders from
  * @returns Extraction result with placeholders and text segments
@@ -147,15 +171,9 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
     // - `'` inside a quoted section → closes the section
     // - `'` followed by a non-syntax char → literal apostrophe (e.g., "don't")
     if (char === "'") {
-      if (value[i + 1] === "'") {
-        // `''` is always a literal apostrophe — skip both chars, no state change
-        i++;
-        continue;
-      }
-
-      if (isQuoteToggle(value, i, inEscapedSection)) {
-        inEscapedSection = !inEscapedSection;
-      }
+      const next = advanceIcuQuote(value, i, inEscapedSection);
+      i = next.index;
+      inEscapedSection = next.inEscapedSection;
       // Whether toggling or not, the `'` itself is not a brace, so move on
       continue;
     }
@@ -535,7 +553,7 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
   // Translation is missing all Transloco placeholders → append single one as safe default
   if (!translationHasPlaceholders) {
     if (basePlaceholders.length === 1) {
-      const fixedValue = `${translationValue} ${basePlaceholders[0].fullText}`.trim();
+      const fixedValue = `${closeOpenIcuQuote(translationValue)} ${basePlaceholders[0].fullText}`.trim();
       return {
         wasFixed: true,
         value: fixedValue,
@@ -747,7 +765,7 @@ function handleMissingPlaceholders(
   // Simple heuristic: if base has one placeholder, try to find where it should go
   if (basePlaceholders.length === 1) {
     // Insert at the end as a safe default
-    const fixedValue = `${translationValue} ${basePlaceholders[0].fullText}`.trim();
+    const fixedValue = `${closeOpenIcuQuote(translationValue)} ${basePlaceholders[0].fullText}`.trim();
 
     return {
       wasFixed: true,

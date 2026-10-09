@@ -25,9 +25,9 @@ function parameters(message: string, count: number, gender: string): Record<stri
 }
 
 describe('icuToTransloco properties', () => {
-  it.fails('preserves quoted literal braces through both runtime passes', () => {
-    // Minimal ICU "'{'literal'}'" exports as "{literal}", turning literal text into an ICU argument.
-    // Expected rendered text: "{literal}"; actual: undefined with no parameters.
+  it('preserves quoted literal braces through both runtime passes', () => {
+    // Previously, ICU "'{'literal'}'" exported as "{literal}", turning literal text into an ICU argument.
+    // The regression rendered undefined with no parameters instead of "{literal}".
     // icuToTransloco is used by libs/core/src/lib/bundle/bundle-selection.ts; tracker uses transloco-messageformat.
     const message = "'{'literal'}'";
     const expected = new MessageFormat('en').compile(message)({});
@@ -48,10 +48,10 @@ describe('icuToTransloco properties', () => {
     );
   });
 
-  it('exports literal braces, apostrophes and hash characters as unescaped text without throwing', () => {
+  it('preserves literal braces, apostrophes and hash characters through both runtime passes', () => {
     fc.assert(
-      fc.property(literalText, ({ icu, text }) => {
-        expect(icuToTransloco(icu)).toBe(text);
+      fc.property(literalText, ({ icu }) => {
+        expect(renderBothPasses(icu, {})).toBe(new MessageFormat('en').compile(icu)({}));
       }),
     );
   });
