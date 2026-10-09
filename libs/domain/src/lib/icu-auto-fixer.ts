@@ -26,8 +26,8 @@ interface ICUPlaceholder {
   endPosition: number;
   /** Placeholder name (e.g., "count", "name", "0") */
   name: string;
-  /** Placeholder type (simple, a sub-message keyword, number, date, time) */
-  type: 'simple' | SubMessageKeyword | 'number' | 'date' | 'time';
+  /** Placeholder type (simple, a sub-message keyword, number, date, time, duration) */
+  type: 'simple' | SubMessageKeyword | 'number' | 'date' | 'time' | 'duration';
 }
 
 /**
@@ -101,13 +101,20 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
   let currentPosition = 0;
   let braceDepth = 0;
   const { quoted } = scanIcuQuotes(value);
-  const braceKinds: ('argument' | 'group' | 'body')[] = [];
+  const braceKinds: ICUBraceFrame[] = [];
   let currentPlaceholderStart = -1;
 
   for (let i = 0; i < value.length; i++) {
     const char = value[i];
 
     if (quoted[i]) {
+      let quoteEnd = i + 1;
+      while (quoted[quoteEnd]) quoteEnd++;
+      const isInPlural = braceKinds[braceKinds.length - 1]?.isInPlural ?? false;
+      if (!isInPlural && value[i + 1] === '#' && value.substring(i, quoteEnd).includes('{')) {
+        return invalidExtraction(`Unsupported escape pattern outside plural at position ${i}`);
+      }
+      i = quoteEnd - 1;
       continue;
     }
 
@@ -115,10 +122,19 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
     if (char === '{') {
       // Only a sub-message group's immediate braces delimit branch bodies.
       // Every other opening brace, including those inside a body, starts an argument.
-      if (braceKinds[braceKinds.length - 1] === 'group') {
-        braceKinds.push('body');
+      const parent = braceKinds[braceKinds.length - 1];
+      if (parent?.kind === 'group') {
+        const selector = readGroupSelector(value.substring(parent.nextSelectorStart, i), parent);
+        if (selector === null) {
+          return invalidExtraction(
+            `Invalid sub-message selector or missing body at position ${parent.nextSelectorStart}`,
+          );
+        }
+        parent.hasOther ||= selector === 'other';
+        parent.caseCount++;
+        braceKinds.push({ kind: 'body', isInPlural: parent.isInPlural });
       } else {
-        const header = /^\{\s*(?:[^\p{Pat_Syn}\p{Pat_WS}]|\.)+\s*(?=[},]|$)/u.exec(value.substring(i));
+        const header = /^\{\s*[^\p{Pat_Syn}\p{Pat_WS}]+\s*(?=[},]|$)/u.exec(value.substring(i));
         if (!header) {
           return {
             placeholders: [],
@@ -127,8 +143,37 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
             error: `Unquoted '{' does not start an argument at position ${i}`,
           };
         }
-        const type = /^,\s*(plural|select|selectordinal)\s*,/.exec(value.substring(i + header[0].length));
-        braceKinds.push(type ? 'group' : 'argument');
+        const typeStart = i + header[0].length;
+        const type = /^,\s*([^\p{Pat_Syn}\p{Pat_WS}]+)\s*(?=[},])/u.exec(value.substring(typeStart));
+        if (typeStart < value.length && value[typeStart] !== '}' && !type) {
+          return invalidExtraction(`Invalid argument type at position ${typeStart}`);
+        }
+        if (type && isSubMessageKeyword(type[1])) {
+          const separator = typeStart + type[0].length;
+          if (value[separator] !== ',') {
+            return invalidExtraction(`Missing sub-message cases at position ${separator}`);
+          }
+          braceKinds.push({
+            kind: 'group',
+            type: type[1],
+            isInPlural: (parent?.isInPlural ?? false) || type[1] !== 'select',
+            nextSelectorStart: separator + 1,
+            caseCount: 0,
+            hasOther: false,
+          });
+        } else {
+          // Spellout and ordinal require custom formatters absent from the target runtime.
+          if (type && !['number', 'date', 'time', 'duration'].includes(type[1])) {
+            return invalidExtraction(`Unsupported argument type at position ${typeStart}: ${type[1]}`);
+          }
+          const separator = type ? typeStart + type[0].length : typeStart;
+          braceKinds.push({
+            kind: 'argument',
+            isInPlural: parent?.isInPlural ?? false,
+            formatType: type?.[1],
+            styleStart: type && value[separator] === ',' ? separator + 1 : undefined,
+          });
+        }
       }
       if (braceDepth === 0) {
         // Starting a new placeholder
@@ -143,7 +188,20 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
     // Track closing braces
     if (char === '}') {
       braceDepth--;
-      braceKinds.pop();
+      const closed = braceKinds.pop();
+      if (closed?.kind === 'argument' && !hasBalancedStyleQuotes(value, closed, i)) {
+        return invalidExtraction(`Unterminated quoted literal in argument style at position ${closed.styleStart}`);
+      }
+      if (closed?.kind === 'group') {
+        if (!closed.hasOther || value.substring(closed.nextSelectorStart, i).trim()) {
+          return invalidExtraction(
+            `Invalid sub-message cases or missing 'other' at position ${closed.nextSelectorStart}`,
+          );
+        }
+      } else if (closed?.kind === 'body') {
+        const parent = braceKinds[braceKinds.length - 1];
+        if (parent?.kind === 'group') parent.nextSelectorStart = i + 1;
+      }
 
       if (braceDepth === 0 && currentPlaceholderStart >= 0) {
         // Complete placeholder found
@@ -206,6 +264,72 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
   };
 }
 
+type ICUBraceFrame =
+  | { readonly kind: 'body'; readonly isInPlural: boolean }
+  | {
+      readonly kind: 'argument';
+      readonly isInPlural: boolean;
+      readonly formatType?: string;
+      readonly styleStart?: number;
+    }
+  | {
+      readonly kind: 'group';
+      readonly type: SubMessageKeyword;
+      readonly isInPlural: boolean;
+      nextSelectorStart: number;
+      caseCount: number;
+      hasOther: boolean;
+    };
+
+function invalidExtraction(error: string): PlaceholderExtractionResult {
+  return { placeholders: [], textSegments: [], success: false, error };
+}
+
+function hasBalancedStyleQuotes(
+  value: string,
+  argument: Extract<ICUBraceFrame, { kind: 'argument' }>,
+  end: number,
+): boolean {
+  if (argument.styleStart === undefined) return true;
+  const style = value.substring(argument.styleStart, end);
+  // ICU simple styles pair every apostrophe, even when it precedes ordinary text.
+  if ((style.match(/'/g)?.length ?? 0) % 2 !== 0) return false;
+  if (argument.formatType !== 'number') return true;
+
+  // MessageFormat decodes message quoting before parsing a number pattern.
+  // A balanced raw style such as '' can therefore leave an unclosed pattern quote.
+  const { quoted } = scanIcuQuotes(style);
+  let pattern = '';
+  for (let i = 0; i < style.length; i++) {
+    if (quoted[i]) {
+      let quoteEnd = i + 1;
+      while (quoted[quoteEnd]) quoteEnd++;
+      const run = style.substring(i, quoteEnd);
+      pattern += !argument.isInPlural && run[1] === '#' ? run : run.slice(1, -1).replace(/''/g, "'");
+      i = quoteEnd - 1;
+    } else if (style[i] === "'" && style[i + 1] === "'") {
+      pattern += "'";
+      i++;
+    } else {
+      pattern += style[i];
+    }
+  }
+  return (pattern.match(/'/g)?.length ?? 0) % 2 === 0;
+}
+
+function readGroupSelector(segment: string, group: Extract<ICUBraceFrame, { kind: 'group' }>): string | null {
+  let selector = segment.trim();
+  // A single numeric offset belongs before the first plural/ordinal case.
+  if (group.type !== 'select' && group.caseCount === 0) {
+    selector = selector.replace(/^offset:\s*\d+\s*/, '');
+  }
+  if (group.type === 'select') {
+    return /^[^\p{Pat_Syn}\p{Pat_WS}]+$/u.test(selector) ? selector : null;
+  }
+  if (['zero', 'one', 'two', 'few', 'many', 'other'].includes(selector)) return selector;
+  return /^=\d+$/.test(selector) ? selector : null;
+}
+
 /**
  * Parses a single placeholder text to extract its name and type.
  *
@@ -247,6 +371,8 @@ function parsePlaceholder(fullText: string, startPosition: number, endPosition: 
     placeholderType = 'date';
   } else if (type === 'time') {
     placeholderType = 'time';
+  } else if (type === 'duration') {
+    placeholderType = 'duration';
   }
 
   return {

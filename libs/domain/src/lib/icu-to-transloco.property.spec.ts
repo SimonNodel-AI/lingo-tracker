@@ -2,7 +2,14 @@ import MessageFormat from '@messageformat/core';
 import * as fc from 'fast-check';
 import { hasQuotedInterpolationDelimiter, validateICUSyntax } from './icu-auto-fixer';
 import { icuToTransloco } from './icu-to-transloco';
-import { icuishMessage, literalText, supportedMessage } from './testing/icu-arbitraries';
+import {
+  icuishCompilationMessage,
+  icuishMessage,
+  knownValidRuntimeMessage,
+  literalText,
+  quoteStressMessage,
+  supportedMessage,
+} from './testing/icu-arbitraries';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {
   let interpolated = icuToTransloco(message);
@@ -78,5 +85,37 @@ it('matches MessageFormat for compilable ICU-ish strings with dense quotes and n
       }
       expect(renderBothPasses(message, params)).toBe(render(params));
     }),
+  );
+});
+
+it('compiles every accepted ICU-ish message with supported runtime formats', () => {
+  fc.assert(
+    fc.property(icuishCompilationMessage, (message) => {
+      if (!validateICUSyntax(message)) return;
+      // Syntax is locale-independent: en alone rejects valid categories such as few and many.
+      expect(() => new MessageFormat('en', { strictPluralKeys: false }).compile(message)).not.toThrow();
+    }),
+    // Retain the discovered runtime quote mismatch as a compilation regression.
+    { examples: [["'#{pa}'"]] },
+  );
+});
+
+it('accepts standard valid messages with Unicode names, varied headers and built-in runtime formats', () => {
+  fc.assert(
+    fc.property(knownValidRuntimeMessage, (message) => {
+      expect(() => new MessageFormat('en', { strictPluralKeys: false }).compile(message)).not.toThrow();
+      expect(validateICUSyntax(message)).toBe(true);
+    }),
+  );
+});
+
+it('matches MessageFormat compilation for accepted stressed quote prefixes in each parser context', () => {
+  fc.assert(
+    fc.property(quoteStressMessage, (message) => {
+      // Runtime acceptance alone is not an ICU oracle: unquoted literal braces remain invalid here.
+      if (!validateICUSyntax(message)) return;
+      expect(() => new MessageFormat('en', { strictPluralKeys: false }).compile(message)).not.toThrow();
+    }),
+    { examples: [["'x''#{pa}'"], ["'x''#{'"]] },
   );
 });
