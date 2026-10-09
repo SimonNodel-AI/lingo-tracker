@@ -9,7 +9,12 @@
       "executor": "@nx/vitest:test",
       "dependsOn": [{ "projects": ["cli"], "target": "build" }],
       "cache": true,
-      "inputs": ["default", "^default", { "dependentTasksOutputFiles": "**/*", "transitive": false }],
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/package.json",
+        { "dependentTasksOutputFiles": "**/*", "transitive": false }
+      ],
       "options": { "configFile": "apps/cli-e2e/vite.config.ts", "watch": false }
     },
     "typecheck": {
