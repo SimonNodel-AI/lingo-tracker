@@ -54,3 +54,26 @@ export const arbitraryMessage = fc.oneof(
     .array(fc.constantFrom('{', '}', "'", '#', ',', ' ', 'name', 'plural', 'select', 'other'), { maxLength: 80 })
     .map((parts) => parts.join('')),
 );
+
+// Dense punctuation exposes lexical interactions that separated valid messages do not.
+const icuishLeaf = fc
+  .array(fc.oneof(fc.constantFrom("'", '{', '}', '#', '|', ' ', 'a', "''", "'#'", "'{x}", "'#''x'"), argument), {
+    maxLength: 12,
+  })
+  .map((parts) => parts.join(''));
+
+function icuishGroup(body: fc.Arbitrary<string>): fc.Arbitrary<string> {
+  return fc.tuple(fc.constantFrom('plural', 'select', 'selectordinal'), body, body).map(([kind, first, other]) => {
+    const name = kind === 'select' ? 'gender' : 'count';
+    const selector = kind === 'select' ? 'chosen' : 'one';
+    // Padding makes nested structural braces distinguishable from the Part A delimiters.
+    return `{${name}, ${kind}, ${selector} { ${first} } other { ${other} } }`;
+  });
+}
+
+export const icuishMessage = fc
+  .array(fc.oneof(icuishLeaf, icuishGroup(fc.oneof(icuishLeaf, icuishGroup(icuishLeaf)))), {
+    minLength: 1,
+    maxLength: 4,
+  })
+  .map((parts) => parts.join(''));

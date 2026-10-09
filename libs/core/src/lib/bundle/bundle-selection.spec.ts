@@ -235,6 +235,27 @@ describe('Bundle Selection (real fs)', () => {
         );
       });
 
+      it('warns about quoted interpolation delimiters and preserves the emitted value', () => {
+        for (const value of [
+          "'{{ name }}'",
+          "'{{'a'}}'",
+          "{n, plural, other {'{{ name }}'}}",
+          "{n, plural, other {'{{' x}}",
+        ]) {
+          const common = seeded('common', { literal: { source: value } });
+          const converted = selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true });
+          expect(converted.warnings).toEqual([
+            "Key 'literal': quoted literal '{{' or '}}' will be consumed by Transloco interpolation",
+          ]);
+          expect(converted.entries.get('literal')?.value).toBe(value);
+          expect(selectBundleEntries([bundled(common)], 'en', noTransform).warnings).toEqual([]);
+        }
+        for (const value of ["'}}'", "{n, plural, one {'{{' x} other {# y}}"]) {
+          const common = seeded('common', { literal: { source: value } });
+          expect(selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true }).warnings).toEqual([]);
+        }
+      });
+
       it('warns about a malformed value and includes it as-is, only when converting', () => {
         const common = seeded('common', { broken: { source: 'Hello {name' } });
 

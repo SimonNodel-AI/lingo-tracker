@@ -1,11 +1,17 @@
 import * as fc from 'fast-check';
-import { autoFixICUPlaceholders, extractICUPlaceholders, validateICUSyntax } from './icu-auto-fixer';
-import { arbitraryMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
+import { translocoToICU } from './transloco-to-icu';
+import {
+  autoFixICUPlaceholders,
+  autoFixTranslocoPlaceholders,
+  extractICUPlaceholders,
+  extractTranslocoPlaceholders,
+  validateICUSyntax,
+} from './icu-auto-fixer';
+import { arbitraryMessage, icuishMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
 
 describe('autoFixICUPlaceholders properties', () => {
-  it('does not insert another placeholder inside an open ICU quote on a second fix', () => {
-    // Previously, minimal input "'{": the inserted placeholder stayed inside the open ICU quote.
-    // Closing the quote before insertion prevents the second fix from appending another {name}.
+  it('leaves an unmatched apostrophe and malformed brace unchanged on repeated fixes', () => {
+    // An unmatched apostrophe is literal, so extraction rejects the live unclosed brace.
     const base = 'Hello {name}';
     const fixed = autoFixICUPlaceholders(base, "'{");
     expect(autoFixICUPlaceholders(base, fixed.value).wasFixed).toBe(false);
@@ -96,4 +102,41 @@ describe('autoFixICUPlaceholders properties', () => {
       }),
     );
   });
+});
+
+it('returns only valid repairs that retain the base placeholder names and types', () => {
+  fc.assert(
+    fc.property(
+      fc.oneof(supportedMessage, icuishMessage, fc.constant("{n, plural, one {# l'x} other {# l'y}}")),
+      fc.oneof(
+        arbitraryMessage,
+        icuishMessage,
+        fc.tuple(messageText, identifier).map(([text, name]) => `${text} {{ translated${name} }}`),
+      ),
+      identifier,
+      (base, translation, name) => {
+        const icu = autoFixICUPlaceholders(base, translation);
+        if (icu.wasFixed) {
+          expect(validateICUSyntax(icu.value)).toBe(true);
+          expect(extractICUPlaceholders(icu.value).placeholders.map(({ name, type }) => ({ name, type }))).toEqual(
+            extractICUPlaceholders(base).placeholders.map(({ name, type }) => ({ name, type })),
+          );
+        }
+        const translocoBase = `Hello {{ ${name} }}`;
+        const transloco = autoFixTranslocoPlaceholders(translocoBase, translation);
+        if (transloco.wasFixed) {
+          const normalized = translocoToICU(transloco.value);
+          expect(validateICUSyntax(normalized)).toBe(true);
+          expect(extractICUPlaceholders(normalized).placeholders.map(({ name, type }) => ({ name, type }))).toEqual([
+            { name, type: 'simple' },
+          ]);
+          expect(extractTranslocoPlaceholders(transloco.value).placeholders.map(({ name }) => name)).toEqual([name]);
+          expect(autoFixTranslocoPlaceholders(translocoBase, transloco.value)).toMatchObject({
+            wasFixed: false,
+            value: transloco.value,
+          });
+        }
+      },
+    ),
+  );
 });

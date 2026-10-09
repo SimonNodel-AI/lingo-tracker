@@ -1,7 +1,7 @@
 import MessageFormat from '@messageformat/core';
 import * as fc from 'fast-check';
 import { icuToTransloco } from './icu-to-transloco';
-import { literalText, supportedMessage } from './testing/icu-arbitraries';
+import { icuishMessage, literalText, supportedMessage } from './testing/icu-arbitraries';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {
   let interpolated = icuToTransloco(message);
@@ -55,4 +55,24 @@ describe('icuToTransloco properties', () => {
       }),
     );
   });
+});
+
+it('matches MessageFormat for compilable ICU-ish strings with dense quotes and nesting', () => {
+  fc.assert(
+    fc.property(icuishMessage, fc.integer({ min: 0, max: 5 }), (message, count) => {
+      if (message.includes('{{') || message.includes('}}')) return;
+      const formatter = new MessageFormat('en');
+      let render: ReturnType<MessageFormat['compile']>;
+      try {
+        render = formatter.compile(message);
+      } catch {
+        return;
+      }
+      const params = parameters(message, count, 'chosen');
+      for (const match of message.matchAll(/\{\s*([^\s{},]+)/g)) {
+        if (!(match[1] in params)) params[match[1]] = 'VALUE';
+      }
+      expect(renderBothPasses(message, params)).toBe(render(params));
+    }),
+  );
 });

@@ -11,6 +11,8 @@
 
 import { escapeRegExp } from './escape-regexp';
 import { isSubMessageKeyword, type SubMessageKeyword } from './icu-sub-message';
+import { hasQuotedInterpolationDelimiter, scanIcuQuotes } from './icu-quotes';
+import { translocoToICU } from './transloco-to-icu';
 
 /**
  * Represents a placeholder extracted from an ICU message
@@ -60,68 +62,7 @@ export interface ICUAutoFixResult {
   error?: string;
 }
 
-/**
- * ICU syntax characters that trigger quote-escape mode when following a `'`.
- *
- * Per the ICU4J MessageFormat spec, a `'` starts a quoted section only when
- * immediately followed by one of these characters. A lone `'` before any other
- * character (e.g., a natural apostrophe in "don't") is treated as a literal
- * apostrophe and does NOT enter escape mode.
- */
-export const ICU_SYNTAX_CHARS = new Set<string>(['{', '}', '#', '|', "'"]);
-
-/**
- * Returns true when the character at position `i` in `value` is a `'` that
- * should open (or close) an ICU quoted section.
- *
- * A quote starts an escaped section when followed by a syntax char.
- * A `''` (two consecutive apostrophes) is a literal apostrophe escape —
- * it is handled separately by the caller and does NOT open a section.
- * Inside a quoted section any `'` closes the section.
- *
- * @param value - The full message string
- * @param i - Index of the `'` character to evaluate
- * @param inEscapedSection - Whether the parser is currently inside a quoted section
- * @returns true if the quote should toggle escaped-section state
- */
-export function isQuoteToggle(value: string, i: number, inEscapedSection: boolean): boolean {
-  if (value[i] !== "'") {
-    return false;
-  }
-
-  if (inEscapedSection) {
-    // Any `'` closes the current quoted section
-    return true;
-  }
-
-  // Outside a quoted section: only toggle when followed by a syntax char.
-  // `''` (two apostrophes) is handled separately by advanceOverLiteralApostrophe.
-  return i + 1 < value.length && ICU_SYNTAX_CHARS.has(value[i + 1]);
-}
-
-/** Advances the shared ICU quote scanner, consuming doubled apostrophes together. */
-function advanceIcuQuote(value: string, index: number, inEscapedSection: boolean) {
-  if (value[index + 1] === "'") {
-    return { index: index + 1, inEscapedSection };
-  }
-  return {
-    index,
-    inEscapedSection: isQuoteToggle(value, index, inEscapedSection) ? !inEscapedSection : inEscapedSection,
-  };
-}
-
-/** Closes an implicit end-of-message quote before adding an active placeholder. */
-function closeOpenIcuQuote(value: string): string {
-  let inEscapedSection = false;
-  for (let i = 0; i < value.length; i++) {
-    if (value[i] === "'") {
-      const next = advanceIcuQuote(value, i, inEscapedSection);
-      i = next.index;
-      inEscapedSection = next.inEscapedSection;
-    }
-  }
-  return inEscapedSection ? `${value}'` : value;
-}
+export { hasQuotedInterpolationDelimiter, scanIcuQuotes };
 
 /**
  * Extracts ICU placeholders from a message string.
@@ -159,26 +100,13 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
 
   let currentPosition = 0;
   let braceDepth = 0;
-  let inEscapedSection = false;
+  const { quoted } = scanIcuQuotes(value);
   let currentPlaceholderStart = -1;
 
   for (let i = 0; i < value.length; i++) {
     const char = value[i];
 
-    // Handle ICU quote escaping per the MessageFormat spec:
-    // - `''` anywhere → literal apostrophe, no section toggle
-    // - `'` followed by a syntax char → opens a quoted section
-    // - `'` inside a quoted section → closes the section
-    // - `'` followed by a non-syntax char → literal apostrophe (e.g., "don't")
-    if (char === "'") {
-      const next = advanceIcuQuote(value, i, inEscapedSection);
-      i = next.index;
-      inEscapedSection = next.inEscapedSection;
-      // Whether toggling or not, the `'` itself is not a brace, so move on
-      continue;
-    }
-
-    if (inEscapedSection) {
+    if (quoted[i]) {
       continue;
     }
 
@@ -230,16 +158,6 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
         };
       }
     }
-  }
-
-  // Unclosed quoted section
-  if (inEscapedSection) {
-    return {
-      placeholders: [],
-      textSegments: [],
-      success: false,
-      error: 'Unclosed quoted section',
-    };
   }
 
   // Unclosed placeholder
@@ -381,26 +299,12 @@ function splitPlaceholderParts(text: string): string[] {
  * ```
  */
 export function hasICUPlaceholders(value: string): boolean {
-  // Quick check: does it have unescaped braces?
-  let inEscapedSection = false;
+  const { quoted } = scanIcuQuotes(value);
 
   for (let i = 0; i < value.length; i++) {
     const char = value[i];
 
-    if (char === "'") {
-      if (value[i + 1] === "'") {
-        // `''` is a literal apostrophe — skip both, no state change
-        i++;
-        continue;
-      }
-
-      if (isQuoteToggle(value, i, inEscapedSection)) {
-        inEscapedSection = !inEscapedSection;
-      }
-      continue;
-    }
-
-    if (!inEscapedSection && char === '{') {
+    if (!quoted[i] && char === '{') {
       // Skip {{ — this is Transloco syntax, not ICU.
       // Note: {{}} (empty double-brace) is also skipped here, which is correct
       // since it's neither valid Transloco nor valid ICU.
@@ -414,8 +318,6 @@ export function hasICUPlaceholders(value: string): boolean {
     }
   }
 
-  // A string that ends inside a quoted section is malformed — no valid placeholder
-  // can be detected, so treat it the same as a string with no placeholders.
   return false;
 }
 
@@ -553,14 +455,19 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
   // Translation is missing all Transloco placeholders → append single one as safe default
   if (!translationHasPlaceholders) {
     if (basePlaceholders.length === 1) {
-      const fixedValue = `${closeOpenIcuQuote(translationValue)} ${basePlaceholders[0].fullText}`.trim();
-      return {
-        wasFixed: true,
-        value: fixedValue,
-        description: `Inserted missing placeholder ${basePlaceholders[0].fullText}`,
-        originalPlaceholders: [],
-        fixedPlaceholders: [basePlaceholders[0].fullText],
-      };
+      const fixedValue = `${translationValue} ${basePlaceholders[0].fullText}`.trim();
+      return checkAutoFix(
+        baseValue,
+        translationValue,
+        {
+          wasFixed: true,
+          value: fixedValue,
+          description: `Inserted missing placeholder ${basePlaceholders[0].fullText}`,
+          originalPlaceholders: [],
+          fixedPlaceholders: [basePlaceholders[0].fullText],
+        },
+        true,
+      );
     }
 
     return {
@@ -626,13 +533,18 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
 
   const changes = originalPlaceholderNames.map((orig, idx) => `${orig} → ${fixedPlaceholderNames[idx]}`).join(', ');
 
-  return {
-    wasFixed: originalPlaceholderNames.length > 0,
-    value: fixedValue,
-    description: `Replaced placeholders: ${changes}`,
-    originalPlaceholders: originalPlaceholderNames,
-    fixedPlaceholders: fixedPlaceholderNames,
-  };
+  return checkAutoFix(
+    baseValue,
+    translationValue,
+    {
+      wasFixed: originalPlaceholderNames.length > 0,
+      value: fixedValue,
+      description: `Replaced placeholders: ${changes}`,
+      originalPlaceholders: originalPlaceholderNames,
+      fixedPlaceholders: fixedPlaceholderNames,
+    },
+    true,
+  );
 }
 
 /**
@@ -696,7 +608,7 @@ export function autoFixICUPlaceholders(baseValue: string, translationValue: stri
 
   // If base has placeholders but translation doesn't, we need to insert them
   if (!hasICUPlaceholders(translationValue)) {
-    return handleMissingPlaceholders(baseExtraction, translationValue);
+    return checkAutoFix(baseValue, translationValue, handleMissingPlaceholders(baseExtraction, translationValue));
   }
 
   // Extract placeholders from translation value
@@ -718,7 +630,38 @@ export function autoFixICUPlaceholders(baseValue: string, translationValue: stri
   }
 
   // Attempt to fix by replacing translation placeholders with base placeholders
-  return replaceTranslationPlaceholders(baseExtraction, translationExtraction, translationValue);
+  return checkAutoFix(
+    baseValue,
+    translationValue,
+    replaceTranslationPlaceholders(baseExtraction, translationExtraction, translationValue),
+  );
+}
+
+/** Declines a repair if inserted text changes quote structure or loses the base arguments. */
+function checkAutoFix(
+  baseValue: string,
+  translationValue: string,
+  result: ICUAutoFixResult,
+  transloco = false,
+): ICUAutoFixResult {
+  if (!result.wasFixed) return result;
+  const base = transloco ? translocoToICU(baseValue) : baseValue;
+  const fixed = transloco ? translocoToICU(result.value) : result.value;
+  const baseExtraction = extractICUPlaceholders(base);
+  const fixedExtraction = extractICUPlaceholders(fixed);
+  if (
+    !validateICUSyntax(fixed) ||
+    !baseExtraction.success ||
+    !fixedExtraction.success ||
+    !placeholdersMatch(baseExtraction.placeholders, fixedExtraction.placeholders)
+  ) {
+    return {
+      wasFixed: false,
+      value: translationValue,
+      error: 'Cannot safely auto-fix: the fix would change ICU quoting or produce invalid ICU placeholders.',
+    };
+  }
+  return result;
 }
 
 /**
@@ -765,7 +708,7 @@ function handleMissingPlaceholders(
   // Simple heuristic: if base has one placeholder, try to find where it should go
   if (basePlaceholders.length === 1) {
     // Insert at the end as a safe default
-    const fixedValue = `${closeOpenIcuQuote(translationValue)} ${basePlaceholders[0].fullText}`.trim();
+    const fixedValue = `${translationValue} ${basePlaceholders[0].fullText}`.trim();
 
     return {
       wasFixed: true,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import MessageFormat from '@messageformat/core';
+import { extractICUPlaceholders, hasICUPlaceholders, scanIcuQuotes, validateICUSyntax } from './icu-auto-fixer';
 import { icuToTransloco } from './icu-to-transloco';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {
@@ -244,4 +245,80 @@ describe('icuToTransloco', () => {
       expect(renderBothPasses(icu, params)).toBe(new MessageFormat('en').compile(icu)(params));
     }
   });
+});
+
+describe('MessageFormat quote contexts', () => {
+  it('agrees with direct rendering for # and | at top level and in branch bodies', () => {
+    const bodies = [
+      "'#'{x}",
+      "'#a''b'",
+      "'#''x'",
+      "a '#}' b",
+      "'{x}",
+      "'#' {x}",
+      "'|' {x}",
+      "'|'{x}'",
+      "'#1 {x}",
+      "'}' {x}",
+      "'{x}'",
+      "''# {x}",
+    ];
+    const params = { n: 1, s: 'chosen', x: 'X' };
+    for (const body of bodies) {
+      const cases = [
+        body,
+        `{n, plural, one {${body}} other {# y}}`,
+        `{n, selectordinal, one {${body}} other {# y}}`,
+        `{s, select, chosen {${body}} other {y}}`,
+        `{n, plural, one {{s, select, chosen {${body}} other {y}}} other {# y}}`,
+        `{s, select, chosen {{n, plural, one {${body}} other {# y}}} other {y}}`,
+      ];
+      for (const icu of cases) {
+        expect(extractICUPlaceholders(icu).success).toBe(true);
+        expect(renderBothPasses(icu, params)).toBe(new MessageFormat('en').compile(icu)(params));
+      }
+    }
+    expect(extractICUPlaceholders("'|'{x}'").placeholders).toEqual([]);
+    expect(icuToTransloco("'|'{x}'")).toBe("'|'{x}'");
+    for (const [icu, quotedHash] of [
+      ["'#' {x}", true],
+      ["'|' {x}", false],
+      ["{n, plural, one {'#' x} other {# y}}", true],
+      ["{n, selectordinal, one {'#' x} other {# y}}", true],
+      ["{s, select, chosen {'#' x} other {y}}", true],
+    ] as const) {
+      expect(scanIcuQuotes(icu).quoted[icu.indexOf(icu.includes('#') ? '#' : '|')]).toBe(quotedHash);
+    }
+  });
+});
+
+it('renders unmatched braces and opaque hash quotes as MessageFormat does', () => {
+  for (const icu of [
+    "'}",
+    "'{x}",
+    "'{}' '#''x'",
+    "{n, plural, other {'|''|'}}",
+    "'{x}'#''#'{pa}'",
+    "a ''''{'b'}'' c",
+    "{count, plural, one { {count, plural, one {  } other {  } } } other { {count, plural, one {  } other { '{x} } } } }''",
+  ]) {
+    const params = { x: 'X', n: 2, count: 0, pa: 'VALUE' };
+    expect(renderBothPasses(icu, params)).toBe(new MessageFormat('en').compile(icu)(params));
+  }
+});
+
+it('extracts live arguments after opaque hash tokens and keeps literal tokens unchanged', () => {
+  for (const [icu, names, emitted] of [
+    ["'#'{x}", ['x'], "'#'{{ x }}"],
+    ["{s, select, a {'#'{x}} other {y}}", ['s'], "{s, select, a {'#'{x}} other {y}}"],
+    ["a '#}' b", [], "a '#}' b"],
+    ["'#a''b'", [], "'#a''b'"],
+    ["'#''x'", [], "'#''x'"],
+    ["'{x}", ['x'], "'{{ x }}"],
+  ] as const) {
+    expect(extractICUPlaceholders(icu).placeholders.map(({ name }) => name)).toEqual(names);
+    expect(hasICUPlaceholders(icu)).toBe(names.length > 0);
+    expect(validateICUSyntax(icu)).toBe(true);
+    expect(icuToTransloco(icu)).toBe(emitted);
+  }
 });

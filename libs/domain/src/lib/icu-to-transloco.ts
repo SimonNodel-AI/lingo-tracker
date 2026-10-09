@@ -32,7 +32,8 @@
  * @module icu-to-transloco
  */
 
-import { extractICUPlaceholders, ICU_SYNTAX_CHARS } from './icu-auto-fixer';
+import { extractICUPlaceholders } from './icu-auto-fixer';
+import { scanIcuQuotes } from './icu-quotes';
 import { expandPlaceholderOnlyBranchBodies } from './transloco-brace-scan';
 
 /**
@@ -40,9 +41,10 @@ import { expandPlaceholderOnlyBranchBodies } from './transloco-brace-scan';
  * outside them readable unless collapsing would merge adjacent apostrophes or
  * quote the next ICU construct.
  */
-function prepareTextSegment(text: string, beforeComplex = false): string {
+function prepareTextSegment(text: string, beforeComplex = false, preserveDoubled = false): string {
   let result = '';
-  let inEscapedSection = false;
+  const { quoted } = scanIcuQuotes(text);
+  const besideIcuSyntax = /[{}#]/.test(text);
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
@@ -50,12 +52,10 @@ function prepareTextSegment(text: string, beforeComplex = false): string {
       if (text[i + 1] === "'") {
         const beforeApostrophe = text[i + 2] === "'";
         const beforeComplexConstruct = i + 2 === text.length && beforeComplex;
-        result += inEscapedSection || beforeApostrophe || beforeComplexConstruct ? "''" : "'";
+        result +=
+          preserveDoubled || quoted[i] || beforeApostrophe || beforeComplexConstruct || besideIcuSyntax ? "''" : "'";
         i++;
         continue;
-      }
-      if (inEscapedSection || ICU_SYNTAX_CHARS.has(text[i + 1])) {
-        inEscapedSection = !inEscapedSection;
       }
     }
     result += char;
@@ -122,20 +122,29 @@ export function icuToTransloco(value: string): string {
   }
 
   const { placeholders, textSegments } = extraction;
+  // Collapsing a pair can close an earlier unmatched apostrophe across segment boundaries.
+  const preserveDoubled =
+    /'[{}#]/.test(value.replace(/''/g, '')) ||
+    placeholders.some(
+      (placeholder) =>
+        placeholder.type === 'simple' && !/^\{\s*[^\p{Pat_Syn}\p{Pat_WS}]+\s*\}$/u.test(placeholder.fullText),
+    );
 
   // Values with no real placeholders may still contain ICU quote escaping
   // (e.g., `"Use '{'name'}' as a key"`). Preserve its quoted sections.
   if (placeholders.length === 0) {
-    return prepareTextSegment(textSegments[0]);
+    return prepareTextSegment(textSegments[0], false, preserveDoubled);
   }
 
   let result = '';
 
   for (let i = 0; i < placeholders.length; i++) {
     const placeholder = placeholders[i];
-    result += prepareTextSegment(textSegments[i], placeholder.type !== 'simple');
+    const simpleArgument =
+      placeholder.type === 'simple' && /^\{\s*[^\p{Pat_Syn}\p{Pat_WS}]+\s*\}$/u.test(placeholder.fullText);
+    result += prepareTextSegment(textSegments[i], !simpleArgument, preserveDoubled);
 
-    if (placeholder.type === 'simple') {
+    if (simpleArgument) {
       result += `{{ ${placeholder.name} }}`;
     } else {
       // plural, select, selectordinal, number, date, time — structure passes through, but a
@@ -146,7 +155,7 @@ export function icuToTransloco(value: string): string {
   }
 
   // Append the trailing text segment that follows the last placeholder
-  result += prepareTextSegment(textSegments[textSegments.length - 1]);
+  result += prepareTextSegment(textSegments[textSegments.length - 1], false, preserveDoubled);
 
   return result;
 }

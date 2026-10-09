@@ -67,11 +67,11 @@ describe('extractICUPlaceholders \u2014 ICU quote escaping', () => {
     expect(result.placeholders[0].name).toBe('name');
   });
 
-  it('returns success: false for a string ending with an open quoted section', () => {
-    // '{ opens a quoted section that is never closed
+  it('reports an unclosed live brace after an unmatched apostrophe', () => {
+    // Without a closing apostrophe, the brace remains live.
     const result = extractICUPlaceholders("foo '{");
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Unclosed quoted section');
+    expect(result.error).toBe('Unclosed placeholder starting at position 5');
   });
 
   it('returns success with zero placeholders for a trailing lone apostrophe', () => {
@@ -81,8 +81,8 @@ describe('extractICUPlaceholders \u2014 ICU quote escaping', () => {
     expect(result.placeholders).toHaveLength(0);
   });
 
-  it("recognises '#' as a syntax char that lets \"'\" start a quoted section", () => {
-    // "'#' is literal" \u2014 '#' triggers the quoted section, so '#' is treated as plain text
+  it('preserves a literal apostrophe before # at top level', () => {
+    // # does not start an ICU quote outside a plural body.
     const result = extractICUPlaceholders("'#' is literal");
     expect(result.success).toBe(true);
     expect(result.placeholders).toHaveLength(0);
@@ -114,9 +114,9 @@ describe('hasICUPlaceholders \u2014 ICU quote escaping', () => {
     expect(hasICUPlaceholders("it''s {name}")).toBe(true);
   });
 
-  it('returns false for a string with an unclosed quoted section', () => {
-    // malformed string \u2014 no valid placeholder can be detected
-    expect(hasICUPlaceholders("foo '{")).toBe(false);
+  it('detects a live brace after an unmatched apostrophe', () => {
+    // The quick predicate detects the brace; extraction reports malformed syntax.
+    expect(hasICUPlaceholders("foo '{")).toBe(true);
   });
 
   it('returns false for a trailing lone apostrophe', () => {
@@ -843,40 +843,67 @@ describe('icu-auto-fixer utility functions', () => {
 });
 
 describe('appending placeholders after ICU quotes', () => {
-  it('closes open quotes and preserves the repaired quote content', () => {
-    for (const [translation, closedTranslation] of [
-      ["'{", "'{'"],
-      ["Use '{name}", "Use '{name}'"],
-      ["'{''}", "'{''}'"],
-      ["l''", "l''"],
-      ["don't", "don't"],
-      ["'{''", "'{'''"],
-    ]) {
-      const base = 'Hello {name}';
-      const fixed = autoFixICUPlaceholders(base, translation);
-      const extraction = extractICUPlaceholders(fixed.value);
-      expect(extraction.success).toBe(true);
-      expect(extraction.placeholders.map(({ fullText }) => fullText)).toEqual(['{name}']);
-      expect(validateICUSyntax(fixed.value)).toBe(true);
-      const formatter = new MessageFormat('en');
-      expect(formatter.compile(fixed.value)({ name: 'Ada' })).toBe(`${formatter.compile(closedTranslation)({})} Ada`);
-      expect(autoFixICUPlaceholders(base, fixed.value)).toEqual({ wasFixed: false, value: fixed.value });
+  it('keeps unmatched apostrophes literal and leaves malformed translations unchanged', () => {
+    for (const translation of ["'{", "'{''"]) {
+      const fixed = autoFixICUPlaceholders('Hello {name}', translation);
+      expect(fixed).toMatchObject({ wasFixed: false, value: translation });
+      expect(fixed.error).toBeDefined();
+      expect(autoFixICUPlaceholders('Hello {name}', fixed.value)).toEqual(fixed);
     }
-    // MessageFormat retains the opening apostrophe on unterminated input, unlike a closed quote.
+    for (const translation of ["Use '{name}", "Item '{x}", "Item '#'{name}", "'{''}"]) {
+      const fixed = autoFixICUPlaceholders('Hello {name}', translation);
+      expect(fixed.value).toBe(translation.replace('{x}', '{name}').replace("{''}", '{name}'));
+      expect(autoFixICUPlaceholders('Hello {name}', fixed.value)).toMatchObject({
+        wasFixed: false,
+        value: fixed.value,
+      });
+    }
+    for (const translation of ["l''", "don't"]) {
+      const fixed = autoFixICUPlaceholders('Hello {name}', translation);
+      expect(fixed.value).toBe(`${translation} {name}`);
+    }
     expect(new MessageFormat('en').compile("'{")({})).toBe("'{");
-    expect(autoFixICUPlaceholders('Hello {name}', "'{").value).toBe("'{' {name}");
+    expect(autoFixICUPlaceholders('Hello {name}', "'{").value).toBe("'{");
   });
 
-  it('closes open quotes before appending a Transloco placeholder for the MessageFormat pass', () => {
+  it('declines to append a Transloco placeholder after an unclosed live brace', () => {
     const base = 'Hello {{ name }}';
     const fixed = autoFixTranslocoPlaceholders(base, "'{");
-    expect(fixed.value).toBe("'{' {{ name }}");
-    expect(extractTranslocoPlaceholders(fixed.value).placeholders.map(({ name }) => name)).toEqual(['name']);
-    expect(autoFixTranslocoPlaceholders(base, fixed.value)).toEqual({ wasFixed: false, value: fixed.value });
-    // Pass 1 substitutes the interpolation even inside ICU quotes; pass 2 must see it outside.
+    expect(fixed).toMatchObject({ wasFixed: false, value: "'{" });
+    expect(fixed.error).toContain('ICU quoting');
+    expect(extractTranslocoPlaceholders(fixed.value).placeholders).toEqual([]);
+    expect(autoFixTranslocoPlaceholders(base, fixed.value)).toEqual(fixed);
     const interpolated = fixed.value.replace(/\{\{([^{}]*?)\}\}/, 'Ada');
-    const formatter = new MessageFormat('en');
-    expect(formatter.compile(interpolated)({})).toBe(`${formatter.compile("'{'")({})} Ada`);
-    expect(validateICUSyntax(interpolated)).toBe(true);
+    expect(new MessageFormat('en').compile(interpolated)({})).toBe("'{");
+    expect(validateICUSyntax(interpolated)).toBe(false);
   });
+});
+
+describe('context-aware ICU quotes', () => {
+  it('appends a missing placeholder after a literal apostrophe before # and is idempotent', () => {
+    const fixed = autoFixICUPlaceholders('Hello {name}', "Item '#1");
+    expect(fixed.value).toBe("Item '#1 {name}");
+    expect(autoFixICUPlaceholders('Hello {name}', fixed.value)).toMatchObject({
+      wasFixed: false,
+      value: fixed.value,
+    });
+  });
+});
+
+it('declines repairs whose inserted apostrophes change ICU quoting', () => {
+  const base = "{n, plural, one {# l'x} other {# l'y}}";
+  for (const translation of ["x '{a}", "Voir '#"]) {
+    const result = autoFixICUPlaceholders(base, translation);
+    expect(result).toMatchObject({ wasFixed: false, value: translation });
+    expect(result.error).toContain('ICU quoting');
+    expect(autoFixICUPlaceholders(base, result.value)).toEqual(result);
+  }
+});
+
+it('declines a Transloco rename when the result still has invalid ICU syntax', () => {
+  const translation = "'{ {{ wrong }}";
+  const result = autoFixTranslocoPlaceholders('Hello {{ name }}', translation);
+  expect(result).toMatchObject({ wasFixed: false, value: translation });
+  expect(result.error).toContain('ICU quoting');
+  expect(autoFixTranslocoPlaceholders('Hello {{ name }}', result.value)).toEqual(result);
 });
