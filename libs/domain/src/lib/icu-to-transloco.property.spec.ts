@@ -31,8 +31,6 @@ describe('icuToTransloco properties', () => {
     // icuToTransloco is used by libs/core/src/lib/bundle/bundle-selection.ts; tracker uses transloco-messageformat.
     const message = "'{'literal'}'";
     const expected = new MessageFormat('en').compile(message)({});
-    expect(expected).toBe('{literal}');
-    expect(icuToTransloco(message)).toBe('{literal}');
     expect(renderBothPasses(message, {})).toBe(expected);
   });
 

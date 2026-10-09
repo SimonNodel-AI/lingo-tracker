@@ -92,7 +92,8 @@ describe('tracker HTTP route contract', () => {
           return bindings.elements.some((element) => {
             const importedName = (element.propertyName ?? element.name).text;
             return (
-              (fromAngularHttp && ['HttpClient', 'provideHttpClient'].includes(importedName)) ||
+              (fromAngularHttp &&
+                ['HttpClient', 'HttpBackend', 'httpResource', 'provideHttpClient'].includes(importedName)) ||
               importedName === 'provideTrackerHttpClient'
             );
           });
