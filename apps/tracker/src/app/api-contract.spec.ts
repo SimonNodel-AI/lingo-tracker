@@ -1,11 +1,23 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { dirname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createServiceFactory } from '@ngneat/spectator/vitest';
 import { API_ROUTES, type ApiRoute, type BundleDefinitionDto, matchApiRoute } from '@simoncodes-ca/data-transfer';
 import { firstValueFrom, type Observable } from 'rxjs';
+import * as ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { BrowserApiService } from './browser/services/browser-api.service';
 import { CollectionsApiService } from './collections/services/collections-api.service';
 import { provideTrackerHttpClient } from './shared/api-error/api-error';
+
+const HTTP_CLIENT_FILES = [
+  'app/browser/services/browser-api.service.ts',
+  'app/collections/services/collections-api.service.ts',
+  'app/app.config.ts', // Installs the shared tracker HTTP client providers.
+  'app/shared/api-error/api-error.ts', // Configures HttpClient and its error interceptor; makes no requests.
+  'app/shared/services/transloco-loader.ts', // Loads translation assets rather than API endpoints.
+] as const;
 
 const NOT_USED_BY_TRACKER = [
   { method: 'GET', path: '/api/health', reason: 'Health is used by server monitoring, not these tracker services.' },
@@ -61,6 +73,37 @@ describe('tracker HTTP route contract', () => {
 
   afterEach(() => {
     httpMock.verify();
+  });
+
+  it('requires every HttpClient user to be accounted for in the contract', () => {
+    const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+    const actual = readdirSync(sourceRoot, { recursive: true, encoding: 'utf8' })
+      .filter((path) => path.endsWith('.ts') && !/\.(spec|test)\.ts$/.test(path))
+      .filter((path) => {
+        const source = readFileSync(resolve(sourceRoot, path), 'utf8');
+        const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
+        return file.statements.some((statement) => {
+          if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) return false;
+          const bindings = statement.importClause?.namedBindings;
+          const fromAngularHttp = statement.moduleSpecifier.text === '@angular/common/http';
+          // Namespace imports can access HttpClient without a named import.
+          if (bindings && ts.isNamespaceImport(bindings)) return fromAngularHttp;
+          if (!bindings || !ts.isNamedImports(bindings)) return false;
+          return bindings.elements.some((element) => {
+            const importedName = (element.propertyName ?? element.name).text;
+            return (
+              (fromAngularHttp && ['HttpClient', 'provideHttpClient'].includes(importedName)) ||
+              importedName === 'provideTrackerHttpClient'
+            );
+          });
+        });
+      })
+      .map((path) => path.split(sep).join('/'))
+      .sort();
+    expect(
+      actual,
+      'A new HttpClient user must be added to the API contract: exercise its requests and update HTTP_CLIENT_FILES, or document why it makes no API requests.',
+    ).toEqual([...HTTP_CLIENT_FILES].sort());
   });
 
   it('exercises every public method and accounts for every manifest route', async () => {
