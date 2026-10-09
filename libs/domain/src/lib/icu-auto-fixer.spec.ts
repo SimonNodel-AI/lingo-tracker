@@ -9,6 +9,7 @@ import {
   hasTranslocoPlaceholders,
   validateICUSyntax,
 } from './icu-auto-fixer';
+import { icuToTransloco } from './icu-to-transloco';
 
 describe('extractICUPlaceholders \u2014 ICU quote escaping', () => {
   it('extracts a placeholder from a string containing a natural apostrophe', () => {
@@ -71,7 +72,7 @@ describe('extractICUPlaceholders \u2014 ICU quote escaping', () => {
     // Without a closing apostrophe, the brace remains live.
     const result = extractICUPlaceholders("foo '{");
     expect(result.success).toBe(false);
-    expect(result.error).toBe('Unclosed placeholder starting at position 5');
+    expect(result.error).toBe("Unquoted '{' does not start an argument at position 5");
   });
 
   it('returns success with zero placeholders for a trailing lone apostrophe', () => {
@@ -394,6 +395,45 @@ describe('icu-auto-fixer', () => {
   });
 
   describe('validateICUSyntax', () => {
+    it('rejects unquoted literal braces recursively and reports their position', () => {
+      for (const value of [
+        '{count, plural, one {x} other {{}}}',
+        '{count, plural, one {{pa}} other {{{pa}}}}',
+        '{count, plural, one {{pa}} other {{count, plural, one {{pa}} other {{}}}}}',
+        '{}',
+        '{ }',
+        '{{pa}}',
+        '{count, plural, other {{ }}}',
+        '{count, plural, other {x} } }',
+        '{count, plural, other {{some text}}}',
+      ]) {
+        expect(validateICUSyntax(value)).toBe(false);
+        expect(icuToTransloco(value)).toBe(value);
+        const extracted = extractICUPlaceholders(value);
+        expect(extracted.success).toBe(false);
+        expect(extracted.placeholders).toEqual([]);
+        expect(extracted.error).toMatch(
+          /(?:Unquoted '\{' does not start an argument|Unmatched closing brace) at position \d+/,
+        );
+      }
+    });
+
+    it('accepts structural branch braces, nested arguments and quoted literals', () => {
+      for (const value of [
+        '{count, plural, =1 {{item}} other {# items}}',
+        "l''{count, plural, =1 {{item}} other {#}}",
+        "{count, plural, one {'{'{item}} other {#}}",
+        "'{}'",
+        "{n, plural, one {'{}'} other {x}}",
+        '{n, plural, one {{s, select, chosen {{item}} other {{0}}}} other {{item.name}}}',
+        '{rank, selectordinal, one {{item}} other {{item.name}}}',
+        '{0} {item.name} {日本語} { n, number, integer }',
+      ]) {
+        expect(validateICUSyntax(value)).toBe(true);
+        expect(extractICUPlaceholders(value).success).toBe(true);
+      }
+    });
+
     it('should validate correct ICU syntax', () => {
       expect(validateICUSyntax('Hello {name}')).toBe(true);
       expect(validateICUSyntax('{count, plural, one {# item} other {# items}}')).toBe(true);
@@ -844,15 +884,15 @@ describe('icu-auto-fixer utility functions', () => {
 
 describe('appending placeholders after ICU quotes', () => {
   it('keeps unmatched apostrophes literal and leaves malformed translations unchanged', () => {
-    for (const translation of ["'{", "'{''"]) {
+    for (const translation of ["'{", "'{''", "'{''}"]) {
       const fixed = autoFixICUPlaceholders('Hello {name}', translation);
       expect(fixed).toMatchObject({ wasFixed: false, value: translation });
       expect(fixed.error).toBeDefined();
       expect(autoFixICUPlaceholders('Hello {name}', fixed.value)).toEqual(fixed);
     }
-    for (const translation of ["Use '{name}", "Item '{x}", "Item '#'{name}", "'{''}"]) {
+    for (const translation of ["Use '{name}", "Item '{x}", "Item '#'{name}"]) {
       const fixed = autoFixICUPlaceholders('Hello {name}', translation);
-      expect(fixed.value).toBe(translation.replace('{x}', '{name}').replace("{''}", '{name}'));
+      expect(fixed.value).toBe(translation.replace('{x}', '{name}'));
       expect(autoFixICUPlaceholders('Hello {name}', fixed.value)).toMatchObject({
         wasFixed: false,
         value: fixed.value,

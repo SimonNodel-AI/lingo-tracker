@@ -265,6 +265,16 @@ describe('Bundle Selection (real fs)', () => {
         expect(converted.entries.has('broken')).toBe(true);
         expect(selectBundleEntries([bundled(common)], 'en', noTransform).warnings).toEqual([]);
       });
+
+      it('warns about unquoted literal braces in an ICU branch and includes the value as-is', () => {
+        const value = '{count, plural, one {x} other {{}}}';
+        const common = seeded('common', { broken: { source: value } });
+        const converted = selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true });
+
+        expect(converted.entries.get('broken')?.value).toBe(value);
+        expect(converted.warnings).toContain("Key 'broken': value has malformed ICU syntax and was included as-is");
+        expect(selectBundleEntries([bundled(common)], 'en', noTransform).warnings).toEqual([]);
+      });
     });
 
     it('reports an unreadable folder in the first selection of a run only', () => {

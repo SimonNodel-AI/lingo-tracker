@@ -63,12 +63,17 @@ const icuishLeaf = fc
   .map((parts) => parts.join(''));
 
 function icuishGroup(body: fc.Arbitrary<string>): fc.Arbitrary<string> {
-  return fc.tuple(fc.constantFrom('plural', 'select', 'selectordinal'), body, body).map(([kind, first, other]) => {
-    const name = kind === 'select' ? 'gender' : 'count';
-    const selector = kind === 'select' ? 'chosen' : 'one';
-    // Padding makes nested structural braces distinguishable from the Part A delimiters.
-    return `{${name}, ${kind}, ${selector} { ${first} } other { ${other} } }`;
-  });
+  // A bare argument body, e.g. {x}, and unpadded braces reach placeholder-only branch handling.
+  const branch = fc.oneof(body, argument);
+  return fc
+    .tuple(fc.constantFrom('plural', 'select', 'selectordinal'), branch, branch, fc.boolean())
+    .map(([kind, first, other, padded]) => {
+      const name = kind === 'select' ? 'gender' : 'count';
+      const selector = kind === 'select' ? 'chosen' : 'one';
+      // Padding makes nested structural braces distinguishable from the Part A delimiters.
+      const pad = padded ? ' ' : '';
+      return `{${name}, ${kind}, ${selector} {${pad}${first}${pad}} other {${pad}${other}${pad}}${pad}}`;
+    });
 }
 
 export const icuishMessage = fc

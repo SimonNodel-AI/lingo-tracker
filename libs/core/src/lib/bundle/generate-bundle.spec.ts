@@ -877,6 +877,8 @@ describe('generateBundle (real fs)', () => {
       expect(reported[0]).toContain("Key 'choice':");
       expect(reported[0]).toContain('a run that is no parameter name');
       expect(reported[0]).toContain(`value: ${UNRESOLVABLE_NAME_VALUE}`);
+      expect(result.warnings).toContain("Key 'choice': value has malformed ICU syntax and was included as-is");
+      expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ choice: UNRESOLVABLE_NAME_VALUE });
     });
 
     it('warns once per key per locale and once across each locale', async () => {

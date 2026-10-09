@@ -1,5 +1,6 @@
 import MessageFormat from '@messageformat/core';
 import * as fc from 'fast-check';
+import { hasQuotedInterpolationDelimiter, validateICUSyntax } from './icu-auto-fixer';
 import { icuToTransloco } from './icu-to-transloco';
 import { icuishMessage, literalText, supportedMessage } from './testing/icu-arbitraries';
 
@@ -60,7 +61,10 @@ describe('icuToTransloco properties', () => {
 it('matches MessageFormat for compilable ICU-ish strings with dense quotes and nesting', () => {
   fc.assert(
     fc.property(icuishMessage, fc.integer({ min: 0, max: 5 }), (message, count) => {
-      if (message.includes('{{') || message.includes('}}')) return;
+      // Transloco consumes quoted {{…}} before MessageFormat sees it (warned at bundle time).
+      if (hasQuotedInterpolationDelimiter(message)) return;
+      // Malformed messages are emitted as-is with a bundle warning, so there is nothing to preserve.
+      if (!validateICUSyntax(message)) return;
       const formatter = new MessageFormat('en');
       let render: ReturnType<MessageFormat['compile']>;
       try {

@@ -101,6 +101,7 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
   let currentPosition = 0;
   let braceDepth = 0;
   const { quoted } = scanIcuQuotes(value);
+  const braceKinds: ('argument' | 'group' | 'body')[] = [];
   let currentPlaceholderStart = -1;
 
   for (let i = 0; i < value.length; i++) {
@@ -112,6 +113,23 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
 
     // Track opening braces
     if (char === '{') {
+      // Only a sub-message group's immediate braces delimit branch bodies.
+      // Every other opening brace, including those inside a body, starts an argument.
+      if (braceKinds[braceKinds.length - 1] === 'group') {
+        braceKinds.push('body');
+      } else {
+        const header = /^\{\s*(?:[^\p{Pat_Syn}\p{Pat_WS}]|\.)+\s*(?=[},]|$)/u.exec(value.substring(i));
+        if (!header) {
+          return {
+            placeholders: [],
+            textSegments: [],
+            success: false,
+            error: `Unquoted '{' does not start an argument at position ${i}`,
+          };
+        }
+        const type = /^,\s*(plural|select|selectordinal)\s*,/.exec(value.substring(i + header[0].length));
+        braceKinds.push(type ? 'group' : 'argument');
+      }
       if (braceDepth === 0) {
         // Starting a new placeholder
         currentPlaceholderStart = i;
@@ -125,6 +143,7 @@ export function extractICUPlaceholders(value: string): PlaceholderExtractionResu
     // Track closing braces
     if (char === '}') {
       braceDepth--;
+      braceKinds.pop();
 
       if (braceDepth === 0 && currentPlaceholderStart >= 0) {
         // Complete placeholder found
