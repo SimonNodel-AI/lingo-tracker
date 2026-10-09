@@ -149,6 +149,46 @@ describe('createApp over HTTP', () => {
   });
 });
 
+describe('createApp with the production Nest factory', () => {
+  let root: string | undefined;
+  let app: INestApplication | undefined;
+  let baseUrl = '';
+  const indexHtml = '<!doctype html><html><body>Production factory client fixture</body></html>';
+
+  beforeAll(async () => {
+    const clientPath = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-api-production-bootstrap-')));
+    root = clientPath;
+    writeFileSync(join(clientPath, 'index.html'), indexHtml);
+
+    app = await createApp({ clientPath });
+    await app.listen(0);
+    const server = app.getHttpServer() as Server;
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('HTTP server has no TCP address');
+    baseUrl = `http://localhost:${address.port}`;
+  });
+
+  afterAll(async () => {
+    try {
+      await app?.close();
+    } finally {
+      if (root !== undefined) rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('serves API health and the client index without an app creation override', async () => {
+    const healthResponse = await fetch(`${baseUrl}/api/health`);
+    expect(healthResponse.status).toBe(200);
+    expect(healthResponse.headers.get('content-type')).toContain('application/json');
+    expect(await healthResponse.json()).toEqual({ status: 'all is good' });
+
+    const clientResponse = await fetch(`${baseUrl}/`);
+    expect(clientResponse.status).toBe(200);
+    expect(clientResponse.headers.get('content-type')).toContain('text/html');
+    expect(await clientResponse.text()).toBe(indexHtml);
+  });
+});
+
 describe('resolvePort', () => {
   it('prefers the argv port over the environment port', () => {
     expect(resolvePort(['node', 'main.js', '--port', '4040'], { LINGO_TRACKER_PORT: '5050' })).toBe('4040');
