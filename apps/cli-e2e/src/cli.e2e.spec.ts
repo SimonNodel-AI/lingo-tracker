@@ -114,7 +114,7 @@ describe('built CLI', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stdout + result.stderr).toContain('Validation FAILED');
     expect(result.stdout + result.stderr).toContain('common.buttons.ok');
-    expect(result.stdout + result.stderr).toContain('new');
+    expect(result.stdout + result.stderr).toContain('Locale: fr (1 failures)\n    ❌ [main] common.buttons.ok (new)');
   });
 
   it('reads piped glossary text and writes matching translations to disk', async () => {
