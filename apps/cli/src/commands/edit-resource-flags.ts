@@ -1,6 +1,6 @@
+import { collectionFlag, defineFlags, editResourceFlags, flagName, localeFlag } from '../runner/flag-record';
 import { missingTextQuestions } from '../utils/prompt-utils';
 import type { EditResourceOptions } from './edit-resource';
-import { defineFlags, flagName, collectionFlag, editResourceFlags, localeFlag } from '../runner/flag-record';
 
 const localeValueFlag = { flags: '--locale-value <value>', description: 'New value for the specified locale' };
 

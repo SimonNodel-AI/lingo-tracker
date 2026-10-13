@@ -1,11 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-
-import { commandManifest } from './command-manifest';
-import { flagValues, resolveFlagValues } from './runner/flag-record';
-import { createCli } from './program';
 import { Command } from 'commander';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { commandManifest } from './command-manifest';
+import { createCli } from './program';
+import { flagValues, resolveFlagValues } from './runner/flag-record';
 
 const baselineHelp: unknown = JSON.parse(readFileSync(join(__dirname, 'testing/cli-help-baseline.json'), 'utf8'));
 

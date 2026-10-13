@@ -9,7 +9,7 @@ import { getTranslocoTestingModule } from '../../../testing/transloco-testing.mo
 import { toApiError } from '../../shared/api-error/api-error';
 import { BrowserStore } from '../store/browser.store';
 import { BrowserApiService } from './browser-api.service';
-import { SimilarValues, type SimilarSuggestion } from './similar-values';
+import { type SimilarSuggestion, SimilarValues } from './similar-values';
 
 describe('SimilarValues', () => {
   const apiError = () => toApiError(new HttpErrorResponse({ status: 500, error: { message: 'failed' } }));

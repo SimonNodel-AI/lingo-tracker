@@ -1,4 +1,3 @@
-import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +5,6 @@ import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
 import { loadConfig } from '../lib/config/load-config';
 import { openCollection } from '../lib/config/open-collection';
-import { writeJsonFile } from '../lib/file-io/json-file-operations';
 import {
   BaseLocaleImmutableError,
   CollectionNotFoundError,
@@ -14,7 +12,9 @@ import {
   LocaleAlreadyExistsError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
+import { writeJsonFile } from '../lib/file-io/json-file-operations';
 import type { ResourceEntries } from '../lib/resource/resource-entry';
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { addLocaleToCollection } from './add-locale-to-collection';

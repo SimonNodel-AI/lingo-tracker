@@ -1,8 +1,8 @@
-import { KeyedStorage, raw } from '../storage/keyed-storage';
-import { LOCAL_STORAGE } from '../storage/browser-storage';
-import { Injectable, signal, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
+import { LOCAL_STORAGE } from '../storage/browser-storage';
+import { KeyedStorage, raw } from '../storage/keyed-storage';
 
 export type LocaleCode = 'en' | 'es' | 'fr-ca' | 'ru' | 'ja' | 'de';
 

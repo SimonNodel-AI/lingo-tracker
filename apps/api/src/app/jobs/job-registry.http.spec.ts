@@ -1,7 +1,7 @@
 import { type INestApplication, Logger } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { prepareTranslationRun, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, prepareTranslationRun } from '@simoncodes-ca/core';
 import { BundleJobService } from '../bundles/bundle-job.service';
 import { BundlesController } from '../bundles/bundles.controller';
 import { CollectionIndex } from '../cache/collection-index.service';

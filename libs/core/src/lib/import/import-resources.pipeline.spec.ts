@@ -2,8 +2,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { calculateChecksum } from '../resource/checksum';
 import { type Collection, openCollection } from '../config/open-collection';
+import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
 import { parseJsonImport } from './parse-json-import';

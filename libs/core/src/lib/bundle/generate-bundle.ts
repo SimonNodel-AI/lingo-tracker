@@ -7,8 +7,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { buildKeyTree, bundleOutputFile, hasTypeDistConfigured, type TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import type { RunOutcome } from '../run-outcome';
 import { BundleHierarchicalConflictError } from '../errors/internal';
+import type { RunOutcome } from '../run-outcome';
 import { bundleRunConflicts, bundleRunWarnings, type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 import {
   type GenerateBundleTypesParams,

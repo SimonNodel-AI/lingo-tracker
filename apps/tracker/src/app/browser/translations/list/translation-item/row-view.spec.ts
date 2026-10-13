@@ -1,7 +1,7 @@
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { buildResourceSummary } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
-import { LONG_VALUE_THRESHOLD, rowView, type RowViewSelection, sharedStatus } from './row-view';
+import { LONG_VALUE_THRESHOLD, type RowViewSelection, rowView, sharedStatus } from './row-view';
 
 type Target = readonly [value: string | undefined, status: TranslationStatus | undefined];
 

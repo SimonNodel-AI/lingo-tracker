@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../../testing/temp-dir.spec-helpers';
 import { BundleHierarchicalConflictError } from '../../errors/internal';
 import { generateBundleTypes } from './generate-types';

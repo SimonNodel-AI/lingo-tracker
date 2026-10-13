@@ -1,11 +1,11 @@
 import type { SearchResult } from '@simoncodes-ca/core';
+import { collection, entry } from './resource.mapper.test-support';
 import {
   blankSearchResults,
   mapSearchPageToDto,
   mapSearchResultToDto,
   searchRequestFromQuery,
 } from './search-result.mapper';
-import { collection, entry } from './resource.mapper.test-support';
 
 describe('searchRequestFromQuery', () => {
   it('translates similar mode and trims the core query', () => {

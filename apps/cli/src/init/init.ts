@@ -1,4 +1,3 @@
-import { INIT_FLAGS } from './init-flags';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CONFIG_FILENAME, initProject } from '@simoncodes-ca/core';
@@ -6,6 +5,7 @@ import { CommandOutput } from '../runner/command-output';
 import { type Answers, defineCommand, requireOptions } from '../runner/command-runner';
 import type { InitOptions } from '../types/init-options.js';
 import { ConsoleFormatter } from '../utils';
+import { INIT_FLAGS } from './init-flags';
 
 export const initCommand = defineCommand<InitCommandOptions>()({
   flags: INIT_FLAGS,

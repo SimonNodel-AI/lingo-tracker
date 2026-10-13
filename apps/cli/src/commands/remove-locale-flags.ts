@@ -1,6 +1,6 @@
 import type { PromptContext } from '../runner/command-runner';
+import { collectionFlag, defineFlags, localeFlag } from '../runner/flag-record';
 import type { RemoveLocaleOptions } from './remove-locale';
-import { defineFlags, collectionFlag, localeFlag } from '../runner/flag-record';
 
 export const REMOVE_LOCALE_FLAGS = defineFlags<RemoveLocaleOptions, PromptContext<'writable'>>()({
   collection: collectionFlag('Name of the collection'),

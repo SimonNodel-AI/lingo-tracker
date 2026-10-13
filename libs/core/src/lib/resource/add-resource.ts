@@ -1,5 +1,4 @@
 import type { Collection } from '../config/open-collection';
-import { resolveCheckedResourceKey } from './resource-key';
 import {
   type EntryAddChanges,
   type EntryAddResult,
@@ -7,6 +6,7 @@ import {
   type ExistingResourcePolicy,
   writeEntry,
 } from './resource-entry';
+import { resolveCheckedResourceKey } from './resource-key';
 
 export type { EntryAddResult as AddResourceResult, ExistingResourcePolicy } from './resource-entry';
 

@@ -1,6 +1,5 @@
-import * as definitions from './lingo-tracker-error';
-
 import { createErrorCatalogue } from './error-catalogue';
+import * as definitions from './lingo-tracker-error';
 
 // The abstract base has no domain code; TranslationError uses PROVIDER_ERROR_CATALOGUE instead.
 const CATALOGUE_EXEMPTIONS = ['LingoTrackerError', 'TranslationError'] as const;

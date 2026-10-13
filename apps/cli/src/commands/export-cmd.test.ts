@@ -1,14 +1,14 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type prompts from 'prompts';
 import { Command } from 'commander';
-import { flagValues, registerFlags } from '../runner/flag-record';
-import { EXPORT_FLAGS } from './export-cmd-flags';
-import { editResourceCommand } from './edit-resource';
+import type prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
+import { editResourceCommand } from './edit-resource';
 import { type ExportCommandOptions, exportCommand } from './export-cmd';
+import { EXPORT_FLAGS } from './export-cmd-flags';
 
 describe('exportCommand (real project)', () => {
   let project: CommandProject;

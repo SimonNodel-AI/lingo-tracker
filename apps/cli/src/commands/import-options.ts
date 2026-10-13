@@ -3,9 +3,9 @@ import type { ImportStrategy } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import {
   IMPORT_OPTION_TABLE,
-  resolveStrategy,
   type ImportTableContext,
   resolveImportTable,
+  resolveStrategy,
 } from './import-option-table';
 import { orderedTableQuestions } from './option-table';
 

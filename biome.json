@@ -13,6 +13,11 @@
     "indentStyle": "space",
     "lineWidth": 120
   },
+  "html": {
+    "parser": {
+      "interpolation": true
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -42,6 +47,9 @@
   "overrides": [
     {
       "includes": ["**/*.html"],
+      "formatter": {
+        "enabled": false
+      },
       "linter": {
         "enabled": false
       }

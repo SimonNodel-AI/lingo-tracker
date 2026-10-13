@@ -8,10 +8,11 @@ import {
 } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import type { PromptContext } from '../runner/command-runner';
+import { collectionSetupFlags, defineFlags, setupBundleFlag, tokenCasingFlag } from '../runner/flag-record';
 import type { InitOptions } from '../types/init-options';
 import { collectionSetupQuestions, requiredText } from '../utils/prompt-utils';
 import type { InitCommandOptions } from './init';
-import { defineFlags, collectionSetupFlags, setupBundleFlag, tokenCasingFlag } from '../runner/flag-record';
+
 const initializedContexts = new WeakMap<PromptContext<'none', false>, boolean>();
 
 /** Read initialization state once per execution, before constructing any record questions. */

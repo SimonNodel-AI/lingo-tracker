@@ -1,16 +1,16 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { DEFAULT_CONFIG } from '../../constants';
-import type { Collection } from '../config/open-collection';
-import { describeFolderProblem } from '../resource/collection-folders';
 import { collectionSetTargetLocales, readCollectionSet } from '../collection-set/collection-set';
+import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { describeFolderProblem } from '../resource/collection-folders';
 import { assertTranslationStatusList } from '../resource/translation-status-input';
 import type { RunOutcome } from '../run-outcome';
 import {
-  filterResources,
   type ExportResource,
+  filterResources,
   validateBasePropertyName,
   validateOutputDirectory,
 } from './export-common';

@@ -5,7 +5,7 @@ import type { Collection } from '../config/open-collection';
 import { readJsonFile } from '../file-io/json-file-operations';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
 import { assertCollectionFolderPath, validateFolderAddress } from './folder-address';
-import { resolveMutationSink, folderMutation, type MutationSinkOptions } from './resource-mutation';
+import { folderMutation, type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
 
 /** The only non-collection files that pruning may delete. */
 export const PRUNABLE_OS_JUNK_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini'] as const;

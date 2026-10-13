@@ -16,8 +16,6 @@ import {
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
-import { selectTranslationRow, translationBatch } from './translation-batch';
-import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
@@ -29,16 +27,16 @@ import {
   seedLocales,
   withTranslatorProblems,
 } from './locale-seeding';
-import { resolveCheckedResourceKey } from './resource-key';
 import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
-import { type ResolvedResourcePaths, resolveResourcePaths, resolveResolvedResourcePaths } from './resource-file-paths';
+import { type ResolvedResourcePaths, resolveResolvedResourcePaths, resolveResourcePaths } from './resource-file-paths';
 import {
   openResourceFolder,
   type ResourceFolder,
   type ResourceFolderSaveResult,
   resourceFolderPresence,
 } from './resource-folder';
+import { resolveCheckedResourceKey } from './resource-key';
 import {
   type MutationSink,
   type MutationSinkOptions,
@@ -48,7 +46,9 @@ import {
   upsertMutation,
 } from './resource-mutation';
 import type { ResourceTreeEntry } from './resource-tree-types';
+import { selectTranslationRow, translationBatch } from './translation-batch';
 import { assertTranslationStatus } from './translation-status-input';
+import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 
 interface LocatedEntry {
   readonly resolvedKey: string;

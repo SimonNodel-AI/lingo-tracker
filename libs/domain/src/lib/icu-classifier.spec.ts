@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { classifyICUContent } from './icu-classifier';
 import { translocoToICU } from './transloco-to-icu';
 

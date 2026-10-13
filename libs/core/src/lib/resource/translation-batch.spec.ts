@@ -5,11 +5,11 @@ import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { readResourceEntries, writeJsonFile } from '../file-io/json-file-operations';
+import type { Translator } from '../machine-translation/translator';
 import { readCollection } from '../resource/read-collection';
 import { openResourceFolder } from '../resource/resource-folder';
 import { translationBatch } from './translation-batch';
 import { snapshotTranslation } from './translation-write-back';
-import type { Translator } from '../machine-translation/translator';
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();

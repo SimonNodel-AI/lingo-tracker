@@ -1,6 +1,6 @@
 import { findIcuCompileError, findUnportablePluralCases, isIcuLocaleSupported } from '@simoncodes-ca/domain';
 import type { CollectionSetResource } from '../collection-set/collection-set';
-import type { IcuValidationOptions, IcuValidationDetail, IcuValidationResult } from './types';
+import type { IcuValidationDetail, IcuValidationOptions, IcuValidationResult } from './types';
 
 /** {@link IcuValidationOptions} for one collection. */
 export interface IcuPassOptions extends IcuValidationOptions {

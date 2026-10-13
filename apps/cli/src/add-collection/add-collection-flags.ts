@@ -1,7 +1,7 @@
 import type { PromptContext } from '../runner/command-runner';
+import { collectionSetupFlags, defineFlags } from '../runner/flag-record';
 import { collectionSetupQuestions } from '../utils/prompt-utils';
 import type { AddCollectionOptions } from './add-collection';
-import { defineFlags, collectionSetupFlags } from '../runner/flag-record';
 export const ADD_COLLECTION_FLAGS = defineFlags<AddCollectionOptions, PromptContext<'none'>>()({
   ...collectionSetupFlags,
   collectionName: {

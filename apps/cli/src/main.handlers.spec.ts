@@ -1,7 +1,7 @@
 import { Option } from 'commander';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commandManifest } from './command-manifest';
 import { createCli } from './program';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const handlers = vi.hoisted(() => ({
   init: vi.fn(),

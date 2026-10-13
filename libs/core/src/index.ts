@@ -2,8 +2,6 @@
 // Only names with an outside consumer, plus the types those names' signatures need, are listed.
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
-// Types: operation parameters and results
-export type { RunOutcome } from './lib/run-outcome';
 export type {
   AddCollectionOptions,
   AddLocaleToCollectionResult,
@@ -42,6 +40,7 @@ export type {
 // Operations: bundles
 export {
   addBundleDefinition,
+  bundleResultWarnings,
   deleteBundleDefinition,
   generateBundles,
   generatePreparedBundle,
@@ -70,31 +69,38 @@ export {
   loadPreferredTerminology,
   openCollection,
   openProjectCollection,
-  planProjectTermsUpdate,
-  readProjectTermsView,
   type ProjectTermsConfigView,
   type ProjectTermsView,
+  planProjectTermsUpdate,
   type ResolvedProtectedTerms,
+  readProjectTermsView,
   type StoredProtectedTerms,
   type TermFile,
   type TermFiles,
   updateProjectTerms,
 } from './lib/config';
 export { assertCollectionFields } from './lib/config/collection-entry';
+export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
+export {
+  DEFAULT_BUNDLE_DIST,
+  DEFAULT_BUNDLE_NAME,
+  DEFAULT_TYPE_DIST_FILE,
+  initProject,
+} from './lib/config/init-project';
 export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
-  ProtectedTermsChange,
   ProjectTermsUpdate,
   ProjectTermsUpdatePlan,
   ProjectTermsUpdateReport,
   ProjectTermsUpdateView,
+  ProtectedTermsChange,
 } from './lib/config/update-project-terms';
 export * from './lib/errors';
-export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 // Operations: export
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';
+export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type {
   CreateFolderParams,
   CreateFolderResult,
@@ -174,7 +180,6 @@ export {
   ResourceTreeIndex,
   type ResourceTreeNode,
   readCollection,
-  saveReporting,
   type SearchableResource,
   type SearchMode,
   type SearchOptions,
@@ -182,15 +187,23 @@ export {
   type SearchRequest,
   type SearchResult,
   type StoredResource,
+  saveReporting,
   searchResources,
   type TreeFingerprint,
 } from './lib/resource';
+export {
+  type ExecuteMoveResult,
+  executeMove,
+  executeMoves,
+  type MoveOptions,
+  type MoveRequest,
+} from './lib/resource/execute-move';
+export type { MoveResult } from './lib/resource/move-report';
+// Types: operation parameters and results
+export type { RunOutcome } from './lib/run-outcome';
 export type {
-  OpenTranslatorOptions,
-  TranslationRun,
   LocaleTranslationRun,
-  TranslationRunExecutionOptions,
-  TranslationRunOptions,
+  OpenTranslatorOptions,
   ProviderCapabilities,
   TranslateExistingResourceOptions,
   TranslateExistingResourceResult,
@@ -199,6 +212,9 @@ export type {
   TranslateRequest,
   TranslateResult,
   TranslationProvider,
+  TranslationRun,
+  TranslationRunExecutionOptions,
+  TranslationRunOptions,
 } from './lib/translation';
 export {
   assertAutoTranslationEnabled,
@@ -212,21 +228,3 @@ export type {
   ValidationOptions,
 } from './lib/validate';
 export { runValidate } from './lib/validate';
-
-export {
-  initProject,
-  DEFAULT_BUNDLE_DIST,
-  DEFAULT_BUNDLE_NAME,
-  DEFAULT_TYPE_DIST_FILE,
-} from './lib/config/init-project';
-export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
-
-export {
-  executeMove,
-  executeMoves,
-  type MoveRequest,
-  type MoveOptions,
-  type ExecuteMoveResult,
-} from './lib/resource/execute-move';
-export type { MoveResult } from './lib/resource/move-report';
-export { bundleResultWarnings } from './lib/bundle';

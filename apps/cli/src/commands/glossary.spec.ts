@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { BuildGlossaryResult } from '@simoncodes-ca/core';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { editResourceCommand } from './edit-resource';
 import { glossaryCommand } from './glossary';
 

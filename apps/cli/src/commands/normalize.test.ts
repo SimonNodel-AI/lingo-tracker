@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import type { NormalizeCollectionsResult } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
+import { type NormalizeOptions, normalizeCommand } from './normalize';
 import { NORMALIZE_FLAGS } from './normalize-flags';
-import { normalizeCommand, type NormalizeOptions } from './normalize';
 
 type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
 const zeroTotals = {

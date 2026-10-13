@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { buildKeyTree } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
 
 describe('Key Tree behavioural cases', () => {
   describe('buildKeyTree', () => {

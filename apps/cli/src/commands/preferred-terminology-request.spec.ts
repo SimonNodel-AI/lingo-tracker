@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
 import {
   InvalidProjectTermsEditError,
-  isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
+  isProtectedTermsEditProblem,
 } from '@simoncodes-ca/core';
+import { describe, expect, it } from 'vitest';
 import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
 
 describe('preferredTerminologyRequestFromFlags', () => {

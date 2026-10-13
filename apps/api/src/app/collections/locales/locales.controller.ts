@@ -1,9 +1,9 @@
 import { Controller, Delete, Param, Post } from '@nestjs/common';
 import { addLocaleToCollection, type OpenedCollection, removeLocaleFromCollection } from '@simoncodes-ca/core';
 import type { AddLocaleDto, AddLocaleResponseDto, RemoveLocaleResponseDto } from '@simoncodes-ca/data-transfer';
-import { RouteCollection } from '../route-collection';
 import { addLocaleBody } from '../../validation/dto-schemas';
 import { ValidBody } from '../../validation/valid-body';
+import { RouteCollection } from '../route-collection';
 
 /**
  * Core locale errors (invalid, missing, duplicate, base locale; read-only collection)

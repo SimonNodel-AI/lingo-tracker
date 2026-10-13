@@ -1,5 +1,5 @@
-import * as path from 'path';
 import * as os from 'os';
+import * as path from 'path';
 
 export function buildSummaryPath(type: 'import' | 'export', directory = os.tmpdir()): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);

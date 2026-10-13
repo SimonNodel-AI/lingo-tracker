@@ -1,7 +1,7 @@
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { describe, expect, it } from 'vitest';
+import { type FolderMovePlan, planFolderMove, planFolderMoveRollback } from './folder-move-plan';
 import { findFolderInTree, removeFolderFromTree } from './folder-tree.utils';
-import { planFolderMove, planFolderMoveRollback, type FolderMovePlan } from './folder-move-plan';
 
 const leaf = (name: string, fullPath: string): FolderNodeDto => ({ name, fullPath, loaded: false });
 const loaded = (node: FolderNodeDto, children: FolderNodeDto[]): FolderNodeDto => ({

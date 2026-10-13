@@ -1,12 +1,12 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { BundleDefinitionDto, BundleDryRunRequestDto, BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
 import { normalizeBundleDefinition } from '@simoncodes-ca/domain';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
 import { toApiError } from '../../shared/api-error/api-error';
-import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { BundleForm, type BundleFormOptions, type BundleSection } from './bundle-form';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 

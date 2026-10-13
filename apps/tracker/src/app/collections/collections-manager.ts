@@ -18,7 +18,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { catchError, map, of, type Observable } from 'rxjs';
+import { catchError, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import type { Feedback } from '../browser/feedback';
 import { apiErrorMessage } from '../shared/api-error/api-error';
@@ -26,10 +26,10 @@ import { injectConfirmedWrite } from '../shared/confirmed-write';
 import { NotificationService } from '../shared/notification';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
+import { bundleCards, collectionCards } from './collection-cards';
 import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
 import type { BundleLink, BundlePort } from './collection-links';
 import { measureCollectionLinks } from './collection-links-measurement';
-import { bundleCards, collectionCards } from './collection-cards';
 import { CollectionsStore } from './store/collections.store';
 
 /** Below this many collections the name filter is more clutter than help. */

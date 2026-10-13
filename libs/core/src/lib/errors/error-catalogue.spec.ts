@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createErrorCatalogue } from './error-catalogue';
-import { LingoTrackerError, defineError } from './error-definition';
+import { defineError, LingoTrackerError } from './error-definition';
 
 class FirstError extends defineError('FIRST', 'invalid', () => ({ message: 'first' })) {}
 class SecondError extends defineError('SECOND', 'conflict', () => ({ message: 'second' })) {}

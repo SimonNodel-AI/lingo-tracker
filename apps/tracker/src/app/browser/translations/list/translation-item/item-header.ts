@@ -1,20 +1,20 @@
-import { Component, ChangeDetectionStrategy, input, output, computed, inject } from '@angular/core';
+import { CdkDragHandle } from '@angular/cdk/drag-drop';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { MatIconButton } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
-import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatIconButton } from '@angular/material/button';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { CdkDragHandle } from '@angular/cdk/drag-drop';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { KeyMarkupPipe, hasKeyLeaf } from '../../../../shared/pipes/key-markup.pipe';
+import { hasKeyLeaf, KeyMarkupPipe } from '../../../../shared/pipes/key-markup.pipe';
 import { hasSearchLength } from '../../../../shared/search/search-minimum';
 import { TagList } from '../../../../shared/tag-list/tag-list.component';
-import { TranslationRollup } from './translation-rollup';
-import type { RowView } from './row-view';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
+import type { RowView } from './row-view';
+import { TranslationRollup } from './translation-rollup';
 
 /**
  * Header component for translation items displaying the key with copy button

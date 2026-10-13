@@ -1,7 +1,7 @@
 import type { ExportRunResult, LingoTrackerConfig } from '@simoncodes-ca/core';
-import { createCli } from './program';
 import prompts from 'prompts';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCli } from './program';
 
 const coreMocks = vi.hoisted(() => ({
   loadConfig: vi.fn(),

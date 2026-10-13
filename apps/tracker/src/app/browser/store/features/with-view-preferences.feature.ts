@@ -1,10 +1,10 @@
-import { KeyedStorage, json } from '../../../shared/storage/keyed-storage';
-import { LOCAL_STORAGE } from '../../../shared/storage/browser-storage';
 import { computed, effect, inject } from '@angular/core';
-import { signalStoreFeature, withComputed, withMethods, withHooks, withProps, patchState, type } from '@ngrx/signals';
+import { patchState, signalStoreFeature, type, withComputed, withHooks, withMethods, withProps } from '@ngrx/signals';
+import { LOCAL_STORAGE } from '../../../shared/storage/browser-storage';
+import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
 import type { DensityMode } from '../../types/density-mode';
-import { snapshot, restore, type ViewPreferences } from '../view-preferences';
-import { setDensity, type LocaleContext, type LocaleSelection } from '../locale-selection';
+import { type LocaleContext, type LocaleSelection, setDensity } from '../locale-selection';
+import { restore, snapshot, type ViewPreferences } from '../view-preferences';
 
 function storageKey(collectionName: string): string {
   return `lingo-tracker:view-prefs:${collectionName}`;

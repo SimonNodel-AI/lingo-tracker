@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import type { SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { catchError, concat, distinctUntilChanged, EMPTY, map, type Observable, of, switchMap, timer } from 'rxjs';
 import { hasSearchLength } from '../../shared/search/search-minimum';

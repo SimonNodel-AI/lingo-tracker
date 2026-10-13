@@ -1,9 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-
-import { walkFolders } from './iterative-folder-walker';
-import type { FolderVisit } from './iterative-folder-walker';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockedReaddirSync } from '../../testing/mocked-fs.spec-helpers';
+import type { FolderVisit } from './iterative-folder-walker';
+import { walkFolders } from './iterative-folder-walker';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

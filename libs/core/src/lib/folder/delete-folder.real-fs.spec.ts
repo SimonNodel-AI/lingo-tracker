@@ -1,9 +1,9 @@
-import type { ResourceMutation } from '../resource/resource-mutation';
-import { existsSync, mkdirSync, symlinkSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { FolderNotFoundError, InvalidFolderPathError } from '../errors/lingo-tracker-error';
+import type { ResourceMutation } from '../resource/resource-mutation';
 import { deleteFolder } from './delete-folder';
 
 const collected: ResourceMutation[] = [];

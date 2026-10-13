@@ -1,14 +1,14 @@
 import { rmSync } from 'node:fs';
 import type { Collection } from '../config/open-collection';
-import { InvalidCollectionFolderError, FolderNotFoundError } from '../errors/lingo-tracker-error';
+import { FolderNotFoundError, InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { walkCollectionFolders } from '../resource/collection-folders';
 import { sweepCollection } from '../resource/collection-sweep';
 import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
 import {
-  resolveMutationSink,
   folderMutation,
-  reindexMutation,
   type MutationSinkOptions,
+  reindexMutation,
+  resolveMutationSink,
 } from '../resource/resource-mutation';
 
 export interface DeleteFolderParams {

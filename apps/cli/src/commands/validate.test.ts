@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { validateCommand } from './validate';
 import { Command } from 'commander';
-import { flagValues, registerFlags } from '../runner/flag-record';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runCommand } from '../runner/command-runner';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { validateCommand } from './validate';
 import { VALIDATE_FLAGS } from './validate-options';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {

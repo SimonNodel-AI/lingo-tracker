@@ -3,7 +3,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { TranslocoService } from '@jsverse/transloco';
 import { firstValueFrom } from 'rxjs';
 import type { ConfirmationDialogData } from './components/confirmation-dialog/confirmation-dialog-data';
-import { translateToken, type TranslationParam } from './translate-token';
+import { type TranslationParam, translateToken } from './translate-token';
 
 /** A translation token, with optional interpolation values and translated parameter tokens. */
 export type ConfirmationText =

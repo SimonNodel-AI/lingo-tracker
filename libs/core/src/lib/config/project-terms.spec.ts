@@ -7,8 +7,8 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import { type Collection, openCollection } from './open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from './preferred-terminology-file';
-import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
 import { readProjectTerms } from './project-terms';
+import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
 
 const rules = [
   { discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' },

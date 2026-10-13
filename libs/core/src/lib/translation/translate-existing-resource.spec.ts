@@ -1,4 +1,3 @@
-import type { ResourceMutation } from '../resource/resource-mutation';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,9 +6,10 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, ResourceNotFoundError, TranslationError } from '../errors/lingo-tracker-error';
-import * as batchModule from '../resource/translation-batch';
-import { openResourceFolder } from '../resource/resource-folder';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
+import { openResourceFolder } from '../resource/resource-folder';
+import type { ResourceMutation } from '../resource/resource-mutation';
+import * as batchModule from '../resource/translation-batch';
 import { translateExistingResource } from './translate-existing-resource';
 
 const collected: ResourceMutation[] = [];

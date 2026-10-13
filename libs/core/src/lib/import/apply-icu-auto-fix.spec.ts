@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { applyICUAutoFixToResource, applyICUAutoFixToResources } from './apply-icu-auto-fix';
 import type { ImportedResource } from './types';
 

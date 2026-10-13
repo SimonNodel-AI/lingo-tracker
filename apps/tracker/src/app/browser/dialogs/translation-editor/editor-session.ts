@@ -25,8 +25,8 @@ import { EditorEntryForm } from './editor-entry-form';
 import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import { type EditorFocusTarget, EditorPanels } from './editor-panels';
-import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { EditorPresentation } from './editor-presentation';
+import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { resolveDraftKey } from './resource-entry-draft';
 
 export interface TranslationEditorDialogData {

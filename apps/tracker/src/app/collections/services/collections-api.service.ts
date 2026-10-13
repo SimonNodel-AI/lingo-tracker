@@ -1,19 +1,19 @@
-import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import type { Observable } from 'rxjs';
-import { apiPath } from '@simoncodes-ca/data-transfer';
+import { Injectable, inject } from '@angular/core';
 import type {
-  LingoTrackerConfigDto,
-  CreateCollectionDto,
-  UpdateCollectionDto,
-  UpdateConfigDto,
-  CreateBundleDto,
-  UpdateBundleDto,
   BundleDryRunRequestDto,
   BundleDryRunResultDto,
-  GenerateBundleRequestDto,
   BundleGenerateJobDto,
+  CreateBundleDto,
+  CreateCollectionDto,
+  GenerateBundleRequestDto,
+  LingoTrackerConfigDto,
+  UpdateBundleDto,
+  UpdateCollectionDto,
+  UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
+import { apiPath } from '@simoncodes-ca/data-transfer';
+import type { Observable } from 'rxjs';
 
 /**
  * Service for making API calls related to collections management.

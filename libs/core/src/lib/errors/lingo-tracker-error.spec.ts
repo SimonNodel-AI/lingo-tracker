@@ -1,5 +1,7 @@
-import { ERROR_CATALOGUE, ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
 import { describe, expect, it } from 'vitest';
+import { ERROR_CATALOGUE, ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
+import { ErrorMessages } from './error-messages';
+import * as errorClasses from './internal';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
@@ -48,8 +50,6 @@ import {
   TranslationError,
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
-import { ErrorMessages } from './error-messages';
-import * as errorClasses from './internal';
 
 describe('LingoTrackerError subclasses', () => {
   it('keeps the string form of a former plain error for CLI summaries', () => {

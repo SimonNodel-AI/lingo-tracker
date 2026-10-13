@@ -1,7 +1,7 @@
-import { selectionPrompt } from '../utils/prompt-utils';
 import type { PromptContext } from '../runner/command-runner';
+import { collectionFlag, defineFlags, flagName, yesFlag } from '../runner/flag-record';
+import { selectionPrompt } from '../utils/prompt-utils';
 import type { NormalizeOptions } from './normalize';
-import { defineFlags, flagName, collectionFlag, yesFlag } from '../runner/flag-record';
 
 const allFlag = { flags: '--all', description: 'Normalize all collections' };
 

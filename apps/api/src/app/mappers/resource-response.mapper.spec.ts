@@ -4,6 +4,7 @@ import type {
   TerminologyFindings,
   TranslateExistingResourceResult,
 } from '@simoncodes-ca/core';
+import { collection, entry } from './resource.mapper.test-support';
 import {
   mapCreateResourcesResultToDto,
   mapDeleteResourceResultToDto,
@@ -11,7 +12,6 @@ import {
   mapTranslateResourceResultToDto,
   mapUpdateResourceResultToDto,
 } from './resource-response.mapper';
-import { collection, entry } from './resource.mapper.test-support';
 
 const noTerminology: TerminologyFindings = { findings: [], problems: [] };
 const finding = {

@@ -1,7 +1,7 @@
-import { ADD_LOCALE_FLAGS } from './add-locale-flags';
 import { addLocaleToCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { ADD_LOCALE_FLAGS } from './add-locale-flags';
 
 export interface AddLocaleOptions {
   collection?: string;

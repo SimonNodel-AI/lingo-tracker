@@ -1,5 +1,5 @@
-import { flattenKeyTree } from '@simoncodes-ca/domain';
 import { existsSync, readFileSync } from 'node:fs';
+import { flattenKeyTree } from '@simoncodes-ca/domain';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { assertTranslationStatus } from '../resource/translation-status-input';
 import type { ImportedResource, ImportParseOptions } from './types';

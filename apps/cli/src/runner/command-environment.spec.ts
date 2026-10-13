@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
 import { addResourceCommand } from '../add-resource/add-resource';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { CommandOutput } from './command-output';
 import { CommandCancelledError, defineCommand } from './command-runner';
 

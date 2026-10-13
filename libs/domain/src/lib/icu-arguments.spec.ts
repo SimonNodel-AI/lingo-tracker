@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { compareIcuArguments } from './icu-arguments';
 
 /** The arguments a value interpolates, read back as the `missing` side of a comparison against plain text. */

@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
 import { toApiError } from '../../shared/api-error/api-error';
-import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import type { CollectionDraftResult } from './collection-draft';
 import { CollectionForm } from './collection-form';
 import type { CollectionFormDialogData } from './collection-form-dialog-data';

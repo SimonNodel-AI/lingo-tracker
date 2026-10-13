@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
 import { addResource } from './add-resource';
-import { resolveCheckedResourceKey } from './resource-key';
 import { preflightAdd, removeEntry } from './resource-entry';
 import * as resourceFolder from './resource-folder';
+import { resolveCheckedResourceKey } from './resource-key';
 import type { ResourceMutation } from './resource-mutation';
 
 describe('resource entry writes', () => {

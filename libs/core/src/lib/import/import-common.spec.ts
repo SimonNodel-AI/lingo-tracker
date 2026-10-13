@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { detectImportFormat } from './import-common';
 import { importStrategyPolicy } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
+import { detectImportFormat } from './import-common';
 
 describe('import-common', () => {
   describe('detectImportFormat', () => {

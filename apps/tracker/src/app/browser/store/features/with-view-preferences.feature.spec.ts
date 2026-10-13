@@ -3,7 +3,7 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { describe, expect, it } from 'vitest';
 import { LOCAL_STORAGE } from '../../../shared/storage/browser-storage';
 import { MemoryStorageAdapter } from '../../../shared/storage/keyed-storage';
-import { snapshot, type PreferenceState } from '../view-preferences';
+import { type PreferenceState, snapshot } from '../view-preferences';
 import { withViewPreferencesFeature } from './with-view-preferences.feature';
 
 const preferences: PreferenceState = {

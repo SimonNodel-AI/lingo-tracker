@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type SeedResource, seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { planBundle } from './plan-bundle';

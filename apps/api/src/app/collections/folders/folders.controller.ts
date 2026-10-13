@@ -1,5 +1,5 @@
-import { Controller, Post, Delete } from '@nestjs/common';
-import { type Collection, type OpenedCollection, createFolder, deleteFolder, executeMove } from '@simoncodes-ca/core';
+import { Controller, Delete, Post } from '@nestjs/common';
+import { type Collection, createFolder, deleteFolder, executeMove, type OpenedCollection } from '@simoncodes-ca/core';
 import type {
   CreateFolderDto,
   CreateFolderResponseDto,
@@ -13,9 +13,9 @@ import {
   mapDeleteFolderResultToDto,
   mapMoveFolderResultToDto,
 } from '../../mappers/folder-response.mapper';
-import { RouteCollection } from '../route-collection';
 import { createFolderBody, deleteFolderBody, moveFolderBody } from '../../validation/dto-schemas';
 import { ValidBody } from '../../validation/valid-body';
+import { RouteCollection } from '../route-collection';
 
 @Controller('collections/:collectionName/folders')
 export class FoldersController {

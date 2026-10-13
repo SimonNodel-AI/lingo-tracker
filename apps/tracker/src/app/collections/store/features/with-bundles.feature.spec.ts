@@ -1,14 +1,14 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { toApiError } from '../../../shared/api-error/api-error';
 import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import type { BundleDefinitionDto, BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
+import { toApiError } from '../../../shared/api-error/api-error';
 import { CollectionsApiService } from '../../services/collections-api.service';
-import { CollectionsStore } from '../collections.store';
 import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from '../bundle-run-controller';
+import { CollectionsStore } from '../collections.store';
 
 describe('withBundlesFeature', () => {
   let store: InstanceType<typeof CollectionsStore>;

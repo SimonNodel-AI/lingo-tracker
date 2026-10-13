@@ -1,7 +1,7 @@
-import { BehaviorSubject, catchError, defer, of, Subscription, switchMap, takeWhile, tap, type Observable } from 'rxjs';
 import type { BundleGenerateJobDto } from '@simoncodes-ca/data-transfer';
+import { BehaviorSubject, catchError, defer, type Observable, of, Subscription, switchMap, takeWhile, tap } from 'rxjs';
 import type { KeyedStorage } from '../../shared/storage/keyed-storage';
-import { isJobFinished, mapJobToRun, toBundleErrorMessage, type BundleRunState } from './bundle-runs';
+import { type BundleRunState, isJobFinished, mapJobToRun, toBundleErrorMessage } from './bundle-runs';
 
 export const BUNDLE_JOB_POLL_INTERVAL_MS = 500;
 export const BUNDLE_RUNS_STORAGE_KEY = 'lingo-tracker.bundleRuns';

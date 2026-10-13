@@ -1,7 +1,7 @@
-import { selectionPrompt } from '../utils/prompt-utils';
 import type { PromptContext } from '../runner/command-runner';
-import type { BundleOptions } from './bundle';
 import { defineFlags, tokenCasingFlag } from '../runner/flag-record';
+import { selectionPrompt } from '../utils/prompt-utils';
+import type { BundleOptions } from './bundle';
 
 const DEFAULT_DEBUG_KEYS_LOCALE = '99';
 

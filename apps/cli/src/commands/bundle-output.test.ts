@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { bundleCommand } from './bundle';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
 
 const legacyWarning =
   "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.";

@@ -1,7 +1,7 @@
 import { type Command, Option } from 'commander';
 import type prompts from 'prompts';
 import { parseListSelection, parseNameSelection, type Selection } from '../utils/prompt-utils';
-import { choiceOption, commaListOption, option, repeatableListOption, type OptionSpec } from './options';
+import { choiceOption, commaListOption, type OptionSpec, option, repeatableListOption } from './options';
 
 /** A flag or positional value, including the conversion applied at the Commander boundary. */
 type FlagFields = Omit<OptionSpec<unknown>, 'parse'> & {

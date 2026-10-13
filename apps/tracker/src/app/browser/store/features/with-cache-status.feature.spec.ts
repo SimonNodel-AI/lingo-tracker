@@ -1,14 +1,14 @@
-import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { patchState, signalStore, withMethods, withProps, withState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import type { CacheStatusDto } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
-import { collectionSettings } from '../../../../testing/collection-settings';
 import { BrowserStore } from '../browser.store';
 import { withCollectionResetRegistry } from '../collection-reset';
 import { withCacheStatusFeature } from './with-cache-status.feature';

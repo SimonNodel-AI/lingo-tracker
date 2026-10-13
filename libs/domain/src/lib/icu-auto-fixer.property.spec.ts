@@ -1,5 +1,4 @@
 import * as fc from 'fast-check';
-import { translocoToICU } from './transloco-to-icu';
 import {
   autoFixICUPlaceholders,
   autoFixTranslocoPlaceholders,
@@ -8,6 +7,7 @@ import {
   validateICUSyntax,
 } from './icu-auto-fixer';
 import { arbitraryMessage, icuishMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
+import { translocoToICU } from './transloco-to-icu';
 
 describe('autoFixICUPlaceholders properties', () => {
   it('leaves an unmatched apostrophe and malformed brace unchanged on repeated fixes', () => {

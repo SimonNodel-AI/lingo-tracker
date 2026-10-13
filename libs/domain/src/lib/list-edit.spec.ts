@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assertStringArray, listEditProblem, mergeListEdit, validateListEdit, type ListEdit } from './list-edit';
+import { assertStringArray, type ListEdit, listEditProblem, mergeListEdit, validateListEdit } from './list-edit';
 
 const normalize = (values: string[]) => [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 

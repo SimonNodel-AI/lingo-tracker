@@ -1,5 +1,5 @@
-import type { PreferredTerminologyOptions } from './preferred-terminology';
 import { defineFlags, flagName } from '../runner/flag-record';
+import type { PreferredTerminologyOptions } from './preferred-terminology';
 
 const addFlag = {
   flags: '--add <discouraged>',
@@ -22,6 +22,7 @@ export const PREFERRED_TERMINOLOGY_FLAGS = defineFlags<PreferredTerminologyOptio
     description: 'Remove the rule for a discouraged term (case-insensitive)',
   },
 });
+
 import { preferredTerminologyHelpText } from '../runner/help-text';
 
 export const PREFERRED_TERMINOLOGY_REGISTRATION = {

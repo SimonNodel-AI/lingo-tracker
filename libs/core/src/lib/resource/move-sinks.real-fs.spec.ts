@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
-import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { openCollection } from '../config/open-collection';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { executeMove } from './execute-move';

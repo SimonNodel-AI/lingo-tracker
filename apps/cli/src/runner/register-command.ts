@@ -1,5 +1,5 @@
 import type { Command } from 'commander';
-import { registerFlags, flagValues, type FlagRecords } from './flag-record';
+import { type FlagRecords, flagValues, registerFlags } from './flag-record';
 
 export interface CommandRegistration<Options> {
   readonly name: string;

@@ -13,14 +13,13 @@ import {
 import {
   addResources,
   type Collection,
-  type OpenedCollection,
   deleteResource,
   editResource,
   executeMoves,
+  type OpenedCollection,
   prepareTranslationRun,
   translateExistingResource,
 } from '@simoncodes-ca/core';
-import { entryChange } from '@simoncodes-ca/domain';
 import type {
   CacheStatusDto,
   CreateResourceDto,
@@ -39,9 +38,9 @@ import type {
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
+import { entryChange } from '@simoncodes-ca/domain';
 import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
-import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import {
   mapCreateResourcesResultToDto,
   mapDeleteResourceResultToDto,
@@ -50,6 +49,7 @@ import {
   mapUpdateResourceResultToDto,
 } from '../../mappers/resource-response.mapper';
 import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
+import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import {
   createResourcesBody,

@@ -1,13 +1,13 @@
-import { TRANSLATE_LOCALE_FLAGS } from './translate-locale-flags';
 import {
-  prepareTranslationRun,
   type Collection,
+  prepareTranslationRun,
   type TranslationRun,
   type TranslationRunOptions,
 } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport } from '../utils';
+import { TRANSLATE_LOCALE_FLAGS } from './translate-locale-flags';
 
 export interface TranslateLocaleOptions {
   collection?: string;

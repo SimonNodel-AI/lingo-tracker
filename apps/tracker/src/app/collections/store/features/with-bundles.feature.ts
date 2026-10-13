@@ -1,12 +1,6 @@
-import { KeyedStorage, json } from '../../../shared/storage/keyed-storage';
-import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';
-import { computed, inject, DestroyRef } from '@angular/core';
-import { signalStoreFeature, withState, withComputed, withMethods, withHooks, patchState, type } from '@ngrx/signals';
-import { tap, timer, type Observable } from 'rxjs';
+import { computed, DestroyRef, inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
-import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { CollectionsApiService } from '../../services/collections-api.service';
-import { injectConfigWrite } from '../config-write';
+import { patchState, signalStoreFeature, type, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import type {
   BundleDefinitionDto,
   BundleDryRunRequestDto,
@@ -15,8 +9,14 @@ import type {
   LingoTrackerConfigDto,
   UpdateBundleDto,
 } from '@simoncodes-ca/data-transfer';
-import { readPersistedRuns, type BundleRunState } from '../bundle-runs';
-import { BundleRunController, BUNDLE_RUNS_STORAGE_KEY } from '../bundle-run-controller';
+import { type Observable, tap, timer } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';
+import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
+import { CollectionsApiService } from '../../services/collections-api.service';
+import { BUNDLE_RUNS_STORAGE_KEY, BundleRunController } from '../bundle-run-controller';
+import { type BundleRunState, readPersistedRuns } from '../bundle-runs';
+import { injectConfigWrite } from '../config-write';
 
 export interface BundleEntry {
   name: string;

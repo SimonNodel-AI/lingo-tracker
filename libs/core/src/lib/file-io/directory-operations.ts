@@ -1,6 +1,6 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
-import { mkdirSync, accessSync, constants } from 'node:fs';
+import { accessSync, constants, mkdirSync } from 'node:fs';
 import { ErrorMessages } from '../errors/error-messages';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 
 export interface EnsureDirectoryOptions {
   /** Path to the directory to ensure exists */

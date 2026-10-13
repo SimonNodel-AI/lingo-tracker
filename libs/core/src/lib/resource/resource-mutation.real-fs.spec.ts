@@ -1,17 +1,17 @@
-import type { ResourceMutation } from './resource-mutation';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addResource } from './add-resource';
-import { deleteResource } from './delete-resource';
-import { editResource } from './edit-resource';
-import { executeMove } from './execute-move';
 import type { OpenedCollection } from '../config/open-collection';
 import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
+import { addResource } from './add-resource';
+import { deleteResource } from './delete-resource';
+import { editResource } from './edit-resource';
+import { executeMove } from './execute-move';
 import { openResourceFolder } from './resource-folder';
+import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

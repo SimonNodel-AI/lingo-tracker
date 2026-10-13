@@ -1,4 +1,4 @@
-import { type ListEdit, validateListEdit, mergeListEdit, normalizeTags } from '@simoncodes-ca/domain';
+import { type ListEdit, mergeListEdit, normalizeTags, validateListEdit } from '@simoncodes-ca/domain';
 import type { OpenedCollection } from '../lib/config/open-collection';
 import { ErrorMessages } from '../lib/errors/error-messages';
 import { InvalidCollectionError } from '../lib/errors/lingo-tracker-error';

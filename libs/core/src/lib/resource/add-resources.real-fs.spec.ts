@@ -1,22 +1,22 @@
-import type { ResourceMutation } from './resource-mutation';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { openCollection } from '../config/open-collection';
-import { writeJsonFile } from '../file-io/json-file-operations';
 import {
   InvalidResourceKeyError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
   TranslationError,
 } from '../errors/lingo-tracker-error';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
-import { openResourceFolder } from './resource-folder';
 import * as resourceFolder from './resource-folder';
+import { openResourceFolder } from './resource-folder';
+import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

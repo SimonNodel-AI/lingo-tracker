@@ -1,8 +1,8 @@
-import type { SortField, SortDirection } from '../../translations/utils/sort-translations';
 import { computed } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { NEEDS_WORK_STATUSES } from '@simoncodes-ca/domain';
+import type { SortDirection, SortField } from '../../translations/utils/sort-translations';
 import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
 import {
   clearAll,

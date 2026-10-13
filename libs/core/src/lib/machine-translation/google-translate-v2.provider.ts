@@ -1,11 +1,11 @@
 import type { KnownProviderErrorCode } from '../errors/error-codes';
+import { TranslationError } from '../errors/lingo-tracker-error';
 import type {
   ProviderCapabilities,
   TranslateRequest,
   TranslateResult,
   TranslationProvider,
 } from './translation-provider';
-import { TranslationError } from '../errors/lingo-tracker-error';
 
 const GOOGLE_TRANSLATE_API_URL = 'https://translation.googleapis.com/language/translate/v2';
 const PROVIDER_NAME = 'google-translate';

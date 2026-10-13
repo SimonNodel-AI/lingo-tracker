@@ -1,7 +1,7 @@
-import type { Collection } from '../config/open-collection';
 import { canImportLocale, DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
-import { InvalidImportLocaleError } from '../errors/internal';
+import type { Collection } from '../config/open-collection';
 import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
+import { InvalidImportLocaleError } from '../errors/internal';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {
   ICUAutoFix,

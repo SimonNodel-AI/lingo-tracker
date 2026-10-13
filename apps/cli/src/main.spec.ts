@@ -1,8 +1,8 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIND_SIMILAR_FLAGS } from './commands/find-similar-flags';
+import { createCli } from './program';
 import { resolveFlagValues } from './runner/flag-record';
 import { createCommandProject } from './testing/command-project';
-import { createCli } from './program';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // main.ts parses process.argv when imported and lazy-imports each command module;
 // the command modules are replaced so only the flag wiring is under test.
@@ -17,14 +17,14 @@ vi.mock('./commands/edit-collection', () => ({ editCollectionCommand: vi.fn() })
 vi.mock('./commands/protected-terms', () => ({ protectedTermsCommand: vi.fn() }));
 vi.mock('./commands/import-cmd', () => ({ importCommand: vi.fn() }));
 
-import { editCollectionCommand } from './commands/edit-collection';
-import { protectedTermsCommand } from './commands/protected-terms';
-import { exportCommand } from './commands/export-cmd';
 import { addResourceCommand } from './add-resource/add-resource';
+import { editCollectionCommand } from './commands/edit-collection';
+import { exportCommand } from './commands/export-cmd';
 import { findSimilarCommand } from './commands/find-similar';
 import { importCommand } from './commands/import-cmd';
 import { moveResourceCommand } from './commands/move';
 import { normalizeCommand } from './commands/normalize';
+import { protectedTermsCommand } from './commands/protected-terms';
 import { validateCommand } from './commands/validate';
 import { deleteCollectionCommand } from './delete-collection/delete-collection';
 

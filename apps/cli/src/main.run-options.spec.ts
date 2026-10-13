@@ -1,6 +1,6 @@
-import { createCli } from './program';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCli } from './program';
 
 const coreMocks = vi.hoisted(() => ({ loadConfig: vi.fn(), runImport: vi.fn(), runExport: vi.fn() }));
 const promptMock = vi.hoisted(() => vi.fn());

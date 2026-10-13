@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { resolveBundleSettings } from './resolve-bundle-settings';
 

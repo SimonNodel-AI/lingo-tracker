@@ -10,8 +10,8 @@ import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors/i
 import {
   type BundleProgressEvent,
   type BundleTypeOutcome,
-  type GenerateBundleParams,
   bundleTypeOutcomeDetail,
+  type GenerateBundleParams,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';

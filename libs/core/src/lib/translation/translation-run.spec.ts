@@ -7,12 +7,11 @@ import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
+import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
-import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
-import type { TranslateLocaleProgress } from './translation-run';
-
 import * as batchModule from '../resource/translation-batch';
+import type { TranslateLocaleProgress } from './translation-run';
 import {
   prepareTranslationRun,
   type TranslationRunExecutionOptions,
