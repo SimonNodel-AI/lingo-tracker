@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams, type HttpResponse } from '@angular/common/http';
 import { concatWith, ignoreElements, map, type Observable, defer, switchMap } from 'rxjs';
 import { CollectionIndexNotReadyError, INDEX_NOT_READY_MESSAGE, IndexReadiness } from './index-readiness';
+import { apiPath } from '@simoncodes-ca/data-transfer';
 import type {
   ResourceTreeDto,
   TreeStatusResponseDto,
@@ -40,7 +41,6 @@ function treeStatusMessage(body: ResourceTreeDto | TreeStatusResponseDto | null)
 export class BrowserApiService {
   readonly #http = inject(HttpClient);
   readonly #indexReadiness = inject(IndexReadiness);
-  readonly #baseUrl = '/api/collections';
 
   /**
    * Gets the cache status for a collection.
@@ -49,8 +49,9 @@ export class BrowserApiService {
    * @returns Observable of CacheStatusDto
    */
   getCacheStatus(collectionName: string): Observable<CacheStatusDto> {
-    const encodedName = encodeURIComponent(collectionName);
-    return this.#http.get<CacheStatusDto>(`${this.#baseUrl}/${encodedName}/resources/cache/status`);
+    return this.#http.get<CacheStatusDto>(
+      apiPath('GET /api/collections/:collectionName/resources/cache/status', { collectionName }),
+    );
   }
 
   /**
@@ -67,14 +68,16 @@ export class BrowserApiService {
    * @param includeNested - Whether to include nested resources in the resources array
    */
   getResourceTree(collectionName: string, path = '', includeNested = false): Observable<ResourceTreeDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const params = new HttpParams().set('path', path).set('includeNested', includeNested.toString());
 
     const request = () =>
-      this.#http.get<ResourceTreeDto | TreeStatusResponseDto>(`${this.#baseUrl}/${encodedName}/resources/tree`, {
-        params,
-        observe: 'response',
-      });
+      this.#http.get<ResourceTreeDto | TreeStatusResponseDto>(
+        apiPath('GET /api/collections/:collectionName/resources/tree', { collectionName }),
+        {
+          params,
+          observe: 'response',
+        },
+      );
     const treeBody = (response: HttpResponse<ResourceTreeDto | TreeStatusResponseDto>) => {
       if (response.status === 202) {
         throw new CollectionIndexNotReadyError(treeStatusMessage(response.body));
@@ -113,8 +116,10 @@ export class BrowserApiService {
       params = params.set('mode', mode);
     }
 
-    const encodedName = encodeURIComponent(collectionName);
-    return this.#http.get<SearchResultsDto>(`${this.#baseUrl}/${encodedName}/resources/search`, { params });
+    return this.#http.get<SearchResultsDto>(
+      apiPath('GET /api/collections/:collectionName/resources/search', { collectionName }),
+      { params },
+    );
   }
 
   /**
@@ -125,8 +130,10 @@ export class BrowserApiService {
    * @returns Observable of creation response
    */
   createResource(collectionName: string, dto: CreateResourceDto): Observable<CreateResourceResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
-    return this.#http.post<CreateResourceResponseDto>(`${this.#baseUrl}/${encodedName}/resources`, dto);
+    return this.#http.post<CreateResourceResponseDto>(
+      apiPath('POST /api/collections/:collectionName/resources', { collectionName }),
+      dto,
+    );
   }
 
   /**
@@ -137,8 +144,10 @@ export class BrowserApiService {
    * @returns Observable of update response
    */
   updateResource(collectionName: string, dto: UpdateResourceDto): Observable<UpdateResourceResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
-    return this.#http.patch<UpdateResourceResponseDto>(`${this.#baseUrl}/${encodedName}/resources`, dto);
+    return this.#http.patch<UpdateResourceResponseDto>(
+      apiPath('PATCH /api/collections/:collectionName/resources', { collectionName }),
+      dto,
+    );
   }
 
   /**
@@ -149,11 +158,14 @@ export class BrowserApiService {
    * @returns Observable of deletion response
    */
   deleteResource(collectionName: string, resourceKeys: string[]): Observable<DeleteResourceResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: DeleteResourceDto = { keys: resourceKeys };
-    return this.#http.request<DeleteResourceResponseDto>('DELETE', `${this.#baseUrl}/${encodedName}/resources`, {
-      body: dto,
-    });
+    return this.#http.request<DeleteResourceResponseDto>(
+      'DELETE',
+      apiPath('DELETE /api/collections/:collectionName/resources', { collectionName }),
+      {
+        body: dto,
+      },
+    );
   }
 
   /**
@@ -165,12 +177,14 @@ export class BrowserApiService {
    * @returns Observable of folder creation response
    */
   createFolder(collectionName: string, folderName: string, parentPath?: string): Observable<CreateFolderResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: CreateFolderDto = {
       folderName,
       ...(parentPath !== undefined && { parentPath }),
     };
-    return this.#http.post<CreateFolderResponseDto>(`${this.#baseUrl}/${encodedName}/folders`, dto);
+    return this.#http.post<CreateFolderResponseDto>(
+      apiPath('POST /api/collections/:collectionName/folders', { collectionName }),
+      dto,
+    );
   }
 
   /**
@@ -181,11 +195,14 @@ export class BrowserApiService {
    * @returns Observable of folder deletion response
    */
   deleteFolder(collectionName: string, folderPath: string): Observable<DeleteFolderResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: DeleteFolderDto = { folderPath };
-    return this.#http.request<DeleteFolderResponseDto>('DELETE', `${this.#baseUrl}/${encodedName}/folders`, {
-      body: dto,
-    });
+    return this.#http.request<DeleteFolderResponseDto>(
+      'DELETE',
+      apiPath('DELETE /api/collections/:collectionName/folders', { collectionName }),
+      {
+        body: dto,
+      },
+    );
   }
 
   /**
@@ -197,7 +214,6 @@ export class BrowserApiService {
    * @returns Observable of move response
    */
   moveResource(collectionName: string, sourceKey: string, destinationKey: string): Observable<MoveResourceResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: MoveResourceDto = {
       moves: [
         {
@@ -206,7 +222,10 @@ export class BrowserApiService {
         },
       ],
     };
-    return this.#http.post<MoveResourceResponseDto>(`${this.#baseUrl}/${encodedName}/resources/move`, dto);
+    return this.#http.post<MoveResourceResponseDto>(
+      apiPath('POST /api/collections/:collectionName/resources/move', { collectionName }),
+      dto,
+    );
   }
 
   /**
@@ -222,13 +241,15 @@ export class BrowserApiService {
     sourceFolderPath: string,
     destinationFolderPath: string,
   ): Observable<MoveFolderResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: MoveFolderDto = {
       sourceFolderPath,
       destinationFolderPath,
       nestUnderDestination: true,
     };
-    return this.#http.post<MoveFolderResponseDto>(`${this.#baseUrl}/${encodedName}/folders/move`, dto);
+    return this.#http.post<MoveFolderResponseDto>(
+      apiPath('POST /api/collections/:collectionName/folders/move', { collectionName }),
+      dto,
+    );
   }
 
   /**
@@ -239,8 +260,10 @@ export class BrowserApiService {
    * @returns Observable of translate response containing the updated resource
    */
   translateResource(collectionName: string, key: string): Observable<TranslateResourceResponseDto> {
-    const encodedName = encodeURIComponent(collectionName);
     const dto: TranslateResourceDto = { key };
-    return this.#http.post<TranslateResourceResponseDto>(`${this.#baseUrl}/${encodedName}/resources/translate`, dto);
+    return this.#http.post<TranslateResourceResponseDto>(
+      apiPath('POST /api/collections/:collectionName/resources/translate', { collectionName }),
+      dto,
+    );
   }
 }

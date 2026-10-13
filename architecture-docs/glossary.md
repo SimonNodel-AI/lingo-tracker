@@ -1164,6 +1164,14 @@ Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](fron
 
 ---
 
+### Route Manifest
+
+The shared HTTP method and path list (`API_ROUTES` in `libs/data-transfer/src/lib/api-routes.ts`). The API contract spec checks that Nest mounts exactly these routes. Tracker API services build their URLs with `apiPath('POST /api/collections/:collectionName/resources/move', { collectionName })`: the compiler checks the route and its required parameters, and the builder percent-encodes each parameter with `encodeURIComponent`. Services retain query-string handling; static translation assets are outside the manifest.
+
+Explained in context: [`api.md`](api.md), [`frontend.md`](frontend.md)
+
+---
+
 ### Route Project
 
 The API parameter seam for project-scoped bundle, config and collection-creation routes. `@RouteProject()` supplies an `OpenedProject` through `RouteProjectPipe` in `apps/api/src/app/config/route-project.ts`, with `CollectionIndex.sink` attached for write requests; GET handles have no sink. It reads config on first use of `sourceConfig` and retains that snapshot for the request. Invalid bodies and no-op config updates keep their existing responses without a config read. Collections opened through `openProjectCollection` inherit the sink; collection creation reports its reindex through the project sink. Config read errors retain ConfigService's HTTP mappings.
