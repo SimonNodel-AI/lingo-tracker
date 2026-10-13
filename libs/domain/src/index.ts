@@ -41,14 +41,13 @@ export {
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
 export { type ArgumentMismatch, compareIcuArguments } from './lib/icu-arguments';
 export {
-  autoFixICUPlaceholders,
-  autoFixTranslocoPlaceholders,
   hasICUPlaceholders,
   hasQuotedInterpolationDelimiter,
   hasTranslocoPlaceholders,
   type ICUAutoFixResult,
   validateICUSyntax,
 } from './lib/icu-auto-fixer';
+export { type PlaceholderRepair, repairPlaceholders } from './lib/placeholder-repair';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
 export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
 export { icuToTransloco } from './lib/icu-to-transloco';
