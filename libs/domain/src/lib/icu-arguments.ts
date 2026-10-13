@@ -1,5 +1,4 @@
-import { parse, type Token } from '@messageformat/parser';
-import { translocoToICU } from './transloco-to-icu';
+import { parseIcuMessage, visitIcuNodes } from './icu-message';
 
 /**
  * The set of arguments a message interpolates.
@@ -48,45 +47,22 @@ import { translocoToICU } from './transloco-to-icu';
  * @internal
  */
 function parseArguments(value: string): Set<string> | null {
-  let tokens: Token[];
-  try {
-    tokens = parse(translocoToICU(value));
-  } catch {
-    return null;
-  }
+  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+  if (!message.ok) return null;
 
   const found = new Set<string>();
-  collectArguments(tokens, found);
-  return found;
-}
-
-/**
- * Walks a parsed token tree, adding the name of every argument it interpolates.
- *
- * @internal
- */
-function collectArguments(tokens: readonly Token[], found: Set<string>): void {
-  for (const token of tokens) {
-    switch (token.type) {
-      case 'content':
-      case 'octothorpe':
-        break;
-
-      case 'argument':
-      case 'function':
-        found.add(token.arg);
-        break;
-
-      // The argument a sub-message switches on is supplied by the caller like
-      // any other, so it counts, and its branches can hold arguments of their own.
-      default:
-        found.add(token.arg);
-        for (const branch of token.cases) {
-          collectArguments(branch.tokens, found);
-        }
-        break;
+  visitIcuNodes(message.nodes, (node) => {
+    if (node.kind === 'argument') {
+      found.add(node.name);
+      // A style is formatter syntax, not message content.
+      return false;
     }
-  }
+    // The argument a sub-message switches on is supplied by the caller like
+    // any other, so it counts, and its branches can hold arguments of their own.
+    if (node.kind === 'group') found.add(node.name);
+    return true;
+  });
+  return found;
 }
 
 /**

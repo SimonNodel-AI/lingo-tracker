@@ -13,7 +13,7 @@
  * @module transloco-to-icu
  */
 
-import { convertTranslocoPlaceholders } from './transloco-brace-scan';
+import { type IcuRange, parseIcuMessage, spliceIcu, visitIcuNodes } from './icu-message';
 
 /**
  * Converts a string from Transloco double-brace interpolation syntax to ICU
@@ -69,5 +69,13 @@ import { convertTranslocoPlaceholders } from './transloco-brace-scan';
  * ```
  */
 export function translocoToICU(value: string): string {
-  return convertTranslocoPlaceholders(value);
+  if (!value.includes('{{')) return value;
+  // Only interpolations are rewritten; every other byte, malformed spans included, is kept.
+  const edits: { range: IcuRange; text: string }[] = [];
+  visitIcuNodes(parseIcuMessage(value, { interpolation: true }).nodes, (node) => {
+    if (node.kind === 'argument' && node.syntax === 'transloco') {
+      edits.push({ range: node.range, text: `{${node.name}}` });
+    }
+  });
+  return spliceIcu(value, edits);
 }

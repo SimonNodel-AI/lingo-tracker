@@ -81,3 +81,42 @@ describe('classifyICUContent', () => {
     });
   });
 });
+
+it('classifies natural apostrophes around a simple argument', () => {
+  expect(classifyICUContent("don't {name} isn't")).toBe('simple-placeholders');
+});
+
+describe('round-1 classifier pins', () => {
+  it('treats ordinary apostrophes before arguments as literal', () => {
+    expect(classifyICUContent("it's {name}")).toBe('simple-placeholders');
+  });
+  it('recognizes an argument after an incomplete quote', () => {
+    expect(classifyICUContent("'{pa}")).toBe('simple-placeholders');
+  });
+  // The addendum accepted `plain` here; the tree classifier matches HEAD instead, so no
+  // behaviour change remains to accept. A dotted name is a brace frame with no comma.
+  it('classifies an invalid dotted stored argument as HEAD does', () => {
+    expect(classifyICUContent('{a.b}')).toBe('simple-placeholders');
+  });
+  it('classifies brace text without a formatter comma as HEAD does', () => {
+    expect(classifyICUContent('a } b')).toBe('plain');
+    expect(classifyICUContent('{{{name}}}')).toBe('simple-placeholders');
+    expect(classifyICUContent('{a {{x}}}')).toBe('simple-placeholders');
+    expect(classifyICUContent('x {{a}} }')).toBe('simple-placeholders');
+  });
+  // HEAD skipped from an apostrophe to the next one, hiding the brace. The tree reads an
+  // apostrophe as ICU does (allow-list 2), so the unclosed brace is skipped as malformed.
+  it('skips an unclosed brace after a lone apostrophe as complex', () => {
+    expect(classifyICUContent("'{")).toBe('complex-icu');
+  });
+  it('skips a malformed frame holding a formatted argument as complex', () => {
+    expect(classifyICUContent("{a '{' {n,number}}")).toBe('complex-icu');
+  });
+  it('skips a brace holding only a no-break space as complex, as HEAD does', () => {
+    expect(classifyICUContent('{\u00a0}')).toBe('complex-icu');
+  });
+  it('skips a lone or empty brace as complex, as HEAD does', () => {
+    expect(classifyICUContent('{')).toBe('complex-icu');
+    expect(classifyICUContent('{}')).toBe('complex-icu');
+  });
+});

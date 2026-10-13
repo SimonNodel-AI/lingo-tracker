@@ -52,3 +52,7 @@ describe('findUnportablePluralCases', () => {
     expect(findUnportablePluralCases('{count, plural, one {x} other {#}')).toEqual([]);
   });
 });
+
+it('reports a plural category when the lenient group has no other branch', () => {
+  expect(findUnportablePluralCases('{count, plural, zero {{pa}}}')).toEqual([{ arg: 'count', key: 'zero' }]);
+});

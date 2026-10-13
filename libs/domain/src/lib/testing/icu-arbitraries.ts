@@ -260,3 +260,43 @@ export const icuishCompilationMessage = fc
     },
   )
   .map((parts) => parts.join(''));
+
+// Unicode whitespace around header tokens of otherwise valid messages. U+00A0, U+2000–U+200A
+// and U+FEFF are whitespace and name characters at once; U+2028/9 are whitespace only;
+// U+200E/F are pattern whitespace that JavaScript's \s does not match.
+const unicodeHeaderSpace = fc.constantFrom('', '', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '‎', '‏', '﻿', '\v', '\f');
+const unicodePad = fc.array(unicodeHeaderSpace, { maxLength: 2 }).map((parts) => parts.join(''));
+
+const unicodeSpacedArgument = fc
+  .tuple(identifier, fc.array(unicodePad, { minLength: 4, maxLength: 4 }), fc.option(supportedFormat), fc.boolean())
+  .map(([name, [a, b, c, d], type, transloco]) => {
+    if (transloco) return `{{${a}${name}${b}}}`;
+    return type === null ? `{${a}${name}${b}}` : `{${a}${name}${b},${c}${type}${d}}`;
+  });
+
+function unicodeSpacedGroup(body: fc.Arbitrary<string>): fc.Arbitrary<string> {
+  return fc
+    .tuple(
+      identifier,
+      fc.constantFrom('plural', 'select', 'selectordinal'),
+      fc.constantFrom('zero', 'one', 'two', 'few', 'many', 'other', '=2'),
+      fc.option(fc.nat({ max: 12 })),
+      fc.array(unicodePad, { minLength: 9, maxLength: 9 }),
+      body,
+      body,
+    )
+    .map(([name, type, category, offset, pads, first, other]) => {
+      const [p0, p1, p2, p3, p4, p5, p6, p7, p8] = pads;
+      const selector = type === 'select' ? 'chosen' : category;
+      const offsetText = type !== 'select' && offset !== null ? `offset:${p4}${offset}${p5}` : '';
+      return `{${p0}${name}${p1},${p2}${type}${p3},${p4}${offsetText}${selector}${p6}{${first}}${p7}other${p8}{${other}}${p0}}`;
+    });
+}
+
+const unicodeSpacedLeaf = fc.oneof(messageText, unicodeSpacedArgument);
+export const unicodeSpacedMessage = fc
+  .array(
+    fc.oneof(unicodeSpacedLeaf, unicodeSpacedGroup(fc.oneof(unicodeSpacedLeaf, unicodeSpacedGroup(unicodeSpacedLeaf)))),
+    { minLength: 1, maxLength: 4 },
+  )
+  .map((parts) => parts.join(' '));

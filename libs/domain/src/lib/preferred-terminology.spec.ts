@@ -506,3 +506,16 @@ describe('applyPreferredTerm', () => {
     });
   });
 });
+
+it('replaces visible text after an unmatched literal opening brace and apostrophe', () => {
+  expect(applyPreferredTerm("{'hello", { discouraged: 'hello', preferred: 'C#' })).toBe("{'C#");
+});
+it('keeps quoted literal ranges after an unknown lowercase formatter', () => {
+  expect(extractVisibleTextRanges("{pa,unknown}'{x}'")).toEqual([{ start: 12, end: 17 }]);
+});
+it('reads a case body behind an unspaced offset as the stored-value converter left it', () => {
+  expect(extractVisibleTextRanges('{p,plural,offset:2other{{x}} other{y}}')).toEqual([
+    { start: 24, end: 27 },
+    { start: 35, end: 36 },
+  ]);
+});

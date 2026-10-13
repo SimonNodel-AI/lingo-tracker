@@ -1,4 +1,11 @@
-import { translocoToICU } from './transloco-to-icu';
+import {
+  countIcuWork,
+  type IcuError,
+  type IcuRange,
+  icuQuotedRuns,
+  overlapsIcuRun,
+  parseIcuMessage,
+} from './icu-message';
 
 /**
  * ICU Message Format Classification
@@ -37,6 +44,10 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
  * A string is classified as `'simple-placeholders'` when every brace group
  * contains only an identifier or index with no comma.
  *
+ * Each top-level brace group of the ICU Message tree is judged whole. Apostrophes
+ * follow ICU quoting, so `it's {name}` holds a placeholder and `'{x}'` is text. An
+ * unclosed or empty group is `'complex-icu'`, so the value is skipped.
+ *
  * @param value - The translation string to classify.
  * @returns The ICU classification for the string.
  *
@@ -59,78 +70,76 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
  * ```
  */
 export function classifyICUContent(value: string): ICUClassification {
-  // Normalize Transloco double-brace syntax {{ name }} → {name} before
-  // analysis. The surrounding spaces are optional in the Transloco format.
-  const normalized = translocoToICU(value);
-
+  const message = parseIcuMessage(value, { interpolation: true });
+  const quoted = icuQuotedRuns(value);
   let foundSimple = false;
   let foundComplex = false;
-  let i = 0;
 
-  while (i < normalized.length) {
-    const char = normalized[i];
-
-    // Skip ICU escaped sections enclosed in single quotes.
-    if (char === "'") {
-      i++;
-      // Advance until the closing quote (or end of string).
-      while (i < normalized.length && normalized[i] !== "'") {
-        i++;
-      }
-      i++; // consume the closing quote
-      continue;
-    }
-
-    if (char === '{') {
-      // Walk forward, tracking brace depth, to find the matching closing brace.
-      const groupStart = i;
-      let depth = 0;
-      let containsComma = false;
-
-      while (i < normalized.length) {
-        if (normalized[i] === '{') {
-          depth++;
-        } else if (normalized[i] === '}') {
-          depth--;
-          if (depth === 0) {
-            break;
-          }
-        } else if (normalized[i] === ',' && depth === 1) {
-          // A comma at the outermost brace level means a formatter keyword follows.
-          containsComma = true;
-        }
-        i++;
-      }
-
-      // If depth is still > 0 the closing brace was never found — the input is
-      // malformed. Classify as complex-icu to safely skip translation.
-      if (depth > 0) {
-        return 'complex-icu';
-      }
-
-      const groupEnd = i;
-
-      // An empty brace group `{}` is not valid ICU — treat as complex to skip.
-      const inner = normalized.substring(groupStart + 1, groupEnd).trim();
-      if (!inner) {
+  // Each top-level brace frame is judged whole, as the converter frames the value.
+  for (const node of message.nodes) {
+    switch (node.kind) {
+      case 'literal':
+      case 'pound':
+        break;
+      case 'argument':
+        // `{\u00a0}` trims to an empty name, an empty group as far as protection goes.
+        if (node.format === undefined && node.name) foundSimple = true;
+        else foundComplex = true;
+        break;
+      case 'group':
         foundComplex = true;
-      } else if (containsComma) {
-        foundComplex = true;
-      } else {
-        foundSimple = true;
-      }
+        break;
+      case 'error':
+        if (isUnmatchedText(value, node)) break;
+        if (isPlainBraceFrame(value, node, quoted)) foundSimple = true;
+        else foundComplex = true;
+        break;
     }
-
-    i++;
-  }
-
-  if (!foundSimple && !foundComplex) {
-    return 'plain';
   }
 
   if (foundComplex) {
     return 'complex-icu';
   }
+  return foundSimple ? 'simple-placeholders' : 'plain';
+}
 
-  return 'simple-placeholders';
+/** A stray `}` or a malformed quoted run: text, not a brace group. */
+function isUnmatchedText(value: string, node: IcuError): boolean {
+  return node.range.end > node.range.start && value[node.range.start] !== '{';
+}
+
+/**
+ * A closed brace frame that is no argument but can be protected like a simple placeholder,
+ * e.g. `{some text}` or `{a {{x}}}`. It must hold something, have no comma of its own,
+ * contain no quoted run, and hold nothing but text, simple arguments and frames of the same
+ * kind. Anything else — a formatter, a group, a malformed quote, an empty or unclosed frame
+ * — leaves the value complex, so the translator skips it rather than send it unprotected.
+ */
+function isPlainBraceFrame(value: string, node: IcuError, quoted: readonly IcuRange[]): boolean {
+  const { start, end } = node.range;
+  if (end - start < 2 || value[end - 1] !== '}' || isBlank(value, start + 1, end - 1)) return false;
+  if (overlapsIcuRun(quoted, start, end)) return false;
+  // The frame's own text: everything inside its braces except nested constructs.
+  let own = '';
+  let position = start + 1;
+  for (const child of node.nodes) {
+    if (child.kind === 'literal') continue;
+    const simpleArgument = child.kind === 'argument' && child.format === undefined && child.name !== '';
+    if (!simpleArgument && !(child.kind === 'error' && isPlainBraceFrame(value, child, quoted))) return false;
+    own += value.slice(position, child.range.start);
+    position = child.range.end;
+  }
+  own += value.slice(position, end - 1);
+  countIcuWork(own.length + node.nodes.length);
+  return !own.includes(',');
+}
+
+const BLANK = /\s*/y;
+
+/** Whether `[start, end)` of `value` is whitespace only; scans no further than its first non-space. */
+function isBlank(value: string, start: number, end: number): boolean {
+  BLANK.lastIndex = start;
+  BLANK.exec(value);
+  countIcuWork(BLANK.lastIndex - start + 1);
+  return BLANK.lastIndex >= end;
 }
