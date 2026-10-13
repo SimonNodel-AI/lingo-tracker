@@ -1,6 +1,5 @@
 import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 import {
-  describeFolderProblem,
   emptyNormalizeCollectionsResult,
   type NormalizeCollectionsResult,
   normalizeCollections,
@@ -83,18 +82,11 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         'failed',
       );
     }
-    const warnings = collections.flatMap((collection) =>
-      collection.readOnly && all
-        ? [`Skipping read-only collection: ${collection.name}`]
-        : (result.collections.find((item) => item.collectionName === collection.name)?.problems ?? []).map((problem) =>
-            describeFolderProblem(problem, { collectionName: collection.name }),
-          ),
-    );
     const errors = result.errors.map(
       ({ name, error }) =>
         `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`,
     );
-    return reportNormalize(result, collections.length, answers, warnings, errors, result.outcome);
+    return reportNormalize(result, collections.length, answers, result.warnings, errors, result.outcome);
   },
 });
 

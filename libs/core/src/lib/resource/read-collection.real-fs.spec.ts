@@ -79,6 +79,9 @@ describe('readCollection (real fs)', () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ folderPath: 'bad', absolutePath: join(root(), 'bad') });
     expect(problems[0]?.message).toContain('tracker_meta.json');
+    expect(readCollection(collection).warnings).toEqual([
+      `Collection 'main': Skipped unreadable folder 'bad': ${problems[0]?.message}`,
+    ]);
   });
 
   it('reports a folder whose entry is not an object', () => {
@@ -118,7 +121,11 @@ describe('readCollection (real fs)', () => {
   });
 
   it('reads a missing translations folder as an empty collection without problems', () => {
-    expect(readCollection(testCollection(join(root(), 'missing')))).toEqual({ resources: [], problems: [] });
+    expect(readCollection(testCollection(join(root(), 'missing')))).toEqual({
+      resources: [],
+      problems: [],
+      warnings: [],
+    });
   });
 
   it('reports a translations folder that is a file', () => {

@@ -497,7 +497,7 @@ describe('searchResources over the Collection Reader', () => {
       join(testDir, 'broken', 'resource_entries.json'),
       JSON.stringify({ noSource: { es: 'Hola' }, numberSource: { source: 5 }, save: { source: 'Save' } }),
     );
-    const collection = { translationsFolder: testDir, baseLocale: 'en', tags: [] };
+    const collection = { name: 'main', translationsFolder: testDir, baseLocale: 'en', tags: [] };
 
     const results = searchResources(readCollection(collection).resources, collection, query, { mode });
 
@@ -508,7 +508,7 @@ describe('searchResources over the Collection Reader', () => {
   it('gives an entry without a string source the base value ""', () => {
     mkdirSync(join(testDir, 'broken'), { recursive: true });
     writeFileSync(join(testDir, 'broken', 'resource_entries.json'), JSON.stringify({ hola: { es: 'Bienvenido' } }));
-    const collection = { translationsFolder: testDir, baseLocale: 'en', tags: [] };
+    const collection = { name: 'main', translationsFolder: testDir, baseLocale: 'en', tags: [] };
 
     const results = searchResources(readCollection(collection).resources, collection, 'hola');
 
@@ -528,7 +528,7 @@ describe('searchResources over the Collection Reader', () => {
     );
     mkdirSync(join(testDir, 'bad'), { recursive: true });
     writeFileSync(join(testDir, 'bad', 'resource_entries.json'), '{ nope');
-    const collection = { translationsFolder: testDir, baseLocale: 'en', tags: [] };
+    const collection = { name: 'main', translationsFolder: testDir, baseLocale: 'en', tags: [] };
 
     const { resources, problems } = readCollection(collection);
     const results = searchResources(resources, collection, 'guardar');

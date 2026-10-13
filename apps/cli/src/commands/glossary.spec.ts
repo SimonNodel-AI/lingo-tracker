@@ -7,7 +7,7 @@ import { createCommandProject, type CommandProject } from '../testing/command-pr
 import { editResourceCommand } from './edit-resource';
 import { glossaryCommand } from './glossary';
 
-type Glossary = Omit<BuildGlossaryResult, 'readProblems'>;
+type Glossary = Omit<BuildGlossaryResult, 'warnings'>;
 
 const helloTerm = {
   key: 'terms.hello',
@@ -146,6 +146,7 @@ describe('glossaryCommand (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(payload(result.stdout)).toEqual(expectedHello());
     expect(payload(result.stdout)).not.toHaveProperty('readProblems');
+    expect(payload(result.stdout)).not.toHaveProperty('warnings');
     expect(glossaryFiles()).toEqual([]);
   });
   it('keeps stdout to JSON while warnings and status go to stderr', async () => {
@@ -211,6 +212,7 @@ describe('glossaryCommand (real project)', () => {
     expect(result.stdout).toContain('No matching translations found.');
     expect(project.json(glossaryFiles()[0] ?? '')).toMatchObject({ matchCount: 0, terms: [] });
     expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('readProblems');
+    expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('warnings');
   });
   it('includes new translations only when include-all is enabled', async () => {
     const defaults = await project.run(glossaryCommand, { text: 'Goodbye', stdout: true });
@@ -235,6 +237,7 @@ describe('glossaryCommand (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(project.json(glossaryFiles()[0] ?? '')).toEqual(expectedHello());
     expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('readProblems');
+    expect(project.json(glossaryFiles()[0] ?? '')).not.toHaveProperty('warnings');
     expect(result.stderr).toContain("Collection 'main': Skipped unreadable folder 'broken':");
     expect(result.stderr).toContain('resource_entries.json');
     expect(result.stdout).toContain('1 term(s) matched from 1 candidate(s).');
@@ -263,6 +266,7 @@ describe('glossaryCommand (real project)', () => {
       ],
     });
     expect(payload(result.stdout)).not.toHaveProperty('readProblems');
+    expect(payload(result.stdout)).not.toHaveProperty('warnings');
   });
   it('reports the unimplemented ai extractor with the ngram hint and writes no file', async () => {
     const result = await project.run(glossaryCommand, { text: 'Hello', extractor: 'ai' });

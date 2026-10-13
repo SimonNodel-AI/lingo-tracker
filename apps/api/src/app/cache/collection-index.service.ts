@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   type Collection,
-  describeFolderProblem,
   type MutationSink,
   type ResourceMutation,
   ResourceTreeIndex,
@@ -111,11 +110,7 @@ export class CollectionIndex {
   searchPage(collection: Collection, request: SearchRequest): SearchPage {
     const entry = this.#read(collection);
     const source = entry?.status === 'ready' ? entry.index : new ResourceTreeIndex(collection);
-    return source.searchPage(
-      request,
-      (problem) => this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
-      collection,
-    );
+    return source.searchPage(request, (warning) => this.#logger.warn(warning), collection);
   }
 
   /** Index state for the cache-status endpoint. Starts indexing when the collection is not indexed. */
@@ -227,9 +222,7 @@ export class CollectionIndex {
 
     const startedAt = Date.now();
     try {
-      entry.index.load((problem) =>
-        this.#logger.warn(describeFolderProblem(problem, { collectionName: collection.name })),
-      );
+      entry.index.load((warning) => this.#logger.warn(warning));
       entry.status = 'ready';
       entry.indexedAt = new Date();
       entry.lastRevalidationAt = Date.now();

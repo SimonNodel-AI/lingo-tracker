@@ -53,6 +53,7 @@ describe('normalizeCollections', () => {
       foldersRemoved: 0,
     });
     expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual(['Skipping read-only collection: Lib']);
     expect(result.outcome).toBe('succeeded');
   });
 
@@ -107,6 +108,9 @@ describe('normalizeCollections', () => {
     writeFolderFiles(root(), 'broken', { entries: '{ invalid json' });
     const warned = await normalizeCollections([testCollection(root())]);
     expect(warned.collections[0]?.problems).toHaveLength(1);
+    expect(warned.warnings).toEqual([
+      `Collection 'main': Skipped unreadable folder 'broken': ${warned.collections[0]?.problems[0]?.message}`,
+    ]);
     expect(warned.errors).toEqual([]);
     expect(warned.outcome).toBe('succeeded');
   });
