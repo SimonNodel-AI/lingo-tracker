@@ -4,6 +4,7 @@ import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import {
+  describeFolderProblem,
   type CollectionFolderProblem,
   type CollectionFolderVisit,
   type WalkCollectionFoldersOptions,
@@ -31,7 +32,7 @@ import type { ResourceTreeEntry } from './resource-tree-types';
  */
 
 /** What the reader needs from a collection. A resolved `Collection` fits. */
-export type CollectionReadTarget = Pick<Collection, 'translationsFolder' | 'baseLocale' | 'tags'>;
+export type CollectionReadTarget = Pick<Collection, 'name' | 'translationsFolder' | 'baseLocale' | 'tags'>;
 
 /** One resource entry as stored, with its address in the collection. */
 export interface StoredResource {
@@ -61,6 +62,8 @@ export interface CollectionRead {
   readonly resources: StoredResource[];
   /** Folders that could not be read. */
   readonly problems: CollectionReadProblem[];
+  /** Ready-worded folder diagnostics, including the collection name. */
+  readonly warnings: readonly string[];
 }
 
 /** One folder visited by {@link readCollectionFolders}. */
@@ -90,7 +93,11 @@ export function readCollection(
     }
   }
 
-  return { resources, problems };
+  return {
+    resources,
+    problems,
+    warnings: problems.map((problem) => describeFolderProblem(problem, { collectionName: collection.name })),
+  };
 }
 
 /**
@@ -99,7 +106,7 @@ export function readCollection(
  * resource tree loader are built on it.
  */
 export function* readCollectionFolders(
-  collection: CollectionReadTarget,
+  collection: Omit<CollectionReadTarget, 'name'>,
   options: ReadCollectionFoldersOptions = {},
 ): Generator<CollectionFolderRead> {
   const collectionTags = [...collection.tags];

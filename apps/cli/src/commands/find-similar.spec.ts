@@ -27,6 +27,16 @@ describe('find-similar (real project)', () => {
   });
   afterEach(() => project.cleanup());
 
+  it('includes the collection name in folder warnings while keeping readable matches', async () => {
+    await project.seed('common.save', 'Save');
+    project.write('translations/main/broken/resource_entries.json', '{');
+    const result = await run('Save');
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe('Similar values found for "Save":\n  common.save → "Save" (similarity: 100%)\n');
+    expect(result.stderr).toMatch(/^⚠️ {2}Collection 'main': Skipped unreadable folder 'broken': .+\n$/);
+    expect(result.stderr).toContain('resource_entries.json');
+  });
+
   it('reports identical value with the header and full result line', async () => {
     await project.seed('common.button.addItem', 'Add Item');
     expect(project.json('translations/main/common/button/resource_entries.json')).toMatchObject({
@@ -238,7 +248,9 @@ describe('find-similar (real project)', () => {
     project.write('translations/main/broken/resource_entries.json', '{');
     const result = await run('OK');
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toMatch(/^⚠️ {2}Skipped unreadable folder 'broken': .+resource_entries\.json.+\n$/);
+    expect(result.stderr).toMatch(
+      /^⚠️ {2}Collection 'main': Skipped unreadable folder 'broken': .+resource_entries\.json.+\n$/,
+    );
     expect(result.stdout).toBe('Similar values found for "OK":\n  common.ok → "OK" (similarity: 100%)\n');
     expect(project.read('translations/main/broken/resource_entries.json')).toBe('{');
   });

@@ -154,7 +154,6 @@ export {
   type CollectionReadProblem,
   type CollectionReadTarget,
   deleteResource,
-  describeFolderProblem,
   type EntryDetails,
   editResource,
   extractResourcesRecursively,
