@@ -1454,7 +1454,7 @@ Explained in context: [`frontend.md`](frontend.md#tree-navigation)
 
 ### Typed Errors
 
-The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`).
+The errors core raises on purpose. `lingo-tracker-error.ts` declares domain errors with `defineError`, deriving constructor arguments, a stable `code` (for example `RESOURCE_NOT_FOUND`), `kind`, message and readonly payload fields. `ERROR_CATALOGUE` collects exported constructors by their static code, including handwritten classes with custom behaviour, and supplies `ERROR_CODES`. `TranslationError` has a separate catalogue of known provider codes. Named classes retain their instance types and `instanceof` identity. Core owns kinds and details; the API owns HTTP mapping and the CLI owns wording.
 
 Core converts domain key and target-folder errors once at the [Resolved Key](#resolved-key) seam. Locale validation uses `assertValidLocale` and raises `InvalidLocaleError` with the unchanged domain message. Both errors have kind `invalid` and map to HTTP 400. Delete and relocation report the typed key error's message in their results.
 

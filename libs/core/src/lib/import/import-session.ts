@@ -1,6 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { canImportLocale, DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
-import { InvalidImportLocaleError } from '../errors';
+import { InvalidImportLocaleError } from '../errors/internal';
 import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {

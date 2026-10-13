@@ -1,4 +1,4 @@
-import { ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
+import { ERROR_CATALOGUE, ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
 import { describe, expect, it } from 'vitest';
 import {
   AutoTranslationDisabledError,
@@ -49,7 +49,7 @@ import {
   TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
 import { ErrorMessages } from './error-messages';
-import * as errorClasses from './index';
+import * as errorClasses from './internal';
 
 describe('LingoTrackerError subclasses', () => {
   it('keeps the string form of a former plain error for CLI summaries', () => {
@@ -341,6 +341,117 @@ describe('LingoTrackerError subclasses', () => {
     expect(error.name).toBe(name);
     expect(error.code).toBe(code);
     expect(error.message).toBe(message);
+  });
+
+  it('keeps each catalogue constructor, kind, code, message and name compatible with its exported class', () => {
+    const expectedMessages = new Map(cases.map(({ name, message }) => [name, message]));
+    const additionalMessages = {
+      ImportSourceError: 'source failed',
+      InvalidImportLocaleError:
+        'Cannot import into base locale "en" with strategy "translation-service". Only "migration" strategy supports base locale imports.',
+      CollectionBaseLocaleMismatchError:
+        'Cannot combine collections with different base locales (a: en, b: fr). Run them separately.',
+      GlossaryNoCollectionsError: 'Cannot build a glossary without collections.',
+      GlossaryExtractorError: 'Unknown extractor "unknown". Supported: ngram.',
+      ProtectedTermsFileError: 'bad terms',
+      InvalidConfigError: 'bad config',
+      ConfigChangedError: 'The configuration file changed after it was read; run the command again',
+      CannotTranslateBaseLocaleError: 'Cannot translate to the base locale "en".',
+      TranslationLocaleNotConfiguredError: 'Locale "ja" is not configured. Available locales: en',
+      MultipleBundleConstantNameError: 'A token constant name override needs exactly one bundle.',
+      InvalidBundleLocalesError: 'bad locale',
+      CoreOperationError: 'operation failed',
+    };
+    for (const [name, message] of Object.entries(additionalMessages)) {
+      expectedMessages.set(name, message);
+    }
+    const instances = [...cases.map(({ error }) => error), ...additional];
+    const expectedKinds = {
+      ImportSourceError: 'internal',
+      InvalidImportLocaleError: 'internal',
+      CollectionBaseLocaleMismatchError: 'invalid',
+      GlossaryNoCollectionsError: 'internal',
+      GlossaryExtractorError: 'internal',
+      ConfigNotFoundError: 'internal',
+      ConfigParseError: 'internal',
+      ConfigChangedError: 'conflict',
+      InvalidConfigError: 'internal',
+      ProtectedTermsFileError: 'internal',
+      InvalidProjectTermsEditError: 'invalid',
+      CollectionNotFoundError: 'not-found',
+      CollectionAlreadyExistsError: 'conflict',
+      CollectionRequiredByBundleError: 'conflict',
+      CollectionRenameBundleConflictError: 'conflict',
+      ReadOnlyCollectionError: 'forbidden',
+      InvalidCollectionError: 'invalid',
+      InvalidNameError: 'invalid',
+      ProtectedTermsFileNotSetError: 'invalid',
+      ParentDirectoryMissingError: 'invalid',
+      InvalidTranslationStatusError: 'invalid',
+      InvalidLocaleError: 'invalid',
+      LocaleNotFoundError: 'invalid',
+      LocaleAlreadyExistsError: 'invalid',
+      BaseLocaleImmutableError: 'invalid',
+      InvalidResourceKeyError: 'invalid',
+      ResourceNotFoundError: 'not-found',
+      ResourceAlreadyExistsError: 'conflict',
+      FolderNotFoundError: 'not-found',
+      InvalidCollectionFolderError: 'invalid',
+      FolderMoveIntoDescendantError: 'invalid',
+      InvalidFolderPathError: 'invalid',
+      AutoTranslationDisabledError: 'unavailable',
+      NoTranslationTargetLocalesError: 'invalid',
+      CannotTranslateBaseLocaleError: 'invalid',
+      TranslationLocaleNotConfiguredError: 'invalid',
+      MultipleBundleConstantNameError: 'internal',
+      BundleNotFoundError: 'not-found',
+      InvalidBundleLocalesError: 'invalid',
+      BundleAlreadyExistsError: 'conflict',
+      InvalidBundleDefinitionError: 'invalid',
+      PreferredTerminologyValidationError: 'invalid',
+      CoreOperationError: 'internal',
+      BundleHierarchicalConflictError: 'invalid',
+    } as const;
+    expect(Object.keys(ERROR_CATALOGUE).sort()).toEqual(Object.keys(expectedKinds).sort());
+    expect(new Set(Object.values(ERROR_CATALOGUE).map((ErrorClass) => ErrorClass.code)).size).toBe(
+      Object.keys(ERROR_CATALOGUE).length,
+    );
+    for (const [name, ErrorClass] of Object.entries(ERROR_CATALOGUE)) {
+      const error = instances.find((instance): boolean => instance.constructor === ErrorClass);
+      expect(error, `Missing fixture for ${name}`).toBeDefined();
+      expect(ErrorClass.name).toBe(name);
+      expect(error?.name).toBe(name === 'CoreOperationError' ? 'Error' : name);
+      expect(error?.code).toBe(ErrorClass.code);
+      expect(expectedMessages.has(name)).toBe(true);
+      expect(error?.message).toBe(expectedMessages.get(name));
+      expect(error?.kind).toBe(expectedKinds[name as keyof typeof expectedKinds]);
+      expect(error).toBeInstanceOf(LingoTrackerError);
+      expect(error).toBeInstanceOf(ErrorClass);
+    }
+  });
+
+  it('keeps default arguments, copied and shared payloads, causes and subclass identity', () => {
+    const cause = new Error('underlying failure');
+    expect(new ImportSourceError('import', { cause })).toMatchObject({ cause, stage: 'source' });
+    expect(new ImportSourceError('format', { cause, stage: 'format' })).toMatchObject({ cause, stage: 'format' });
+    expect(new InvalidConfigError('config', { cause }).cause).toBe(cause);
+    expect(new CoreOperationError('operation', { cause }).cause).toBe(cause);
+    expect(new CollectionNotFoundError('app', 'destination').message).toBe('Destination collection "app" not found');
+    expect(new InvalidCollectionError('invalid')).toMatchObject({ field: undefined, problem: undefined });
+    expect(new InvalidCollectionError('invalid', { field: 'tags', problem: 'tag-conflict' })).toMatchObject({
+      field: 'tags',
+      problem: 'tag-conflict',
+    });
+    const locales = ['en', 'fr'];
+    const error = new TranslationLocaleNotConfiguredError('ja', locales);
+    expect(error.availableLocales).toEqual(locales);
+    expect(error.availableLocales).not.toBe(locales);
+    const rules = [{ discouraged: 'term', preferred: 'translation' }];
+    expect(new PreferredTerminologyValidationError([], rules).submittedRules).toBe(rules);
+    class CustomResourceError extends ResourceNotFoundError {}
+    const custom = new CustomResourceError('common.ok');
+    expect(custom).toBeInstanceOf(ResourceNotFoundError);
+    expect(custom.name).toBe('CustomResourceError');
   });
 
   it('keeps the typed payload of each error', () => {
