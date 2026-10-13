@@ -136,8 +136,12 @@ describe('round-1 argument pins', () => {
   it('compares dotted interpolation names with themselves', () => {
     expect(compareIcuArguments('{{ a.b }}', '{{ a.b }}')).toBeNull();
   });
-  it('reads a case body behind an unspaced offset as the stored-value converter left it', () => {
-    expect(compareIcuArguments('{p,plural,offset:2other{{x}} other{y}}', '{p}')).toBeNull();
+  // I1: HEAD bug fixed. The case body behind an unspaced offset holds the argument `x`.
+  it('reads a case body behind an unspaced offset as a case body holding its argument', () => {
+    expect(compareIcuArguments('{p,plural,offset:2other{{x}} other{y}}', '{p}')).toEqual({
+      missing: ['x'],
+      unexpected: [],
+    });
   });
   it('reports a missing dotted interpolation argument', () => {
     expect(compareIcuArguments('{{ a.b }}', 'x')).toEqual({ missing: ['a.b'], unexpected: [] });

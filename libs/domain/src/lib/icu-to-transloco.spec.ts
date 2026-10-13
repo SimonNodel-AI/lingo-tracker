@@ -153,6 +153,17 @@ describe('icuToTransloco', () => {
     });
   });
 
+  describe('branch bodies behind glued and non-ASCII selectors', () => {
+    // I2: every case of a valid message is wrapped, whatever its selector spelling.
+    it('wraps a body behind an unspaced offset', () => {
+      expect(icuToTransloco('{p, plural, offset:2other{{x}}}')).toBe('{p, plural, offset:2other{{{x}}}}');
+    });
+
+    it('wraps a body behind a non-ASCII select key', () => {
+      expect(icuToTransloco('{g, select, männlich {{x}} other {y}}')).toBe('{g, select, männlich {{{x}}} other {y}}');
+    });
+  });
+
   describe('mixed simple and complex placeholders', () => {
     it('converts simple placeholder while preserving an adjacent plural', () => {
       const input = 'Hello {name}: {count, plural, one {# item} other {# items}}';

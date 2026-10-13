@@ -120,3 +120,31 @@ describe('round-1 classifier pins', () => {
     expect(classifyICUContent('{}')).toBe('complex-icu');
   });
 });
+
+describe('outer-frame rule (develop outputs)', () => {
+  // I4: a closed, non-blank top-level frame without a comma of its own is simple, whatever it nests.
+  for (const value of ['{outer {x,number}}', '{outer {n, plural, other {x}}}', '{a {b, c}}']) {
+    it(`classifies ${value} as simple placeholders, as develop does`, () => {
+      expect(classifyICUContent(value)).toBe('simple-placeholders');
+    });
+  }
+  for (const value of ['{a b}', '{{{a}}}', '{ {{a}} }', '{a {{x}}}']) {
+    it(`classifies ${value} as simple placeholders`, () => {
+      expect(classifyICUContent(value)).toBe('simple-placeholders');
+    });
+  }
+  for (const value of ["{a '{' {n,number}}", '{a, b}', '{ }', '{}', '{outer {x,number}']) {
+    it(`classifies ${value} as complex ICU`, () => {
+      expect(classifyICUContent(value)).toBe('complex-icu');
+    });
+  }
+  for (const value of ['x}y', "'#{'"]) {
+    it(`classifies ${value} as plain`, () => {
+      expect(classifyICUContent(value)).toBe('plain');
+    });
+  }
+  // I5: a value deeper than the parser's capacity is skipped, as develop does.
+  it('classifies a value nested beyond the parser capacity as complex ICU', () => {
+    expect(classifyICUContent(`x${'{'.repeat(20000)}`)).toBe('complex-icu');
+  });
+});

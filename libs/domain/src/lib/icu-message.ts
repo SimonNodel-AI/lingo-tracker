@@ -24,12 +24,12 @@
  * apostrophe not followed by another, with `''` as a literal apostrophe.
  *
  * In strict interpolation mode, the mode `translocoToICU` converts in, two rules follow
- * the position test stored values have always been converted under, rather than the
- * selector grammar: a group brace opens a case body only when `hasBareSelectorBefore`
- * holds, and a brace that starts a sub-message head opens a group even where a case body
- * could open. Changing either would change stored bytes and checksums. In lenient
+ * a position test rather than the selector grammar: a group brace opens a case body only
+ * when `isBareSelectorBefore` holds, and a brace that starts a sub-message head opens a
+ * group even where a case body could open. The position test accepts every selector the
+ * strict grammar accepts, `offset:2other` and `männlich` included. In lenient
  * interpolation mode, a case body that fails the same position test and holds only
- * `{{name}}` reads as the text the converter left there (see `convertedCaseBody`).
+ * `{{name}}` reads as the text the converter leaves there (see `convertedCaseBody`).
  *
  * @module icu-message
  */
@@ -64,8 +64,28 @@ export interface IcuPound {
   readonly range: IcuRange;
 }
 
+/** Lexical facts about a construct that starts at an unquoted `{`. */
+export interface IcuBraceFacts {
+  /** The construct ends with its own `}`; false when the value ends first. */
+  readonly closed: boolean;
+  /** A `{` or `}` other than its own delimiters lies inside it, quoted or not. */
+  readonly innerBrace: boolean;
+}
+
+/** Lexical facts about a brace frame: a construct at an unquoted `{` that did not parse. */
+export interface IcuFrameFacts extends IcuBraceFacts {
+  /** Only whitespace between the braces. */
+  readonly blank: boolean;
+  /** A `,` between the braces outside nested non-literal nodes. */
+  readonly ownComma: boolean;
+  /** An ICU quoted run overlaps the frame. */
+  readonly quoted: boolean;
+  /** The frame holds exactly one Transloco interpolation filling [start + 1, end - 1), and is closed. */
+  readonly wrapsInterpolation: boolean;
+}
+
 /** `{name}`, `{name, format}` or `{name, format, style}`; or Transloco `{{ name }}`. */
-export interface IcuArgument {
+export interface IcuArgument extends IcuBraceFacts {
   readonly kind: 'argument';
   readonly range: IcuRange;
   readonly nameRange: IcuRange;
@@ -78,7 +98,7 @@ export interface IcuArgument {
 }
 
 /** `{name, plural | select | selectordinal, cases}`. */
-export interface IcuGroup {
+export interface IcuGroup extends IcuBraceFacts {
   readonly kind: 'group';
   readonly range: IcuRange;
   readonly nameRange: IcuRange;
@@ -90,11 +110,26 @@ export interface IcuGroup {
   readonly strays: readonly IcuNode[];
 }
 
+/**
+ * Why a span is malformed:
+ *
+ * - `stray-close`: a strict-mode `}` with no open construct.
+ * - `quote-escape`: a `'#…{…'` quoted run outside plural content.
+ * - `frame`: a construct at an unquoted `{` that did not parse; see `frame`.
+ * - `unclosed`: the zero-width marker that ends an unclosed value.
+ * - `stray-text`: a lenient group recovery token.
+ * - `capacity`: nesting deeper than the call stack.
+ */
+export type IcuErrorCause = 'stray-close' | 'quote-escape' | 'frame' | 'unclosed' | 'stray-text' | 'capacity';
+
 /** A malformed span. A brace frame keeps the content parsed up to its matching `}`. */
 export interface IcuError {
   readonly kind: 'error';
   readonly range: IcuRange;
   readonly message: string;
+  readonly cause: IcuErrorCause;
+  /** Present if and only if `cause` is `frame`. */
+  readonly frame?: IcuFrameFacts;
   readonly nodes: readonly IcuNode[];
 }
 
@@ -181,23 +216,40 @@ export function isSubMessageKeyword(value: string): value is SubMessageKeyword {
 
 /** The opaque ICU quoted runs of `source`, in order. Context-free, like the runtime lexer. */
 export function icuQuotedRuns(source: string): readonly IcuRange[] {
-  const ranges: IcuRange[] = [];
+  return lexIcu(source).runs;
+}
+
+/**
+ * One pass over `source`: its quoted runs, and for every `{` or `}`, quoted or not, the
+ * index of the next one (`source.length` after the last).
+ */
+function lexIcu(source: string): { runs: readonly IcuRange[]; nextBrace: ReadonlyMap<number, number> } {
+  const runs: IcuRange[] = [];
+  const nextBrace = new Map<number, number>();
+  let previousBrace = -1;
+  let quotedUntil = 0;
   countIcuWork(source.length);
   for (let i = 0; i < source.length; i++) {
-    if (source[i] !== "'") continue;
+    const char = source[i];
+    if (char === '{' || char === '}') {
+      if (previousBrace >= 0) nextBrace.set(previousBrace, i);
+      previousBrace = i;
+    }
+    if (char !== "'" || i < quotedUntil) continue;
     if (source[i + 1] === "'") {
-      i++;
+      quotedUntil = i + 2;
       continue;
     }
     QUOTED_RUN.lastIndex = i;
     const match = QUOTED_RUN.exec(source);
     countIcuWork(match ? match[0].length : 1);
     if (match) {
-      ranges.push({ start: i, end: i + match[0].length });
-      i += match[0].length - 1;
+      runs.push({ start: i, end: i + match[0].length });
+      quotedUntil = i + match[0].length;
     }
   }
-  return ranges;
+  if (previousBrace >= 0) nextBrace.set(previousBrace, source.length);
+  return { runs, nextBrace };
 }
 
 /**
@@ -241,18 +293,98 @@ export function hasQuotedInterpolationDelimiter(icu: string): boolean {
  * Whether the text before the `{` at `brace`, back to the preceding `,`, `{` or `}`, is a
  * single selector token, optionally after a plural `offset:N` clause.
  *
- * This is the position rule Transloco-era stored values were converted and bundled
- * under, so it is kept for those two paths: in interpolation mode it decides which
- * group braces open a case body, and the bundler expands only bodies that pass it. It is
- * narrower than the selector grammar: `offset:1one {` passes the grammar and fails here.
+ * In interpolation mode it decides which group braces open a case body. Every case
+ * selector the strict grammar accepts passes it, so it never closes a body the grammar
+ * opens. Internal: exported for specs and the collapsed-case-body report, not from the
+ * package barrel.
+ *
+ * @internal
  */
-export function hasBareSelectorBefore(source: string, brace: number): boolean {
+export function isBareSelectorBefore(source: string, brace: number): boolean {
+  return isBareSelector(selectorTailBefore(source, brace));
+}
+
+/**
+ * Whether `tail` is `\s*(?:offset\s*:\s*\d+(?!\d)\s*)?(?:=\d+|NAME+)\s*`, read in linear
+ * time. The pattern itself backtracks super-linearly on characters such as U+00A0, which
+ * are whitespace and name characters at once.
+ *
+ * @internal
+ */
+export function isBareSelector(tail: string): boolean {
+  countIcuWork(tail.length);
+  if (isSpacedToken(tail)) return true;
+  const rest = afterOffsetClause(tail.trimStart());
+  return rest !== undefined && isSpacedToken(rest);
+}
+
+/**
+ * Whether `text` is `\s*(?:=\d+|NAME+)\s*`. Trimmed text must be the token. With nothing
+ * left, a whitespace-like name character, such as a lone U+00A0, is a token by itself.
+ */
+function isSpacedToken(text: string): boolean {
+  const token = text.trim();
+  return token ? isSelectorToken(token) : isNameRun(text, false);
+}
+
+/** `=\d+`, or one or more name characters. */
+function isSelectorToken(token: string): boolean {
+  if (token[0] === '=') return token.length > 1 && digitRunEnd(token, 1) === token.length;
+  return token.length > 0 && isNameRun(token, true);
+}
+
+/** Whether every code point of `text` is a name character (`all`), or any one is. */
+function isNameRun(text: string, all: boolean): boolean {
+  for (let i = 0; i < text.length; ) {
+    countIcuWork();
+    const char = String.fromCodePoint(text.codePointAt(i) ?? 0);
+    if (NAME_CHAR.test(char) !== all) return !all;
+    i += char.length;
+  }
+  return all;
+}
+
+/** The index after the ASCII digits that start at `from`. */
+function digitRunEnd(text: string, from: number): number {
+  let end = from;
+  while (end < text.length && text[end] >= '0' && text[end] <= '9') {
+    countIcuWork();
+    end++;
+  }
+  return end;
+}
+
+/** The text after a leading `offset\s*:\s*\d+`, or undefined when `token` has no such clause. */
+function afterOffsetClause(token: string): string | undefined {
+  if (!token.startsWith('offset')) return undefined;
+  let i = skipSpaces(token, 'offset'.length);
+  if (token[i] !== ':') return undefined;
+  i = skipSpaces(token, i + 1);
+  const digitsEnd = digitRunEnd(token, i);
+  return digitsEnd > i ? token.slice(digitsEnd) : undefined;
+}
+
+function skipSpaces(text: string, from: number): number {
+  let i = from;
+  while (i < text.length && SPACE_CHAR.test(text[i])) {
+    countIcuWork();
+    i++;
+  }
+  return i;
+}
+
+/**
+ * The text before the `{` at `brace`, back to the preceding `,`, `{` or `}`.
+ *
+ * @internal
+ */
+export function selectorTailBefore(source: string, brace: number): string {
   let boundary = brace - 1;
   while (boundary >= 0 && source[boundary] !== ',' && source[boundary] !== '{' && source[boundary] !== '}') {
     boundary--;
   }
   countIcuWork(brace - boundary);
-  return /^\s*(?:offset\s*:\s*\d+\s+)?(?:=\d+|\w+)\s*$/.test(source.slice(boundary + 1, brace));
+  return source.slice(boundary + 1, brace);
 }
 
 /**
@@ -274,7 +406,7 @@ export function parseIcuMessage(source: string, options: IcuParseOptions = {}): 
     const message = 'Message nesting exceeds parser capacity';
     return {
       source,
-      nodes: [{ kind: 'error', range: { start: 0, end: source.length }, message, nodes: [] }],
+      nodes: [{ kind: 'error', range: { start: 0, end: source.length }, message, cause: 'capacity', nodes: [] }],
       errors: [{ message, position: 0 }],
       ok: false,
     };
@@ -320,6 +452,11 @@ class Parser {
   private position = 0;
   private readonly errors: IcuParseError[] = [];
   private readonly quotes: Map<number, number>;
+  /** Apostrophe counts for argument styles, built on the first style. */
+  private styleQuotes?: StyleQuoteCounts;
+  private readonly runs: readonly IcuRange[];
+  /** For every `{` or `}`, quoted or not, the index of the next one. */
+  private readonly nextBrace: ReadonlyMap<number, number>;
   private readonly interpolation: boolean;
   private readonly lenient: boolean;
   private depth = 0;
@@ -330,7 +467,10 @@ class Parser {
     private readonly source: string,
     options: IcuParseOptions,
   ) {
-    this.quotes = new Map(icuQuotedRuns(source).map((run) => [run.start, run.end]));
+    const lexed = lexIcu(source);
+    this.runs = lexed.runs;
+    this.nextBrace = lexed.nextBrace;
+    this.quotes = new Map(this.runs.map((run) => [run.start, run.end]));
     this.interpolation = options.interpolation === true;
     this.lenient = options.lenient === true;
   }
@@ -339,7 +479,13 @@ class Parser {
     const nodes = this.content(false, false);
     if (this.unclosedReported) {
       const end = this.source.length;
-      nodes.push({ kind: 'error', range: { start: end, end }, message: 'Unclosed placeholder', nodes: [] });
+      nodes.push({
+        kind: 'error',
+        range: { start: end, end },
+        message: 'Unclosed placeholder',
+        cause: 'unclosed',
+        nodes: [],
+      });
     }
     return { source: this.source, nodes, errors: this.errors, ok: this.errors.length === 0 };
   }
@@ -356,9 +502,78 @@ class Parser {
   }
 
   /** Consumes the `}` that closes a frame, or records that the value ended first. */
-  private close(): void {
-    if (this.source[this.position] === '}') this.position++;
-    else this.reportUnclosed();
+  private close(): boolean {
+    if (this.source[this.position] === '}') {
+      this.position++;
+      return true;
+    }
+    this.reportUnclosed();
+    return false;
+  }
+
+  /**
+   * ICU simple styles pair every apostrophe, even before ordinary text. MessageFormat also
+   * decodes message quoting before it reads a number pattern, so a balanced raw style such
+   * as `''` can still leave an unclosed pattern quote. Answered from counts taken once per
+   * value, so nested styles are not rescanned.
+   */
+  private hasBalancedStyleQuotes(start: number, end: number, format: string, inPlural: boolean): boolean {
+    this.styleQuotes ??= countStyleQuotes(this.source, this.quotes);
+    const counts = this.styleQuotes;
+    const between = (prefix: Int32Array): number => (prefix[end] ?? 0) - (prefix[start] ?? 0);
+    if (between(counts.apostrophes) % 2 !== 0) return false;
+    return format !== 'number' || between(inPlural ? counts.decoded : counts.rawHash) % 2 === 0;
+  }
+
+  /** The facts of a construct spanning `[start, this.position)`. */
+  private braceFacts(start: number, closed: boolean): IcuBraceFacts {
+    return { closed, innerBrace: this.hasInnerBrace(start, this.position, closed) };
+  }
+
+  /** Whether a brace lies strictly inside `[start, end)`, not counting its own delimiters. `start` holds a `{`. */
+  private hasInnerBrace(start: number, end: number, closed: boolean): boolean {
+    return (this.nextBrace.get(start) ?? this.source.length) < (closed ? end - 1 : end);
+  }
+
+  /** The facts of the brace frame `[start, end)` whose direct children are `nodes`. */
+  private frameFacts(start: number, end: number, closed: boolean, nodes: readonly IcuNode[]): IcuFrameFacts {
+    const source = this.source;
+    const limit = closed ? end - 1 : end;
+    let ownComma = false;
+    let solid = false;
+    let constructs = 0;
+    let position = start + 1;
+    const scanGap = (gapEnd: number): void => {
+      for (let i = position; i < gapEnd; i++) {
+        countIcuWork();
+        const char = source[i];
+        if (char === ',') ownComma = true;
+        if (!solid && !SPACE_CHAR.test(char)) solid = true;
+      }
+    };
+    for (const child of nodes) {
+      if (child.kind === 'literal' || child.kind === 'pound') continue;
+      constructs++;
+      scanGap(child.range.start);
+      position = child.range.end;
+    }
+    scanGap(limit);
+    const [only] = nodes;
+    const wrapsInterpolation =
+      closed &&
+      nodes.length === 1 &&
+      only?.kind === 'argument' &&
+      only.syntax === 'transloco' &&
+      only.range.start === start + 1 &&
+      only.range.end === end - 1;
+    return {
+      closed,
+      innerBrace: this.hasInnerBrace(start, end, closed),
+      blank: constructs === 0 && !solid,
+      ownComma,
+      quoted: overlapsIcuRun(this.runs, start, end),
+      wrapsInterpolation,
+    };
   }
 
   /** Message content up to a `}` (left for the caller when `inFrame`) or the end. */
@@ -386,7 +601,7 @@ class Parser {
         if (!inPlural && source[start + 1] === '#' && source.slice(start, quoteEnd).includes('{')) {
           const message = `Unsupported escape pattern outside plural at position ${start}`;
           this.report(message, start);
-          add(start, { kind: 'error', range: { start, end: quoteEnd }, message, nodes: [] });
+          add(start, { kind: 'error', range: { start, end: quoteEnd }, message, cause: 'quote-escape', nodes: [] });
         }
       } else if (char === "'" && source[start + 1] === "'") {
         this.position += 2;
@@ -396,7 +611,7 @@ class Parser {
         if (!this.lenient) {
           const message = `Unmatched closing brace at position ${start}`;
           this.report(message, start);
-          add(start, { kind: 'error', range: { start, end: this.position }, message, nodes: [] });
+          add(start, { kind: 'error', range: { start, end: this.position }, message, cause: 'stray-close', nodes: [] });
         }
       } else if (char === '#' && inPlural) {
         this.position++;
@@ -438,6 +653,8 @@ class Parser {
       nameRange: { start: nameStart, end: nameStart + name.length },
       name,
       syntax: 'transloco',
+      closed: true,
+      innerBrace: true,
     };
   }
 
@@ -456,8 +673,9 @@ class Parser {
   private errorFrame(message: string, at: number, start: number, inPlural: boolean): IcuError {
     this.report(message, at);
     const nodes = this.content(inPlural, true);
-    this.close();
-    return { kind: 'error', range: { start, end: this.position }, message, nodes };
+    const closed = this.close();
+    const frame = this.frameFacts(start, this.position, closed, nodes);
+    return { kind: 'error', range: { start, end: this.position }, message, cause: 'frame', frame, nodes };
   }
 
   private strictConstruct(inPlural: boolean): IcuNode {
@@ -479,13 +697,19 @@ class Parser {
       if (typeStart < source.length && source[typeStart] !== '}') {
         return this.errorFrame(`Invalid argument type at position ${typeStart}`, typeStart, start, inPlural);
       }
-      this.close();
+      const closed = this.close();
       // A name of whitespace-like name characters only, `{\u00a0}`, trims to nothing.
       if (!header.name && start === this.outermostStart && source[this.position - 1] === '}') {
         const text = source.slice(start, this.position);
         this.report(`Invalid placeholder syntax at position ${start}: ${text}`, start);
       }
-      return { kind: 'argument', range: { start, end: this.position }, ...header, syntax: 'icu' };
+      return {
+        kind: 'argument',
+        range: { start, end: this.position },
+        ...header,
+        syntax: 'icu',
+        ...this.braceFacts(start, closed),
+      };
     }
     this.position = type.end;
     const format = type.header.name;
@@ -514,21 +738,33 @@ class Parser {
       );
     }
     if (source[this.position] !== ',') {
-      this.close();
-      return { kind: 'argument', range: { start, end: this.position }, ...header, format, syntax: 'icu' };
+      const closed = this.close();
+      return {
+        kind: 'argument',
+        range: { start, end: this.position },
+        ...header,
+        format,
+        syntax: 'icu',
+        ...this.braceFacts(start, closed),
+      };
     }
     this.position++;
     const styleStart = this.position;
     const nodes = this.content(inPlural, true);
     const style = { range: { start: styleStart, end: this.position }, nodes };
-    if (
-      this.position < source.length &&
-      !hasBalancedStyleQuotes(source.slice(styleStart, this.position), format, inPlural)
-    ) {
+    if (this.position < source.length && !this.hasBalancedStyleQuotes(styleStart, this.position, format, inPlural)) {
       this.report(`Unterminated quoted literal in argument style at position ${styleStart}`, styleStart);
     }
-    this.close();
-    return { kind: 'argument', range: { start, end: this.position }, ...header, format, style, syntax: 'icu' };
+    const closed = this.close();
+    return {
+      kind: 'argument',
+      range: { start, end: this.position },
+      ...header,
+      format,
+      style,
+      syntax: 'icu',
+      ...this.braceFacts(start, closed),
+    };
   }
 
   /** The text between cases is selector text; each `{` opens a case body or, failing that, a stray. */
@@ -564,7 +800,7 @@ class Parser {
           this.report(`Invalid sub-message cases or missing 'other' at position ${selectorStart}`, selectorStart);
         }
         this.position++;
-        return { kind: 'group', range: { start, end: this.position }, ...header, type, offset, cases, strays };
+        return this.group(start, header, type, offset, cases, strays, true);
       } else if (char === '{') {
         const segment = source.slice(selectorStart, at);
         countIcuWork(segment.length);
@@ -573,7 +809,7 @@ class Parser {
           this.report(`Invalid sub-message selector or missing body at position ${selectorStart}`, selectorStart);
         }
         const opensBody = this.interpolation
-          ? hasBareSelectorBefore(source, at) && !this.opensSubMessage(at)
+          ? isBareSelectorBefore(source, at) && !this.opensSubMessage(at)
           : selector !== undefined;
         if (opensBody) {
           const key = selector?.selector ?? segment.trim();
@@ -589,7 +825,21 @@ class Parser {
       }
     }
     this.reportUnclosed();
-    return { kind: 'group', range: { start, end: this.position }, ...header, type, offset, cases, strays };
+    return this.group(start, header, type, offset, cases, strays, false);
+  }
+
+  /** A group spanning `[start, this.position)`. */
+  private group(
+    start: number,
+    header: { name: string; nameRange: IcuRange },
+    type: SubMessageKeyword,
+    offset: number | undefined,
+    cases: readonly IcuCase[],
+    strays: readonly IcuNode[],
+    closed: boolean,
+  ): IcuGroup {
+    const range = { start, end: this.position };
+    return { kind: 'group', range, ...header, type, offset, cases, strays, ...this.braceFacts(start, closed) };
   }
 
   /**
@@ -616,14 +866,14 @@ class Parser {
   }
 
   /**
-   * In interpolation mode, a case brace that fails `hasBareSelectorBefore` and opens
-   * `{{name}}` is where the Transloco-era converter rewrote `{{name}}` to `{name}`, so the
-   * runtime read the case body as the text `name`. The body is read the same way here:
-   * one literal between the outer braces, `offset:2other{{x}}` holding no argument.
+   * In interpolation mode, a case brace that fails `isBareSelectorBefore` and opens
+   * `{{name}}` is where the converter rewrites `{{name}}` to `{name}`, so the runtime reads
+   * the case body as the text `name`. The body is read the same way here: one literal
+   * between the outer braces. Only malformed selectors reach it, such as `a.b {{x}}`.
    */
   private convertedCaseBody(selector: string, segment: string, inPlural: boolean): IcuCase | undefined {
     const brace = this.position;
-    if (!this.interpolation || hasBareSelectorBefore(this.source, brace)) return undefined;
+    if (!this.interpolation || isBareSelectorBefore(this.source, brace)) return undefined;
     INTERPOLATION.lastIndex = brace;
     const match = INTERPOLATION.exec(this.source);
     if (!match) return undefined;
@@ -653,11 +903,23 @@ class Parser {
     const at = this.position;
     if (at >= source.length) {
       this.reportUnclosed();
-      return { kind: 'argument', range: { start, end: at }, ...header, syntax: 'icu' };
+      return {
+        kind: 'argument',
+        range: { start, end: at },
+        ...header,
+        syntax: 'icu',
+        ...this.braceFacts(start, false),
+      };
     }
     if (source[at] === '}') {
       this.position++;
-      return { kind: 'argument', range: { start, end: this.position }, ...header, syntax: 'icu' };
+      return {
+        kind: 'argument',
+        range: { start, end: this.position },
+        ...header,
+        syntax: 'icu',
+        ...this.braceFacts(start, true),
+      };
     }
     LENIENT_SUB_MESSAGE.lastIndex = at;
     const subMessage = LENIENT_SUB_MESSAGE.exec(source);
@@ -679,14 +941,29 @@ class Parser {
       if (this.position < source.length && source[this.position] !== '}') {
         return this.errorFrame(`Invalid argument type at position ${at}`, at, start, inPlural);
       }
-      this.close();
-      return { kind: 'argument', range: { start, end: this.position }, ...header, format, syntax: 'icu' };
+      const closed = this.close();
+      return {
+        kind: 'argument',
+        range: { start, end: this.position },
+        ...header,
+        format,
+        syntax: 'icu',
+        ...this.braceFacts(start, closed),
+      };
     }
     const styleStart = this.position;
     const nodes = this.content(inPlural, true);
     const style = { range: { start: styleStart, end: this.position }, nodes };
-    this.close();
-    return { kind: 'argument', range: { start, end: this.position }, ...header, format, style, syntax: 'icu' };
+    const closed = this.close();
+    return {
+      kind: 'argument',
+      range: { start, end: this.position },
+      ...header,
+      format,
+      style,
+      syntax: 'icu',
+      ...this.braceFacts(start, closed),
+    };
   }
 
   /** The runtime lexer's select state: offsets, `key {`, and the closing brace. */
@@ -730,7 +1007,7 @@ class Parser {
       const end = LENIENT_GROUP_END.exec(source);
       if (end) {
         this.position += end[0].length;
-        return { kind: 'group', range: { start, end: this.position }, ...header, type, offset, cases, strays };
+        return this.group(start, header, type, offset, cases, strays, true);
       }
       SPACE_RUN.lastIndex = at;
       SPACE_RUN.exec(source);
@@ -748,7 +1025,7 @@ class Parser {
       countIcuWork(this.position - at);
     }
     this.reportUnclosed();
-    return { kind: 'group', range: { start, end: this.position }, ...header, type, offset, cases, strays };
+    return this.group(start, header, type, offset, cases, strays, false);
   }
 }
 
@@ -824,7 +1101,7 @@ function trimName(header: { name: string; nameRange: IcuRange }): { name: string
 }
 
 function errorAt(start: number, end: number): IcuError {
-  return { kind: 'error', range: { start, end }, message: 'Unexpected text', nodes: [] };
+  return { kind: 'error', range: { start, end }, message: 'Unexpected text', cause: 'stray-text', nodes: [] };
 }
 
 /** The selector of the case whose text precedes a body brace, by the strict grammar. */
@@ -850,28 +1127,51 @@ function readStrictSelector(
 }
 
 /**
- * ICU simple styles pair every apostrophe, even before ordinary text. MessageFormat also
- * decodes message quoting before it reads a number pattern, so a balanced raw style such
- * as `''` can still leave an unclosed pattern quote.
+ * Prefix counts over a value, indexed by offset: raw apostrophes, and the apostrophes of
+ * the number pattern MessageFormat reads after decoding message quoting, with every quoted
+ * run decoded (`decoded`, plural content) or with `'#…'` runs kept raw (`rawHash`, outside
+ * it). A style never splits a quoted run or a `''` pair, so a difference of two entries is
+ * exact for it.
  */
-function hasBalancedStyleQuotes(style: string, format: string, inPlural: boolean): boolean {
-  countIcuWork(style.length);
-  if ((style.match(/'/g)?.length ?? 0) % 2 !== 0) return false;
-  if (format !== 'number') return true;
-  const quotes = new Map(icuQuotedRuns(style).map((run) => [run.start, run.end]));
-  let pattern = '';
-  for (let i = 0; i < style.length; i++) {
-    const end = quotes.get(i);
-    if (end !== undefined) {
-      const run = style.slice(i, end);
-      pattern += !inPlural && run[1] === '#' ? run : run.slice(1, -1).replace(/''/g, "'");
-      i = end - 1;
-    } else if (style[i] === "'" && style[i + 1] === "'") {
-      pattern += "'";
-      i++;
-    } else {
-      pattern += style[i];
+interface StyleQuoteCounts {
+  readonly apostrophes: Int32Array;
+  readonly decoded: Int32Array;
+  readonly rawHash: Int32Array;
+}
+
+function countStyleQuotes(source: string, quotes: ReadonlyMap<number, number>): StyleQuoteCounts {
+  const apostrophes = new Int32Array(source.length + 1);
+  const decoded = new Int32Array(source.length + 1);
+  const rawHash = new Int32Array(source.length + 1);
+  let raw = 0;
+  let decodedCount = 0;
+  let rawHashCount = 0;
+  let i = 0;
+  while (i < source.length) {
+    const runEnd = quotes.get(i);
+    let end = i + 1;
+    if (runEnd !== undefined) {
+      end = runEnd;
+      let inside = 0;
+      for (let j = i; j < end; j++) if (source[j] === "'") inside++;
+      countIcuWork(end - i);
+      raw += inside;
+      // The delimiters go, and each `''` inside reads as one apostrophe.
+      decodedCount += (inside - 2) / 2;
+      rawHashCount += source[i + 1] === '#' ? inside : (inside - 2) / 2;
+    } else if (source[i] === "'") {
+      end = source[i + 1] === "'" ? i + 2 : i + 1;
+      raw += end - i;
+      decodedCount++;
+      rawHashCount++;
     }
+    for (let j = i + 1; j <= end; j++) {
+      countIcuWork();
+      apostrophes[j] = raw;
+      decoded[j] = decodedCount;
+      rawHash[j] = rawHashCount;
+    }
+    i = end;
   }
-  return (pattern.match(/'/g)?.length ?? 0) % 2 === 0;
+  return { apostrophes, decoded, rawHash };
 }

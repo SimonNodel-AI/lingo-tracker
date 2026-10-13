@@ -207,6 +207,24 @@ const CASES: RoundTripCase[] = [
     expected: { rendered: 'Flood' },
   },
   {
+    // I2: the selector is glued to the offset, which the bundler used to leave unwrapped.
+    name: 'plural branch body that is only an argument, behind an unspaced offset, renders',
+    stored: '{p, plural, offset:2other{{x}}}',
+    params: { p: 2, x: 'Al' },
+    locale: 'en',
+    interpolated: '{p, plural, offset:2other{Al}}',
+    expected: { rendered: 'Al' },
+  },
+  {
+    // I2: a select key outside ASCII, which the bundler used to leave unwrapped.
+    name: 'select branch body that is only an argument, behind a non-ASCII key, renders',
+    stored: '{g, select, männlich {{x}} other {y}}',
+    params: { g: 'männlich', x: 'Al' },
+    locale: 'de',
+    interpolated: '{g, select, männlich {Al} other {y}}',
+    expected: { rendered: 'Al' },
+  },
+  {
     name: 'plural branch body that is text plus an argument renders',
     stored: DELETE_COUNT_PLURAL,
     params: { deleteCount: 1, itemName: 'Flood Risk' },

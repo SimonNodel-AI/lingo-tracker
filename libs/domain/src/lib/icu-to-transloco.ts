@@ -33,10 +33,10 @@
  */
 
 import {
-  hasBareSelectorBefore,
   hasIcuQuoteOpener,
   type IcuArgument,
   type IcuGroup,
+  type IcuNode,
   type IcuRange,
   icuQuotedRuns,
   parseIcuMessage,
@@ -163,8 +163,9 @@ export function icuToTransloco(value: string): string {
  * The text of a top-level construct, with every case body that is exactly one bare
  * argument wrapped in one extra brace pair: `=1 {{itemName}}` becomes `=1 {{{itemName}}}`.
  *
- * Only a body whose selector text passes `hasBareSelectorBefore` is wrapped, the position
- * rule stored values were converted under. Bodies with text beside the argument, nested
+ * The value parses in strict mode, and every case selector of a strict-ok message passes
+ * the converter's position rule (`isBareSelectorBefore`), so every such body is wrapped and
+ * the converter reads it back as a body. Bodies with text beside the argument, nested
  * groups and formatted arguments stay as they are.
  */
 function expandPlaceholderOnlyBodies(value: string, construct: IcuArgument | IcuGroup): string {
@@ -178,8 +179,7 @@ function expandPlaceholderOnlyBodies(value: string, construct: IcuArgument | Icu
         only.format === undefined &&
         rest.length === 0 &&
         only.range.start === branch.body.start &&
-        only.range.end === branch.body.end &&
-        hasBareSelectorBefore(value, branch.body.start - 1)
+        only.range.end === branch.body.end
       ) {
         edits.push({ range: only.range, text: `{${value.slice(only.range.start, only.range.end)}}` });
       }
@@ -242,11 +242,16 @@ export function hasUnbundlableBranchBody(value: string): boolean {
         return false;
       }
       const bareArgument = only.kind === 'argument' && only.syntax === 'icu' && only.format === undefined;
-      const text = value.slice(only.range.start, only.range.end);
       // Transloco's matcher, {{([^{}]*?)}}, consumes the body only when nothing inside it is a brace.
-      return !bareArgument && /^\{[^{}]*\}?$/.test(text);
+      return !bareArgument && opensWithoutInnerBrace(only);
     });
     return !found;
   });
   return found;
+}
+
+/** A construct at an unquoted `{` with no brace inside it other than its own delimiters. */
+function opensWithoutInnerBrace(node: IcuNode): boolean {
+  if (node.kind === 'argument' || node.kind === 'group') return !node.innerBrace;
+  return node.kind === 'error' && node.cause === 'frame' && node.frame !== undefined && !node.frame.innerBrace;
 }

@@ -300,3 +300,25 @@ export const unicodeSpacedMessage = fc
     { minLength: 1, maxLength: 4 },
   )
   .map((parts) => parts.join(' '));
+
+// Selectors the strict grammar accepts but an ASCII-only, space-after-offset rule rejects:
+// `offset:N` glued to the category or `=N`, and select keys outside ASCII. Each first case
+// body is only a Transloco-era `{{name}}`.
+export const gluedSelectorMessage = fc
+  .tuple(
+    fc.boolean(),
+    identifier,
+    fc.nat({ max: 12 }),
+    fc.constantFrom('', ' '),
+    fc.constantFrom('zero', 'one', 'two', 'few', 'many', '=0', '=2', '=12'),
+    fc.constantFrom('männlich', 'weiblich', '日本', 'é', 'Жена', 'chosen'),
+    fc.constantFrom('', ' '),
+    messageText,
+    messageText,
+  )
+  .map(([plural, name, offset, glue, category, key, pad, other, text]) => {
+    const cases = plural
+      ? `offset:${offset}${glue}${category}${pad}{{${name}}} other {${other}}`
+      : `${key}${pad}{{${name}}} other {${other}}`;
+    return `${text}{${plural ? 'count, plural' : 'gender, select'}, ${cases}}`;
+  });
