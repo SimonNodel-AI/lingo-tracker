@@ -1,7 +1,7 @@
-import { REMOVE_LOCALE_FLAGS } from './remove-locale-flags';
 import { removeLocaleFromCollection } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { REMOVE_LOCALE_FLAGS } from './remove-locale-flags';
 
 export interface RemoveLocaleOptions {
   collection?: string;

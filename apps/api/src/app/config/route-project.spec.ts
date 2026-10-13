@@ -1,4 +1,4 @@
-import { openProjectCollection, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { type LingoTrackerConfig, openProjectCollection } from '@simoncodes-ca/core';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { FoldersController } from '../collections/folders/folders.controller';
 import { RouteCollectionPipe, routeCollectionRef } from '../collections/route-collection';

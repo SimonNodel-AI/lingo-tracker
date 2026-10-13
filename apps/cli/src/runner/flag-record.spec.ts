@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { describe, expect, it } from 'vitest';
-import { defineFlags, flagName, flagValues, resolveFlagValues } from './flag-record';
 import { defineCommand, runCommand } from './command-runner';
+import { defineFlags, flagName, flagValues, resolveFlagValues } from './flag-record';
 import { registerCommand } from './register-command';
 
 const noRun = async () => undefined;

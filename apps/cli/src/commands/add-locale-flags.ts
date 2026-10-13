@@ -1,6 +1,6 @@
+import { collectionFlag, defineFlags, localeFlag } from '../runner/flag-record';
 import { missingTextQuestions } from '../utils/prompt-utils';
 import type { AddLocaleOptions } from './add-locale';
-import { defineFlags, collectionFlag, localeFlag } from '../runner/flag-record';
 
 export const ADD_LOCALE_FLAGS = defineFlags<AddLocaleOptions>()({
   collection: collectionFlag('Name of the collection'),

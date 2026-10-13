@@ -1,7 +1,7 @@
 import { displayTermPath, planProjectTermsUpdate } from '@simoncodes-ca/core';
-import { PROTECTED_TERMS_FLAGS } from './protected-terms-flags';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { PROTECTED_TERMS_FLAGS } from './protected-terms-flags';
 
 export interface ProtectedTermsOptions {
   collection?: string;

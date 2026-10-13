@@ -1,5 +1,5 @@
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { HttpErrorResponse } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { ApiError, provideTrackerHttpClient, toApiError } from '../../shared/api-error/api-error';
-import { classifyConfigRefusal } from './config-write';
 import { CollectionsStore } from './collections.store';
+import { classifyConfigRefusal } from './config-write';
 
 const CONFIG_URL = '/api/config';
 

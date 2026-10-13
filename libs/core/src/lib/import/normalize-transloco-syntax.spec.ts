@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
 import { translocoToICU } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
+import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
 import type { ImportedResource } from './types';
 
 describe('translocoToICU', () => {

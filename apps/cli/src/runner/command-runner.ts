@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
   CONFIG_FILENAME,
   type Collection,
@@ -9,17 +10,16 @@ import {
   type OpenedProject,
   openCollection,
 } from '@simoncodes-ca/core';
-import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import prompts from 'prompts';
-import { withCommandOutput, type CommandOutputSink } from './command-output';
-import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { type Selection, selectionPrompt } from '../utils/prompt-utils';
-import { flagQuestions, flagName, resolveFlagValues, type FlagRecords } from './flag-record';
-import { CommandCancelledError } from './command-cancelled-error';
-import { isInteractiveTerminal } from './terminal';
+import { parseCommaSeparatedList } from '../utils/string-parsers';
 import { printCliError } from './cli-error-wording';
+import { CommandCancelledError } from './command-cancelled-error';
+import { type CommandOutputSink, withCommandOutput } from './command-output';
+import { type FlagRecords, flagName, flagQuestions, resolveFlagValues } from './flag-record';
+import { isInteractiveTerminal } from './terminal';
 
 export { CommandCancelledError } from './command-cancelled-error';
 

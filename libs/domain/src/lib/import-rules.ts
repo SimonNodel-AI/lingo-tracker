@@ -1,4 +1,4 @@
-import { importStrategyPolicy, type ImportStrategy } from './import-strategy-policy';
+import { type ImportStrategy, importStrategyPolicy } from './import-strategy-policy';
 
 export { DEFAULT_IMPORT_STRATEGY } from './import-strategy-policy';
 

@@ -1,9 +1,9 @@
-import { ADD_COLLECTION_FLAGS } from './add-collection-flags';
 import { addCollection, CONFIG_FILENAME } from '@simoncodes-ca/core';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import { type Ask, defineCommand } from '../runner/command-runner';
 import type { InitOptions } from '../types/init-options.js';
 import { ConsoleFormatter } from '../utils';
+import { ADD_COLLECTION_FLAGS } from './add-collection-flags';
 
 export const addCollectionCommand = defineCommand<AddCollectionOptions>()({
   flags: ADD_COLLECTION_FLAGS,

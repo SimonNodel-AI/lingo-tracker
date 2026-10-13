@@ -4,8 +4,8 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import type { BundleEntry } from '../store/features/with-bundles.feature';
 import type { BundleRunState } from '../store/bundle-runs';
+import type { BundleEntry } from '../store/features/with-bundles.feature';
 
 const LOCALE_PLACEHOLDER = '{locale}';
 

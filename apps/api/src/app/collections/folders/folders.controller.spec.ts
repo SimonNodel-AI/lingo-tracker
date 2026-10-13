@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { addResource, loadConfig, openCollection, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { addResource, type LingoTrackerConfig, loadConfig, openCollection } from '@simoncodes-ca/core';
 import { AppModule } from '../../app.module';
 import { ConfigService } from '../../config/config.service';
 

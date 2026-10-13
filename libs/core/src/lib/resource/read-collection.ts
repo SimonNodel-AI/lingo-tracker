@@ -4,9 +4,9 @@ import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import {
-  describeFolderProblem,
   type CollectionFolderProblem,
   type CollectionFolderVisit,
+  describeFolderProblem,
   type WalkCollectionFoldersOptions,
   walkCollectionFolders,
 } from './collection-folders';

@@ -1,4 +1,4 @@
-import { compareIcuArguments, type ArgumentMismatch } from './icu-arguments';
+import { type ArgumentMismatch, compareIcuArguments } from './icu-arguments';
 import { findProtectedTermViolations } from './protected-terms';
 
 /** Facts about a translated value that violates its source's contract. */

@@ -2,7 +2,7 @@ import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors';
 import { describeFolderProblem } from '../resource/collection-folders';
 import type { RunOutcome } from '../run-outcome';
-import { normalize, type NormalizeOptions, type NormalizeResult } from './normalize';
+import { type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
 
 const NUMERIC_FIELDS = [
   'entriesProcessed',

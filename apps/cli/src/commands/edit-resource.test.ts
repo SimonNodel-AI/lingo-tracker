@@ -1,10 +1,10 @@
 import { Command } from 'commander';
-import { flagValues, registerFlags } from '../runner/flag-record';
-import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { editResourceCommand } from './edit-resource';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 
 describe('editResourceCommand (real project)', () => {
   let project: CommandProject;

@@ -1,11 +1,11 @@
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
+import type { CompanionFileWrite } from '../lib/config/config-write-transaction';
 import {
   resolveWritableCollectionProtectedTermsPath,
   writeProtectedTermsFile,
 } from '../lib/config/protected-terms-file';
 import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { CollectionNotFoundError } from '../lib/errors/lingo-tracker-error';
-import type { CompanionFileWrite } from '../lib/config/config-write-transaction';
 
 /** Check the resulting entry and destination before a collection lifecycle write begins. */
 export function prepareCollectionProtectedTerms(

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { resolveResourcePaths, resolveResolvedResourcePaths } from './resource-file-paths';
+import { resolveResolvedResourcePaths, resolveResourcePaths } from './resource-file-paths';
 
 describe('resource file paths', () => {
   const dir = useTempDir('resource-paths-');

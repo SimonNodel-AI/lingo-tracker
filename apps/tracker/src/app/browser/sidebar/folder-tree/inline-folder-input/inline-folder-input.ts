@@ -1,10 +1,10 @@
-import { Component, ChangeDetectionStrategy, input, output, effect, viewChild, type ElementRef } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, type ElementRef, effect, input, output, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatInputModule } from '@angular/material/input';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { segmentValidator } from '../../../../shared/validators/segment.validator';

@@ -1,18 +1,18 @@
-import { flagName } from '../runner/flag-record';
-import type { ImportRunOptions, ImportFormat } from '@simoncodes-ca/core';
+import type { ImportFormat, ImportRunOptions } from '@simoncodes-ca/core';
 import {
   canImportLocale,
-  type ImportStrategy,
-  IMPORT_STRATEGIES,
-  importableLocales,
-  isImportStrategy,
   DEFAULT_IMPORT_STRATEGY,
+  IMPORT_STRATEGIES,
+  type ImportStrategy,
+  importableLocales,
   importStrategyPolicy,
+  isImportStrategy,
 } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
+import { flagName } from '../runner/flag-record';
 import type { ImportCommandOptions, ImportOptionsContext } from './import-options';
+import { type OrderedCommandOptionTable, resolveOption } from './option-table';
 import { mergeRunOptions } from './run-option-defaults';
-import { resolveOption, type OrderedCommandOptionTable } from './option-table';
 
 type ImportAnswers = ImportCommandOptions & Readonly<Record<string, unknown>>;
 export interface ImportTableContext extends ImportOptionsContext {

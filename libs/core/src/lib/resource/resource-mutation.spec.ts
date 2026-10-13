@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { saveReporting, type ResourceMutation } from './resource-mutation';
+import { type ResourceMutation, saveReporting } from './resource-mutation';
 
 describe('saveReporting', () => {
   const saved = (): ResourceMutation[] => [{ kind: 'remove', translationsFolder: '/translations', key: 'common.ok' }];

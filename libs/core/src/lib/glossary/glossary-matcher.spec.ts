@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { matchGlossary, scoreMatch, type FlatEntry } from './glossary-matcher';
+import { describe, expect, it } from 'vitest';
+import { type FlatEntry, matchGlossary, scoreMatch } from './glossary-matcher';
 
 describe('scoreMatch', () => {
   it('returns 1 for an exact, case-insensitive match', () => {

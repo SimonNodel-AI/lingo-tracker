@@ -1,8 +1,8 @@
-import { buildKeyTree } from '@simoncodes-ca/domain';
-import type { ExportOptions, ExportResult, FilteredResource } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { buildKeyTree } from '@simoncodes-ca/domain';
 import { writeJsonFile } from '../file-io/json-file-operations';
+import type { ExportOptions, ExportResult, FilteredResource } from './types';
 
 /**
  * Exports resources to JSON format.

@@ -1,7 +1,7 @@
 import type { KnownProviderErrorCode } from '../errors/error-codes';
-import type { TranslationProvider } from './translation-provider';
 import { TranslationError } from '../errors/lingo-tracker-error';
 import { GoogleTranslateV2Provider } from './google-translate-v2.provider';
+import type { TranslationProvider } from './translation-provider';
 
 /**
  * Instantiates the requested translation provider with the given API key.

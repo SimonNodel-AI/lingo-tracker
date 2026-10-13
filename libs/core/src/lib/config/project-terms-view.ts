@@ -3,14 +3,14 @@ import { effectiveProtectedTerms } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CollectionNotFoundError } from '../errors/lingo-tracker-error';
 import type { OpenedProject } from './open-collection';
-import { resolvePreferredTerminologyFile, type LoadPreferredTerminologyResult } from './preferred-terminology-file';
+import { type LoadPreferredTerminologyResult, resolvePreferredTerminologyFile } from './preferred-terminology-file';
+import { assertUsableProtectedFiles, readProjectTermFiles } from './project-term-files';
 import {
+  type ResolvedProtectedTerms,
   resolveCollectionProtectedTermsFilePath,
   resolveGlobalProtectedTermsFile,
-  type ResolvedProtectedTerms,
 } from './protected-terms-file';
 import type { ProtectedTermsView } from './protected-terms-request';
-import { readProjectTermFiles, assertUsableProtectedFiles } from './project-term-files';
 
 /** The project config and all term scopes, read for one API response or CLI preview. */
 export interface ProjectTermsConfigView {

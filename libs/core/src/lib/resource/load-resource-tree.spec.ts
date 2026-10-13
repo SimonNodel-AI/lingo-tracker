@@ -1,4 +1,4 @@
-import { mkdirSync, symlinkSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';

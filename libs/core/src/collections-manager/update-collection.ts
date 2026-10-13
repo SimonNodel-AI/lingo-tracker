@@ -1,6 +1,6 @@
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
 import type { OpenedCollection } from '../lib/config/open-collection';
-import { changeCollection, type CollectionChangeOptions } from './collection-change';
+import { type CollectionChangeOptions, changeCollection } from './collection-change';
 
 export type UpdateCollectionOptions = CollectionChangeOptions;
 

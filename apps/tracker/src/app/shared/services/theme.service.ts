@@ -1,7 +1,7 @@
-import { KeyedStorage, raw } from '../storage/keyed-storage';
-import { LOCAL_STORAGE } from '../storage/browser-storage';
-import { Injectable, signal, computed, effect, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { computed, effect, Injectable, inject, PLATFORM_ID, signal } from '@angular/core';
+import { LOCAL_STORAGE } from '../storage/browser-storage';
+import { KeyedStorage, raw } from '../storage/keyed-storage';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type EffectiveTheme = 'light' | 'dark';

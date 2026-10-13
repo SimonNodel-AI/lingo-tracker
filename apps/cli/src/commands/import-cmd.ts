@@ -1,4 +1,3 @@
-import { IMPORT_FLAGS } from './import-cmd-flags';
 import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -6,6 +5,7 @@ import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
+import { IMPORT_FLAGS } from './import-cmd-flags';
 import { type ImportCommandOptions, importQuestions, resolveImportOptions } from './import-options';
 
 export type { ImportCommandOptions } from './import-options';

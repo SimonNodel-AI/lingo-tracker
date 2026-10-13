@@ -3,8 +3,8 @@
  * Collection Reader.
  */
 
-import { describeFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
+import { describeFolderProblem } from '../resource/collection-folders';
 import { type CollectionRead, readCollection } from '../resource/read-collection';
 
 export interface FlatResource {

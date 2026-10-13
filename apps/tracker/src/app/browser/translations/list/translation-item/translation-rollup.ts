@@ -1,23 +1,23 @@
-import {
-  Component,
-  ChangeDetectionStrategy,
-  input,
-  signal,
-  computed,
-  inject,
-  viewChild,
-  type ElementRef,
-  type OnDestroy,
-  HostListener,
-} from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
 import { Overlay, OverlayModule, type OverlayRef } from '@angular/cdk/overlay';
-import { TemplatePortal, PortalModule } from '@angular/cdk/portal';
-import { ViewContainerRef, type TemplateRef } from '@angular/core';
+import { PortalModule, TemplatePortal } from '@angular/cdk/portal';
+import { CommonModule } from '@angular/common';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  type ElementRef,
+  HostListener,
+  inject,
+  input,
+  type OnDestroy,
+  signal,
+  type TemplateRef,
+  ViewContainerRef,
+  viewChild,
+} from '@angular/core';
+import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { countByStatus } from '@simoncodes-ca/domain';
-import type { RollupLocale } from './row-view';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectActiveLang, injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
 import {
@@ -25,6 +25,7 @@ import {
   STATUS_PRESENTATION,
 } from '../../../../shared/translation-status/translation-status-presentation';
 import { ringSegments, sortLocaleRows } from './rollup-geometry';
+import type { RollupLocale } from './row-view';
 
 /** Close delay in ms */
 const CLOSE_DELAY = 120;

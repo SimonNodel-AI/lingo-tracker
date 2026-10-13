@@ -1,16 +1,16 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
+import type { LingoTrackerCollectionDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { collectionSettings } from '../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
+import { CollectionsStore } from '../collections/store/collections.store';
 import { HeaderContextService } from '../shared/services/header-context.service';
 import { TranslationBrowser } from './translation-browser';
-import { signal } from '@angular/core';
-import type { LingoTrackerCollectionDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
-import { CollectionsStore } from '../collections/store/collections.store';
 
 describe('TranslationBrowser - Integration', () => {
   let component: TranslationBrowser;

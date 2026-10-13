@@ -1,11 +1,11 @@
-import { flagName } from '../runner/flag-record';
-import { GLOSSARY_FLAGS } from './glossary-flags';
+import { buildGlossary, type Collection } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGlossary, type Collection } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, type CommandStdin, defineCommand } from '../runner/command-runner';
+import { flagName } from '../runner/flag-record';
 import { ConsoleFormatter, parseNameSelection } from '../utils';
+import { GLOSSARY_FLAGS } from './glossary-flags';
 
 export interface GlossaryCommandOptions {
   /** Inline text snippet to extract from. */

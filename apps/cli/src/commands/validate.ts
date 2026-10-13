@@ -1,9 +1,9 @@
-import { VALIDATE_FLAGS } from './validate-options';
 import { type Collection, runValidate } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from '../utils';
+import { VALIDATE_FLAGS } from './validate-options';
 
 /**
  * Options for the validate command.

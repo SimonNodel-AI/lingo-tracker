@@ -1,7 +1,7 @@
-import { icuQuotedRuns } from './icu-message';
-import { describe, expect, it } from 'vitest';
 import MessageFormat from '@messageformat/core';
+import { describe, expect, it } from 'vitest';
 import { extractICUPlaceholders, hasICUPlaceholders, validateICUSyntax } from './icu-auto-fixer';
+import { icuQuotedRuns } from './icu-message';
 import { icuToTransloco } from './icu-to-transloco';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {

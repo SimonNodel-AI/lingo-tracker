@@ -1,17 +1,17 @@
 import * as fs from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
-import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
-import type { OpenedCollection } from '../config/open-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
+import { useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import type { OpenedCollection } from '../config/open-collection';
 import {
-  InvalidResourceKeyError,
   CollectionNotFoundError,
+  InvalidResourceKeyError,
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
-import * as moveInput from './move-input';
 import { executeMove, executeMoves, type MoveRequest } from './execute-move';
+import * as moveInput from './move-input';
 
 function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {

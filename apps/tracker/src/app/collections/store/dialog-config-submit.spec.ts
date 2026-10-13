@@ -1,6 +1,6 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { HttpErrorResponse } from '@angular/common/http';
 import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { toApiError } from '../../shared/api-error/api-error';

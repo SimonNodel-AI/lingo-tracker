@@ -2,7 +2,7 @@
 
 import { effectiveProtectedTerms, findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
 import type { Collection } from './open-collection';
-import { readProjectTermFiles, describeTermFileProblem, assertUsableProtectedFiles } from './project-term-files';
+import { assertUsableProtectedFiles, describeTermFileProblem, readProjectTermFiles } from './project-term-files';
 
 /** A discouraged term in a base value, with the rule that flagged it. */
 export interface TerminologyFinding {

@@ -1,11 +1,11 @@
-import type { ProviderErrorCode } from './error-codes';
-import type { CollectionFolderProblem } from '../resource/collection-folders';
 import { type PreferredTermRule, type PreferredTermRuleError, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import type { CollectionFolderProblem } from '../resource/collection-folders';
+import type { ProviderErrorCode } from './error-codes';
+import { defineError, LingoTrackerError } from './error-definition';
 import { ErrorMessages, type FolderPathPart } from './error-messages';
 import { formatRuleErrors } from './format-rule-errors';
 
-import { LingoTrackerError, defineError } from './error-definition';
-export { LingoTrackerError, type ErrorKind } from './error-definition';
+export { type ErrorKind, LingoTrackerError } from './error-definition';
 
 /** A source file could not be detected, read, or parsed before an import writes resources. */
 export class ImportSourceError extends LingoTrackerError {

@@ -2,8 +2,8 @@ import { Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put } from 
 import {
   addBundleDefinition,
   deleteBundleDefinition,
-  planBundle,
   type OpenedProject,
+  planBundle,
   updateBundleDefinition,
 } from '@simoncodes-ca/core';
 import type {

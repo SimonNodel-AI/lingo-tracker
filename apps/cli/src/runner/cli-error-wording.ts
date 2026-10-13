@@ -1,23 +1,23 @@
-import { flagName } from './flag-record';
-import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
-import { BUNDLE_FLAGS } from '../commands/bundle-flags';
-import { GLOSSARY_FLAGS } from '../commands/glossary-flags';
-import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
-import { PROTECTED_TERMS_FLAGS } from '../commands/protected-terms-flags';
-import { EDIT_COLLECTION_FLAGS } from '../commands/edit-collection-flags';
 import {
   CONFIG_FILENAME,
   type CollectionTagEditProblem,
   type ErrorCode,
-  LingoTrackerError,
-  isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
+  isProtectedTermsEditProblem,
+  LingoTrackerError,
   type PreferredTerminologyEditProblem,
   PreferredTerminologyValidationError,
   type ProtectedTermsEditProblem,
 } from '@simoncodes-ca/core';
+import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
+import { BUNDLE_FLAGS } from '../commands/bundle-flags';
+import { EDIT_COLLECTION_FLAGS } from '../commands/edit-collection-flags';
+import { GLOSSARY_FLAGS } from '../commands/glossary-flags';
+import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
+import { PROTECTED_TERMS_FLAGS } from '../commands/protected-terms-flags';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { CommandOutput } from './command-output';
+import { flagName } from './flag-record';
 
 /** Shared with the command definition so renaming the command retains its advice. */
 export const ADD_RESOURCE_COMMAND_NAME = 'Add resource';

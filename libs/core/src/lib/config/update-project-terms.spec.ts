@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
-  CoreOperationError,
   ConfigChangedError,
+  CoreOperationError,
   InvalidCollectionError,
   InvalidProjectTermsEditError,
   ParentDirectoryMissingError,

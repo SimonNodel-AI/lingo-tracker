@@ -1,12 +1,12 @@
 import { isUnderNodeModules, normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { DEFAULT_CONFIG } from '../../constants';
 import {
   CollectionAlreadyExistsError,
   CollectionNotFoundError,
   InvalidCollectionError,
 } from '../errors/lingo-tracker-error';
-import { DEFAULT_CONFIG } from '../../constants';
 import { resolveRenameTarget } from './entry-name';
 
 /**

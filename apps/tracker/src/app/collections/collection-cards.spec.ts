@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bundleCards, collectionCards, toCollectionCardView, type CollectionCardEntry } from './collection-cards';
+import { bundleCards, type CollectionCardEntry, collectionCards, toCollectionCardView } from './collection-cards';
 import type { BundleEntry } from './store/features/with-bundles.feature';
 
 const entry: CollectionCardEntry = {

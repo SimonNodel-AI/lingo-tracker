@@ -1,19 +1,19 @@
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError, InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { resolveCheckedResourceKey } from './resource-key';
 import { describeFolderProblem } from './collection-folders';
-import { pruneEmptiedFolders } from './folder-pruning';
 import { openFolders } from './folder-batch';
-import type { ResourceTreeEntry } from './resource-tree-types';
+import { pruneEmptiedFolders } from './folder-pruning';
 import type { MovePlan } from './move-plan';
 import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
+import { resolveCheckedResourceKey } from './resource-key';
 import {
-  resolveMutationSink,
   type MutationSinkOptions,
   reindexMutation,
   removeMutation,
+  resolveMutationSink,
   upsertMutation,
 } from './resource-mutation';
+import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
  * Entry Relocation — the one way entries move between keys, within a collection or into another.

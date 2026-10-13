@@ -1,8 +1,8 @@
-import { resolveFlagValues } from '../runner/flag-record';
-import { EXPORT_FLAGS } from './export-cmd-flags';
 import type { ExportRunOptions } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
 import { describe, expect, it } from 'vitest';
+import { resolveFlagValues } from '../runner/flag-record';
+import { EXPORT_FLAGS } from './export-cmd-flags';
 import {
   type ExportCommandOptions,
   exportQuestions,

@@ -13,8 +13,8 @@ import { escapeRegExp } from './escape-regexp';
 import {
   hasQuotedInterpolationDelimiter,
   icuQuotedRuns,
-  parseIcuMessage,
   isSubMessageKeyword,
+  parseIcuMessage,
   type SubMessageKeyword,
 } from './icu-message';
 import { translocoToICU } from './transloco-to-icu';

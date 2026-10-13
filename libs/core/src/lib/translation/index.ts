@@ -5,12 +5,6 @@ export {
   type InMemoryTranslate,
   InMemoryTranslationProvider,
 } from '../machine-translation/in-memory-translation-provider';
-export {
-  type TranslateExistingResourceOptions,
-  type TranslateExistingResourceResult,
-  translateExistingResource,
-} from './translate-existing-resource';
-export type { TranslateLocaleProgress, TranslateLocaleResult } from './translation-run';
 export type {
   ProviderCapabilities,
   TranslateRequest,
@@ -28,11 +22,17 @@ export {
   type Translator,
   type TranslatorEntry,
 } from '../machine-translation/translator';
+export {
+  type TranslateExistingResourceOptions,
+  type TranslateExistingResourceResult,
+  translateExistingResource,
+} from './translate-existing-resource';
+export type { TranslateLocaleProgress, TranslateLocaleResult } from './translation-run';
 
 export {
+  type LocaleTranslationRun,
   prepareTranslationRun,
   type TranslationRun,
-  type LocaleTranslationRun,
   type TranslationRunExecutionOptions,
   type TranslationRunOptions,
 } from './translation-run';

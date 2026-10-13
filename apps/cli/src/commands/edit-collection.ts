@@ -1,7 +1,7 @@
-import { EDIT_COLLECTION_FLAGS } from './edit-collection-flags';
 import { editCollectionTags } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { EDIT_COLLECTION_FLAGS } from './edit-collection-flags';
 
 export interface EditCollectionOptions {
   name: string;

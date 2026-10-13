@@ -1,5 +1,5 @@
-import { describeFolderProblem } from '../lib/resource/collection-folders';
 import { CoreOperationError } from '../lib/errors/lingo-tracker-error';
+import { describeFolderProblem } from '../lib/resource/collection-folders';
 import { type CollectionSweepTarget, sweepCollection } from '../lib/resource/collection-sweep';
 import type { ResourceFolder } from '../lib/resource/resource-folder';
 

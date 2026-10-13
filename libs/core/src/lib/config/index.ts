@@ -25,6 +25,7 @@ export {
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
 export { readProjectTerms, type TerminologyFindings } from './project-terms';
+export { type ProjectTermsConfigView, type ProjectTermsView, readProjectTermsView } from './project-terms-view';
 export {
   type ResolvedProtectedTerms,
   readCollectionProtectedTerms,
@@ -35,12 +36,10 @@ export {
 } from './protected-terms-file';
 export type { TermFile } from './term-file';
 export {
-  type ProtectedTermsChange,
   type ProjectTermsUpdate,
   type ProjectTermsUpdatePlan,
   type ProjectTermsUpdateReport,
+  type ProtectedTermsChange,
   planProjectTermsUpdate,
   updateProjectTerms,
 } from './update-project-terms';
-
-export { readProjectTermsView, type ProjectTermsConfigView, type ProjectTermsView } from './project-terms-view';

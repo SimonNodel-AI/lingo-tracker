@@ -1,7 +1,7 @@
 import { DomSanitizer } from '@angular/platform-browser';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { KeyMarkupPipe, hasKeyLeaf, keyLeafSplitIndex, type KeyMarkupPart } from './key-markup.pipe';
+import { hasKeyLeaf, type KeyMarkupPart, KeyMarkupPipe, keyLeafSplitIndex } from './key-markup.pipe';
 
 describe('KeyMarkupPipe', () => {
   let pipe: KeyMarkupPipe;

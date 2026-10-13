@@ -1,4 +1,4 @@
-import { computed, inject, Injectable, signal } from '@angular/core';
+import { computed, Injectable, inject, signal } from '@angular/core';
 import type { ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 import { EMPTY, finalize, type Observable, of, shareReplay, tap } from 'rxjs';
 import { BrowserStore } from '../store/browser.store';

@@ -12,8 +12,8 @@ import {
   InvalidCollectionError,
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
-import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { writeJsonFile } from '../lib/file-io/json-file-operations';
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { seedResources, testCollection } from '../testing/temp-dir.spec-helpers';
 import { addLocaleToCollection } from './add-locale-to-collection';
 import { changeCollection } from './collection-change';

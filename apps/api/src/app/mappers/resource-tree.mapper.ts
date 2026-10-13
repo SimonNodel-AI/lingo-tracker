@@ -1,11 +1,11 @@
-import type { FolderNodeDto, ResourceSummaryDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 import {
   type Collection,
+  extractResourcesRecursively,
   type FolderChild,
   type ResourceTreeEntry,
   type ResourceTreeNode,
-  extractResourcesRecursively,
 } from '@simoncodes-ca/core';
+import type { FolderNodeDto, ResourceSummaryDto, ResourceTreeDto } from '@simoncodes-ca/data-transfer';
 import { buildResourceSummary, resolveResourceKey } from '@simoncodes-ca/domain';
 
 /**

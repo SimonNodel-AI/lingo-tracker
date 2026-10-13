@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import * as ts from 'typescript';
+import { describe, expect, it } from 'vitest';
 import * as core from '../../index';
 import * as errors from './index';
 import * as internalErrors from './internal';

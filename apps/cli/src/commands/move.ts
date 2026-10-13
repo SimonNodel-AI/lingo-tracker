@@ -1,7 +1,7 @@
 import { executeMove } from '@simoncodes-ca/core';
-import { MOVE_FLAGS } from './move-flags';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport } from '../utils';
+import { MOVE_FLAGS } from './move-flags';
 
 export interface MoveResourceOptions {
   collection?: string;

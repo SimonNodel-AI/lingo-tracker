@@ -1,31 +1,31 @@
-import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams, type HttpResponse } from '@angular/common/http';
-import { concatWith, ignoreElements, map, type Observable, defer, switchMap } from 'rxjs';
-import { CollectionIndexNotReadyError, INDEX_NOT_READY_MESSAGE, IndexReadiness } from './index-readiness';
-import { apiPath } from '@simoncodes-ca/data-transfer';
+import { Injectable, inject } from '@angular/core';
 import type {
-  ResourceTreeDto,
-  TreeStatusResponseDto,
-  SearchResultsDto,
-  SearchTranslationsDto,
   CacheStatusDto,
-  CreateResourceDto,
-  CreateResourceResponseDto,
-  UpdateResourceDto,
-  UpdateResourceResponseDto,
-  DeleteResourceDto,
-  DeleteResourceResponseDto,
   CreateFolderDto,
   CreateFolderResponseDto,
+  CreateResourceDto,
+  CreateResourceResponseDto,
   DeleteFolderDto,
   DeleteFolderResponseDto,
-  MoveResourceDto,
-  MoveResourceResponseDto,
+  DeleteResourceDto,
+  DeleteResourceResponseDto,
   MoveFolderDto,
   MoveFolderResponseDto,
+  MoveResourceDto,
+  MoveResourceResponseDto,
+  ResourceTreeDto,
+  SearchResultsDto,
+  SearchTranslationsDto,
   TranslateResourceDto,
   TranslateResourceResponseDto,
+  TreeStatusResponseDto,
+  UpdateResourceDto,
+  UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
+import { apiPath } from '@simoncodes-ca/data-transfer';
+import { concatWith, defer, ignoreElements, map, type Observable, switchMap } from 'rxjs';
+import { CollectionIndexNotReadyError, INDEX_NOT_READY_MESSAGE, IndexReadiness } from './index-readiness';
 
 function treeStatusMessage(body: ResourceTreeDto | TreeStatusResponseDto | null): string {
   const status = body && 'message' in body ? body : null;

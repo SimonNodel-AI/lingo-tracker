@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { OpenedCollection } from '../config/open-collection';
-import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   FolderMoveIntoDescendantError,
   FolderNotFoundError,

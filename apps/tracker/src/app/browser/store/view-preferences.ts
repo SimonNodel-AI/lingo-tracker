@@ -1,5 +1,5 @@
-import { restoreLocaleSelection, type LocaleContext, type LocaleSelection } from './locale-selection';
-import { preferenceFields as fields, type ViewPreferences, type SavedViewPreferences } from './view-preferences.types';
+import { type LocaleContext, type LocaleSelection, restoreLocaleSelection } from './locale-selection';
+import { preferenceFields as fields, type SavedViewPreferences, type ViewPreferences } from './view-preferences.types';
 
 export type { ViewPreferences } from './view-preferences.types';
 export type PreferenceState = ViewPreferences & Pick<LocaleSelection, 'nonCompactSelectedLocales'>;

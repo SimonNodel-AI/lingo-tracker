@@ -1,29 +1,29 @@
+import { CdkDropListGroup } from '@angular/cdk/drag-drop';
+import { CommonModule } from '@angular/common';
 import {
-  Component,
   ChangeDetectionStrategy,
-  inject,
+  Component,
   computed,
+  DestroyRef,
   effect,
+  inject,
   signal,
   untracked,
   viewChild,
-  DestroyRef,
 } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
-import { CdkDropListGroup } from '@angular/cdk/drag-drop';
 import { MatIconModule } from '@angular/material/icon';
+import { ActivatedRoute } from '@angular/router';
 import { TranslocoModule } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
+import { resolveCollectionSettings } from '../collections/store/collection-settings';
+import { CollectionsStore } from '../collections/store/collections.store';
 import { HeaderContextService } from '../shared/services/header-context.service';
 import { FolderTree } from './sidebar';
-import { TranslationMainHeader } from './translations/header/translation-main-header';
-import { CollectionsStore } from '../collections/store/collections.store';
-import { resolveCollectionSettings } from '../collections/store/collection-settings';
 import { BrowserStore } from './store/browser.store';
+import { TranslationMainHeader } from './translations/header/translation-main-header';
 import { TranslationList } from './translations/list/translation-list';
-import { IndexingOverlay } from './ui/indexing-overlay';
 import type { DragData } from './types/drag-data';
+import { IndexingOverlay } from './ui/indexing-overlay';
 
 /**
  * Translation Browser component for viewing and managing translations within a collection.

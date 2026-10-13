@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { deleteResourceCommand } from './delete-resource';
 
 describe('deleteResourceCommand (real core)', () => {

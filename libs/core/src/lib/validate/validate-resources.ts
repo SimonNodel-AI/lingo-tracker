@@ -1,7 +1,7 @@
 import {
+  type CollectionSetResource,
   collectionResourceStatus,
   readCollectionSet,
-  type CollectionSetResource,
 } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
 import type { ProjectTerms } from '../config/project-terms';
@@ -16,8 +16,8 @@ import type {
   ValidationOptions,
 } from './types';
 import { validateIcuValues } from './validate-icu';
-import { validateTranslatedValues } from './validate-translated-values';
 import { validateTerminology } from './validate-terminology';
+import { validateTranslatedValues } from './validate-translated-values';
 
 /**
  * Validates translation resources collection by collection.

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { normalizeCommand } from './normalize';
 
 describe('normalizeCommand (real core)', () => {

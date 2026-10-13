@@ -1,4 +1,3 @@
-import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 import {
   emptyNormalizeCollectionsResult,
   type NormalizeCollectionsResult,
@@ -9,6 +8,7 @@ import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
+import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 
 export interface NormalizeOptions {
   collection?: string;

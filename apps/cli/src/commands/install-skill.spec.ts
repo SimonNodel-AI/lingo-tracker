@@ -1,14 +1,14 @@
-import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import prompts from 'prompts';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
 import {
+  getTemplatesDir,
   installSkillCommand,
   parseCollectionArg,
-  substituteSkillTemplate,
   readPatternsMdTemplate,
-  getTemplatesDir,
+  substituteSkillTemplate,
 } from './install-skill';
 
 vi.mock('prompts');

@@ -1,5 +1,5 @@
-import type { DensityMode } from '../types/density-mode';
 import type { CollectionSettings } from '../../collections/store/collection-settings';
+import type { DensityMode } from '../types/density-mode';
 
 /**
  * Root state for signals shared across multiple features.

@@ -1,7 +1,5 @@
 // Resource operations, folder files, and the read models built from them.
 
-export { type CollectionFolderProblem } from './collection-folders';
-
 export {
   type AddResourceOptions,
   type AddResourceParams,
@@ -10,6 +8,7 @@ export {
   type ExistingResourcePolicy,
 } from './add-resource';
 export { type AddResourcesResult, addResources } from './add-resources';
+export type { CollectionFolderProblem } from './collection-folders';
 export { type DeleteResourceParams, type DeleteResourceResult, deleteResource } from './delete-resource';
 export {
   type EditResourceChanges,
@@ -19,7 +18,6 @@ export {
 } from './edit-resource';
 export { extractResourcesRecursively, extractSubtree } from './extract-subtree';
 export { type LoadResourceTreeOptions, loadResourceTree } from './load-resource-tree';
-export type { FolderChild, ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';
 export type { ResourceTranslation } from './locale-seeding';
 export {
   type CollectionRead,
@@ -46,6 +44,7 @@ export {
   saveReporting,
 } from './resource-mutation';
 export { type ResourceTreeApplyResult, ResourceTreeIndex } from './resource-tree-index';
+export type { FolderChild, ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';
 export {
   type MatchType,
   type NormalizedSearchRequest,

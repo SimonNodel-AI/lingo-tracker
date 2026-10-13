@@ -1,7 +1,7 @@
 import type { PromptContext } from '../runner/command-runner';
+import { collectionFlag, defineFlags, flagName } from '../runner/flag-record';
 import type { FindSimilarOptions } from './find-similar';
 import { parseMaxResults } from './find-similar-options';
-import { defineFlags, collectionFlag, flagName } from '../runner/flag-record';
 export const DEFAULT_MAX_RESULTS = 5;
 
 export const FIND_SIMILAR_FLAGS = defineFlags<FindSimilarOptions, PromptContext<'read'>>()({

@@ -2,7 +2,7 @@ import { Component, effect, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { EditorFocus } from './editor-focus';
 import { EditorFocusAnchorDirective } from './editor-focus-anchor';
-import { EditorPanels, type EditorFocusTarget } from './editor-panels';
+import { type EditorFocusTarget, EditorPanels } from './editor-panels';
 
 @Component({
   imports: [EditorFocusAnchorDirective],

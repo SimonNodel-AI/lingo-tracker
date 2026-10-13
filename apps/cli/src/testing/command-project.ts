@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { CONFIG_FILENAME, type LingoTrackerConfig, openCollection, addResource } from '@simoncodes-ca/core';
-import { runCommand, type CommandEnvironment, type DefinedCommand } from '../runner/command-runner';
+import { addResource, CONFIG_FILENAME, type LingoTrackerConfig, openCollection } from '@simoncodes-ca/core';
+import { type CommandEnvironment, type DefinedCommand, runCommand } from '../runner/command-runner';
 
 /** A real project owned by one spec; no cwd, terminal, console or core mocks. */
 export function createCommandProject(

@@ -1,5 +1,5 @@
 import { isPlatformBrowser } from '@angular/common';
-import { inject, InjectionToken, PLATFORM_ID } from '@angular/core';
+import { InjectionToken, inject, PLATFORM_ID } from '@angular/core';
 import type { StorageAdapter } from './keyed-storage';
 
 function browserStorage(kind: 'localStorage' | 'sessionStorage'): () => StorageAdapter | undefined {

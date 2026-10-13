@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
-import { PRUNABLE_OS_JUNK_FILES, pruneEmptyFolders, pruneEmptiedFolders } from './folder-pruning';
+import { PRUNABLE_OS_JUNK_FILES, pruneEmptiedFolders, pruneEmptyFolders } from './folder-pruning';
 import type { ResourceMutation } from './resource-mutation';
 
 vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));

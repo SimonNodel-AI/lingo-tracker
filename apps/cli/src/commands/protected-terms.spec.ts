@@ -1,13 +1,13 @@
-import { Command } from 'commander';
-import { commaListOption } from '../runner/options';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CONFIG_FILENAME, type LingoTrackerConfig } from '@simoncodes-ca/core';
+import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { runCommand } from '../runner/command-runner';
+import { commaListOption } from '../runner/options';
 import { ConsoleFormatter } from '../utils';
 import { protectedTermsCommand } from './protected-terms';
-import { runCommand } from '../runner/command-runner';
 
 for (const method of ['section', 'keyValue', 'error', 'success', 'warning'] as const) {
   vi.spyOn(ConsoleFormatter, method).mockImplementation(() => undefined);

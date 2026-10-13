@@ -1,4 +1,3 @@
-import type { ResourceMutation } from './resource-mutation';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,8 +10,9 @@ import {
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
-import { executeMove, executeMoves } from './execute-move';
 import { calculateChecksum } from './checksum';
+import { executeMove, executeMoves } from './execute-move';
+import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

@@ -1,6 +1,6 @@
 import { findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
-import { describePreferredTermRule } from '../config/project-terms';
 import type { CollectionSetResource } from '../collection-set/collection-set';
+import { describePreferredTermRule } from '../config/project-terms';
 import type { TerminologyValidationDetail, TerminologyValidationOptions, TerminologyValidationResult } from './types';
 
 /** {@link TerminologyValidationOptions} plus where to report each collection's findings. */

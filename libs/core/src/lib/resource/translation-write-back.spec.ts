@@ -6,7 +6,7 @@ import { seedResources, testCollection, useTempDir } from '../../testing/temp-di
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { reindexMutation, type ResourceMutation, upsertMutation } from '../resource/resource-mutation';
+import { type ResourceMutation, reindexMutation, upsertMutation } from '../resource/resource-mutation';
 import { type PendingTranslation, snapshotTranslation, writeBackTranslations } from './translation-write-back';
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {

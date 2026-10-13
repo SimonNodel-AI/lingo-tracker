@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { createTranslationProvider } from './translation-provider-factory';
+import { describe, expect, it } from 'vitest';
 import { GoogleTranslateV2Provider } from './google-translate-v2.provider';
+import { createTranslationProvider } from './translation-provider-factory';
 
 describe('createTranslationProvider', () => {
   describe('google-translate', () => {

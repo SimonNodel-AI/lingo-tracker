@@ -1,7 +1,7 @@
 import { inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { NotificationService } from '../shared/notification';
-import { translateToken, type TranslationParam, type TokenTranslator } from '../shared/translate-token';
+import { type TokenTranslator, type TranslationParam, translateToken } from '../shared/translate-token';
 
 /**
  * The feedback a write has decided for its outcome: how it reads (`tone`), where it shows

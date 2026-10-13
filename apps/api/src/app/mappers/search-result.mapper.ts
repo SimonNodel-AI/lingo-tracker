@@ -1,9 +1,9 @@
 import {
   type Collection,
   type NormalizedSearchRequest,
+  normalizeSearchRequest,
   type SearchPage,
   type SearchResult,
-  normalizeSearchRequest,
 } from '@simoncodes-ca/core';
 import type { SearchResultDto, SearchResultsDto } from '@simoncodes-ca/data-transfer';
 import { buildResourceSummary } from '@simoncodes-ca/domain';

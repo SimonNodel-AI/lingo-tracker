@@ -1,9 +1,9 @@
 import { readCollectionSet } from '../collection-set/collection-set';
-import { describeFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
 import { GlossaryNoCollectionsError } from '../errors/lingo-tracker-error';
-import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
-import { matchGlossary, type FlatEntry, type GlossaryTerm } from './glossary-matcher';
+import { describeFolderProblem } from '../resource/collection-folders';
+import { type CandidateExtractor, type ExtractorMode, resolveExtractor } from './glossary-extractor';
+import { type FlatEntry, type GlossaryTerm, matchGlossary } from './glossary-matcher';
 
 export interface BuildGlossaryOptions {
   /** A mode name, or a custom extraction strategy. Defaults to `ngram`. */

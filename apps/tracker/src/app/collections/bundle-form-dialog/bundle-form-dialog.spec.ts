@@ -12,8 +12,8 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { fakeEnv } from '../../../testing/form-submit-env';
+import { getTranslocoTestingModule } from '../../../testing/transloco-testing.module';
 import { toApiError } from '../../shared/api-error/api-error';
 import { CollectionsStore } from '../store/collections.store';
 import { BundleForm } from './bundle-form';

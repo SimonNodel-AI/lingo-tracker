@@ -1,5 +1,5 @@
+import { collectionFlag, defineFlags } from '../runner/flag-record';
 import type { ProtectedTermsOptions } from './protected-terms';
-import { defineFlags, collectionFlag } from '../runner/flag-record';
 
 export const PROTECTED_TERMS_FLAGS = defineFlags<ProtectedTermsOptions>()({
   collection: collectionFlag('Target collection (absent = global scope)'),

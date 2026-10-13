@@ -1,7 +1,7 @@
 import { type DestroyRef, signal, type WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import type { Observable } from 'rxjs';
 import type { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
+import type { Observable } from 'rxjs';
 import { apiErrorMessage } from '../../shared/api-error/api-error';
 import { type ConfigRefusal, classifyConfigRefusal } from './config-write';
 

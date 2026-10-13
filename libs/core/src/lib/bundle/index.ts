@@ -1,11 +1,6 @@
 // The bundle module: plan or generate bundles, and edit the bundle definitions in config.
 
 export {
-  type PreparedBundleRun,
-  type PrepareBundleRunParams,
-  prepareBundleRun,
-} from './prepare-bundle-run';
-export {
   addBundleDefinition,
   deleteBundleDefinition,
   type UpdateBundleDefinitionOptions,
@@ -20,10 +15,10 @@ export {
   generatePreparedBundle,
 } from './generate-bundle';
 export {
-  generateBundles,
   type BundleRunOutcome,
   type GenerateBundlesOptions,
   type GenerateBundlesResult,
+  generateBundles,
 } from './generate-bundles';
 export {
   type BundlePlan,
@@ -32,4 +27,9 @@ export {
   type PlanBundleParams,
   planBundle,
 } from './plan-bundle';
+export {
+  type PrepareBundleRunParams,
+  type PreparedBundleRun,
+  prepareBundleRun,
+} from './prepare-bundle-run';
 export { bundleResultWarnings } from './result-warnings';

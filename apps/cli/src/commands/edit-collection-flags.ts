@@ -1,5 +1,5 @@
-import type { EditCollectionOptions } from './edit-collection';
 import { defineFlags } from '../runner/flag-record';
+import type { EditCollectionOptions } from './edit-collection';
 
 export const EDIT_COLLECTION_FLAGS = defineFlags<EditCollectionOptions>()({
   name: { argument: ['<name>', 'Collection name'] },

@@ -1,14 +1,14 @@
-import { registerFlags } from '../runner/flag-record';
 import { Command } from 'commander';
 import { describe, expect, it, vi } from 'vitest';
+import { registerFlags } from '../runner/flag-record';
 import {
   EXPORT_OPTION_TABLE,
-  resolveExportTable,
-  type ExportTableContext,
   type ExportAnswers,
+  type ExportTableContext,
   type ResolvedExportOptions,
+  resolveExportTable,
 } from './export-option-table';
-import { tableFlags, tableQuestions, type TableRegistration } from './option-table';
+import { type TableRegistration, tableFlags, tableQuestions } from './option-table';
 
 vi.mock('@simoncodes-ca/core', () => {
   throw new Error('Option tables must load without core or command handlers.');

@@ -1,9 +1,9 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { ReadOnlyCollectionError } from '../errors';
-import { normalizeCollections } from './normalize-collections';
 import * as normalizeModule from './normalize';
+import { normalizeCollections } from './normalize-collections';
 
 describe('normalizeCollections', () => {
   const root = useTempDir('normalize-runs-');

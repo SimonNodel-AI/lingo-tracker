@@ -1,7 +1,7 @@
 import type { Collection } from '@simoncodes-ca/core';
-import { mapGetTreeResultToDto } from './resource-tree.mapper';
 import type { ResourceTreeDto, TreeStatusResponseDto } from '@simoncodes-ca/data-transfer';
 import type { TreeRead } from '../cache/collection-index.service';
+import { mapGetTreeResultToDto } from './resource-tree.mapper';
 
 export type TreePendingStatus = 'indexing' | 'not-started' | 'error';
 export type TreeAnswer = { httpStatus: 200; body: ResourceTreeDto } | { httpStatus: 202; body: TreeStatusResponseDto };

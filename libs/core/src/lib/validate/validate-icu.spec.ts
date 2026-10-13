@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { validateIcuValues } from './validate-icu';
+import { describe, expect, it } from 'vitest';
 import type { CollectionSetResource } from '../collection-set/collection-set';
+import { validateIcuValues } from './validate-icu';
 
 function resource(overrides: Partial<CollectionSetResource> = {}): CollectionSetResource {
   return {

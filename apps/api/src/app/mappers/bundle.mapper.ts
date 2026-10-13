@@ -1,4 +1,4 @@
-import { bundleResultWarnings, type BundlePlan, type GenerateBundleResult } from '@simoncodes-ca/core';
+import { type BundlePlan, bundleResultWarnings, type GenerateBundleResult } from '@simoncodes-ca/core';
 import type { BundleDryRunResultDto, BundleGenerateJobResultDto } from '@simoncodes-ca/data-transfer';
 
 /** Upper bound on conflict keys returned by a dry run so huge bundles stay cheap to serialise. */

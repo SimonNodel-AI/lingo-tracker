@@ -1,5 +1,5 @@
 import { parse, type Token } from '@messageformat/parser';
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { translocoToICU } from './transloco-to-icu';
 
 describe('translocoToICU', () => {

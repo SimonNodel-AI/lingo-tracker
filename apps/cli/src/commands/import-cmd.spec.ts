@@ -2,8 +2,8 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CommandCancelledError, type Ask } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type Ask, CommandCancelledError } from '../runner/command-runner';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { type ImportCommandOptions, importCommand } from './import-cmd';
 
 describe('import-cmd (real project)', () => {

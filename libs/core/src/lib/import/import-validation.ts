@@ -1,11 +1,11 @@
-import type { ImportedResource, ImportChange } from './types';
 import {
-  validateImportKey,
-  isKeyTooLong,
-  isEmptyValue,
-  detectHierarchicalConflicts,
   detectDuplicateKeys,
+  detectHierarchicalConflicts,
+  isEmptyValue,
+  isKeyTooLong,
+  validateImportKey,
 } from '@simoncodes-ca/domain';
+import type { ImportChange, ImportedResource } from './types';
 
 /**
  * Configuration for import validation process.

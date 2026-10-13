@@ -1,8 +1,8 @@
 import type {
   LingoTrackerCollection,
   LingoTrackerConfig,
-  ProjectTermsConfigView,
   LoadPreferredTerminologyResult,
+  ProjectTermsConfigView,
   ResolvedProtectedTerms,
 } from '@simoncodes-ca/core';
 import type {

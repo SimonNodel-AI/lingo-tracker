@@ -1,4 +1,3 @@
-import type { ResourceMutation } from './resource-mutation';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -21,6 +20,7 @@ import { InMemoryTranslationProvider } from '../machine-translation/in-memory-tr
 import { calculateChecksum as md5 } from './checksum';
 import { editResource } from './edit-resource';
 import { openResourceFolder } from './resource-folder';
+import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {

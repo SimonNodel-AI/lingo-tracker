@@ -1,8 +1,8 @@
-import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
 import { deleteResource } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
+import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
 
 export interface DeleteResourceOptions {
   collection?: string;

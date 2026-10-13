@@ -1,8 +1,8 @@
 import { loadConfig, openCollection } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError, runCommand } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
-import { findSimilarCommand, type FindSimilarOptions } from './find-similar';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
+import { type FindSimilarOptions, findSimilarCommand } from './find-similar';
 
 describe('find-similar (real project)', () => {
   let project: CommandProject;
