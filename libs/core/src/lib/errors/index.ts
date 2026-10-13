@@ -1,58 +1,31 @@
-export { ERROR_CODES, PROVIDER_ERROR_CODES } from './error-codes';
-export type { DomainErrorCode, ErrorCode, KnownProviderErrorCode, ProviderErrorCode } from './error-codes';
-// Core errors declare domain kinds and details; adapters own presentation.
+// Validate the internal catalogue when the public error surface is loaded.
+import './error-codes';
 
-export type { FolderPathPart } from './error-messages';
-export type { CollectionTagEditProblem, ErrorKind } from './lingo-tracker-error';
+// Core errors declare domain kinds and details; adapters own presentation.
 export {
   AutoTranslationDisabledError,
-  BaseLocaleImmutableError,
-  BundleAlreadyExistsError,
   BundleNotFoundError,
-  BundleHierarchicalConflictError,
-  CannotTranslateBaseLocaleError,
-  CollectionAlreadyExistsError,
-  CollectionBaseLocaleMismatchError,
   CollectionNotFoundError,
-  CollectionRenameBundleConflictError,
-  CollectionRequiredByBundleError,
-  ConfigChangedError,
   ConfigNotFoundError,
   ConfigParseError,
-  CoreOperationError,
-  FolderMoveIntoDescendantError,
-  FolderNotFoundError,
+  type CollectionTagEditProblem,
+  type ErrorKind,
   GlossaryExtractorError,
-  GlossaryNoCollectionsError,
   ImportSourceError,
-  InvalidBundleDefinitionError,
-  InvalidBundleLocalesError,
   InvalidCollectionError,
-  InvalidCollectionFolderError,
   InvalidConfigError,
-  InvalidFolderPathError,
-  InvalidImportLocaleError,
-  InvalidLocaleError,
-  InvalidNameError,
   InvalidProjectTermsEditError,
   isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
   type ProtectedTermsEditProblem,
   type PreferredTerminologyEditProblem,
-  InvalidResourceKeyError,
-  InvalidTranslationStatusError,
   LingoTrackerError,
-  LocaleAlreadyExistsError,
-  LocaleNotFoundError,
   MultipleBundleConstantNameError,
-  NoTranslationTargetLocalesError,
-  ParentDirectoryMissingError,
   PreferredTerminologyValidationError,
   ProtectedTermsFileError,
   ProtectedTermsFileNotSetError,
   ReadOnlyCollectionError,
   ResourceAlreadyExistsError,
-  ResourceNotFoundError,
   TranslationError,
-  TranslationLocaleNotConfiguredError,
 } from './lingo-tracker-error';
+export type { DomainErrorCode, ErrorCode, KnownProviderErrorCode, ProviderErrorCode } from './error-codes';

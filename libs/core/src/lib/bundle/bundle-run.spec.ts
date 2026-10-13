@@ -4,7 +4,7 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { BundleHierarchicalConflictError } from '../errors';
+import { BundleHierarchicalConflictError } from '../errors/internal';
 import * as bundleSelection from './bundle-selection';
 import { generatePreparedBundle } from './generate-bundle';
 import { planPreparedBundle } from './plan-bundle';

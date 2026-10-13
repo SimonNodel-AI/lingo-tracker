@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { useTempDir } from '../../../testing/temp-dir.spec-helpers';
-import { BundleHierarchicalConflictError } from '../../errors';
+import { BundleHierarchicalConflictError } from '../../errors/internal';
 import { generateBundleTypes } from './generate-types';
 
 describe('generateBundleTypes (real fs)', () => {

@@ -2,7 +2,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { openCollection, type Collection } from '../config/open-collection';
-import { ImportSourceError, InvalidImportLocaleError } from '../errors';
+import { ImportSourceError, InvalidImportLocaleError } from '../errors/internal';
 import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { runImport } from './run-import';
 

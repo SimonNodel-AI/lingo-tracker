@@ -11,7 +11,7 @@ import {
   BundleNotFoundError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
-} from '../errors';
+} from '../errors/internal';
 import {
   type BundleSelection,
   type ResolvedBundleCollections,

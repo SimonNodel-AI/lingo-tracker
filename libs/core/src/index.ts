@@ -89,36 +89,7 @@ export type {
   ProjectTermsUpdateReport,
   ProjectTermsUpdateView,
 } from './lib/config/update-project-terms';
-export {
-  AutoTranslationDisabledError,
-  BundleNotFoundError,
-  CollectionNotFoundError,
-  ConfigNotFoundError,
-  ConfigParseError,
-  type CollectionTagEditProblem,
-  type ErrorKind,
-  GlossaryExtractorError,
-  ImportSourceError,
-  InvalidCollectionError,
-  InvalidConfigError,
-  InvalidProjectTermsEditError,
-  isProtectedTermsEditProblem,
-  isPreferredTerminologyEditProblem,
-  type ProtectedTermsEditProblem,
-  type PreferredTerminologyEditProblem,
-  LingoTrackerError,
-  MultipleBundleConstantNameError,
-  PreferredTerminologyValidationError,
-  ProtectedTermsFileError,
-  ProtectedTermsFileNotSetError,
-  ReadOnlyCollectionError,
-  ResourceAlreadyExistsError,
-  TranslationError,
-  type DomainErrorCode,
-  type ErrorCode,
-  type KnownProviderErrorCode,
-  type ProviderErrorCode,
-} from './lib/errors';
+export * from './lib/errors';
 export { hasFsErrorCode } from './lib/file-io/fs-error';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
 // Operations: export
