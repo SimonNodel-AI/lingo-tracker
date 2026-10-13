@@ -125,3 +125,21 @@ describe('compareIcuArguments', () => {
     expect(compareIcuArguments('{unbalanced', 'Ordner {name}')).toBeNull();
   });
 });
+
+describe('round-1 argument pins', () => {
+  it('compares arguments with unknown lowercase formatter names', () => {
+    expect(compareIcuArguments('{pa,unknown}', 'x')).toEqual({ missing: ['pa'], unexpected: [] });
+  });
+  it('compares values with stray literal closing braces', () => {
+    expect(compareIcuArguments('{pa}', '}')).toEqual({ missing: ['pa'], unexpected: [] });
+  });
+  it('compares dotted interpolation names with themselves', () => {
+    expect(compareIcuArguments('{{ a.b }}', '{{ a.b }}')).toBeNull();
+  });
+  it('reads a case body behind an unspaced offset as the stored-value converter left it', () => {
+    expect(compareIcuArguments('{p,plural,offset:2other{{x}} other{y}}', '{p}')).toBeNull();
+  });
+  it('reports a missing dotted interpolation argument', () => {
+    expect(compareIcuArguments('{{ a.b }}', 'x')).toEqual({ missing: ['a.b'], unexpected: [] });
+  });
+});

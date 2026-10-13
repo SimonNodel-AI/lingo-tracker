@@ -1,6 +1,7 @@
+import { icuQuotedRuns } from './icu-message';
 import { describe, expect, it } from 'vitest';
 import MessageFormat from '@messageformat/core';
-import { extractICUPlaceholders, hasICUPlaceholders, scanIcuQuotes, validateICUSyntax } from './icu-auto-fixer';
+import { extractICUPlaceholders, hasICUPlaceholders, validateICUSyntax } from './icu-auto-fixer';
 import { icuToTransloco } from './icu-to-transloco';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {
@@ -287,7 +288,8 @@ describe('MessageFormat quote contexts', () => {
       ["{n, selectordinal, one {'#' x} other {# y}}", true],
       ["{s, select, chosen {'#' x} other {y}}", true],
     ] as const) {
-      expect(scanIcuQuotes(icu).quoted[icu.indexOf(icu.includes('#') ? '#' : '|')]).toBe(quotedHash);
+      const position = icu.indexOf(icu.includes('#') ? '#' : '|');
+      expect(icuQuotedRuns(icu).some((run) => position >= run.start && position < run.end)).toBe(quotedHash);
     }
   });
 });

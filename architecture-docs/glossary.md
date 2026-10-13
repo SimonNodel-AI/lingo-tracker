@@ -686,11 +686,17 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 
 ## I
 
+### ICU Message
+
+The one parse of a translation value in `libs/domain/src/lib/icu-message.ts`. `parseIcuMessage(source, { interpolation, lenient })` returns a range-annotated tree (literal, pound, argument with `icu` or `transloco` syntax, plural/select/selectordinal group with cases, error) and never throws; malformed spans become error nodes that keep their brace-delimited content, so conversion stays total. `lenient` accepts what the MessageFormat runtime parser accepts; argument comparison, plural portability and preferred-terminology ranges read values that way. [Transloco](#transloco) to [ICU Format](#icu-format) conversion, bundle export, syntax validation, placeholder extraction, classification, argument comparison and plural portability are thin functions over this tree, so they share one parse instead of each scanning braces and quotes. A few lexical tests remain on top of it: `hasBareSelectorBefore` in the bundle expander, the Transloco-matcher test in `hasUnbundlableBranchBody`, and the classifier's plain-brace-frame check. Interpolation mode deliberately keeps the position test stored values were converted under, so `offset:2other{{x}}`-style behaviour is preserved on purpose. `@messageformat/core` compiles per locale separately. Explained in context: `domain-and-data-model.md`, `bundle-generation.md`.
+
 ### ICU Format
 
 The [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse/messages/) standard for representing locale-sensitive strings. LingoTracker stores translation values in ICU format internally. Simple placeholders use single braces: `Hello {name}`. Complex constructs use keyword-based syntax: `{count, plural, one {# item} other {# items}}`. The Resource Folder converts Transloco `{{ name }}` placeholders to ICU when it writes a base value, translation, or copied entry. Legacy values are converted only when their entry is written; opening or saving a folder does not normalize other entries. The conversion is idempotent, so an already-ICU value keeps its bytes and checksum. Import also converts before ICU validation and auto-fix.
 
 During [bundle](#bundle) generation, simple `{varName}` placeholders are converted to Transloco's `{{ varName }}` syntax. Complex ICU constructs are passed through as-is because Transloco's messageformat pipe handles them natively.
+
+The [ICU Message](#icu-message) module owns parsing and range-based conversion of translation values.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md)
 

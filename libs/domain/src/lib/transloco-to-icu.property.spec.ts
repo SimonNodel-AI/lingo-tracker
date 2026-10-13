@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
 import { icuToTransloco } from './icu-to-transloco';
-import { identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
+import { arbitraryMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
 import { translocoToICU } from './transloco-to-icu';
 
 describe('translocoToICU properties', () => {
@@ -32,4 +32,15 @@ describe('translocoToICU properties', () => {
       }),
     );
   });
+});
+
+// Also fails on HEAD: {{{name}}} becomes {{name}}, then {name}; outside this refactor's scope.
+it.fails('is idempotent on arbitrary messages', () => {
+  fc.assert(
+    fc.property(arbitraryMessage, (value) => {
+      const once = translocoToICU(value);
+      expect(translocoToICU(once)).toBe(once);
+    }),
+    { examples: [['{{{name}}}']] },
+  );
 });

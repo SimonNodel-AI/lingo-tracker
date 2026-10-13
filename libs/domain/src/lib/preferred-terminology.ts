@@ -1,6 +1,5 @@
-import { parse, type Token } from '@messageformat/parser';
 import { escapeRegExp } from './escape-regexp';
-import { maskTranslocoPlaceholders } from './transloco-brace-scan';
+import { type IcuNode, icuQuotedRuns, parseIcuMessage, visitIcuNodes } from './icu-message';
 
 /**
  * Preferred terminology: a curated list of discouraged source-language terms, each
@@ -314,40 +313,22 @@ const TAG_PATTERN = /<!--[\s\S]*?-->|<\/?[\p{L}_:][^<>"']*(?:(?:"[^"<]*"|'[^'<]*
  * ```
  */
 export function extractVisibleTextRanges(value: string): PreferredTermRange[] {
-  let candidates: PreferredTermRange[];
-  try {
-    candidates = [];
-    collectContentRanges(parse(maskTranslocoPlaceholders(value)), candidates);
-  } catch {
-    candidates = braceFreeRanges(value);
-  }
-
+  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+  const candidates = message.ok ? literalRanges(message.nodes, () => true) : braceFreeRanges(value);
   return subtractRanges(candidates, tagRanges(value));
 }
 
-/** Adds the raw span of every literal content token, descending into branch bodies. */
-function collectContentRanges(tokens: readonly Token[], out: PreferredTermRange[]): void {
-  for (const token of tokens) {
-    switch (token.type) {
-      case 'content':
-        if (token.ctx) {
-          out.push({ start: token.ctx.offset, end: token.ctx.offset + token.ctx.text.length });
-        }
-        break;
-
-      // Argument names, formats and their style params, and `#` are never visible text.
-      case 'argument':
-      case 'function':
-      case 'octothorpe':
-        break;
-
-      default:
-        for (const branch of token.cases) {
-          collectContentRanges(branch.tokens, out);
-        }
-        break;
-    }
-  }
+/**
+ * The raw span of every literal node `keep` accepts, descending into branch bodies.
+ * Argument names, formats and their style params, and `#` are never visible text.
+ */
+function literalRanges(nodes: readonly IcuNode[], keep: (inPlural: boolean) => boolean): PreferredTermRange[] {
+  const ranges: PreferredTermRange[] = [];
+  visitIcuNodes(nodes, (node, inPlural) => {
+    if (node.kind === 'literal' && keep(inPlural)) ranges.push({ ...node.range });
+    return node.kind !== 'argument';
+  });
+  return ranges;
 }
 
 /** Fallback for unparseable values: everything outside `{…}` spans. */
@@ -521,33 +502,13 @@ export function applyPreferredTerm(value: string, rule: PreferredTermRule): stri
 
 /**
  * Raw spans of the literal content tokens where `#` is the count placeholder: plural and
- * selectordinal branch text, and the text of any select nested in one. Mirrors
- * `@messageformat/parser` in its default, non-strict mode. Empty when `value` does not
+ * selectordinal branch text, and the text of any select nested in one, read in the
+ * lenient mode that matches the MessageFormat runtime. Empty when `value` does not
  * parse as ICU.
  */
 function pluralContentRanges(value: string): PreferredTermRange[] {
-  const ranges: PreferredTermRange[] = [];
-  const walk = (tokens: readonly Token[], inPlural: boolean): void => {
-    for (const token of tokens) {
-      if (token.type === 'content') {
-        if (inPlural && token.ctx) {
-          ranges.push({ start: token.ctx.offset, end: token.ctx.offset + token.ctx.text.length });
-        }
-      } else if (token.type === 'plural' || token.type === 'selectordinal' || token.type === 'select') {
-        const branchInPlural = inPlural || token.type !== 'select';
-        for (const branch of token.cases) {
-          walk(branch.tokens, branchInPlural);
-        }
-      }
-    }
-  };
-
-  try {
-    walk(parse(maskTranslocoPlaceholders(value)), false);
-  } catch {
-    return [];
-  }
-  return ranges;
+  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+  return message.ok ? literalRanges(message.nodes, (inPlural) => inPlural) : [];
 }
 
 /**
@@ -571,15 +532,13 @@ function requoteWithReplacements(
   return encodePluralIcuLiteral(replaced);
 }
 
-/** `'{…}'`, `'}…'` or `'#…'` up to a closing apostrophe not followed by another; as in `@messageformat/parser`. */
-const ICU_QUOTED_PATTERN = /'[{}#](?:[^']|'')*'(?!')/uy;
-
 /**
  * Decodes the raw text of one content token (no bare `{`, `}` or `#`) to its literal,
  * with the literal offset at each raw offset. `''` reads as `'`; a quoted section reads
  * as its contents.
  */
 function decodeIcuLiteral(raw: string): { literal: string; rawToLiteral: number[] } {
+  const quotes = new Map(icuQuotedRuns(raw).map((range) => [range.start, range.end]));
   let literal = '';
   const rawToLiteral: number[] = [];
   let i = 0;
@@ -591,10 +550,9 @@ function decodeIcuLiteral(raw: string): { literal: string; rawToLiteral: number[
       continue;
     }
 
-    ICU_QUOTED_PATTERN.lastIndex = i;
-    const quoted = ICU_QUOTED_PATTERN.exec(raw);
-    if (quoted) {
-      const end = i + quoted[0].length - 1;
+    const quoteEnd = quotes.get(i);
+    if (quoteEnd !== undefined) {
+      const end = quoteEnd - 1;
       rawToLiteral.push(literal.length);
       for (i++; i < end; i++) {
         rawToLiteral.push(literal.length);

@@ -149,7 +149,7 @@ export {
   statusCountsOver,
   worstStatus,
 } from './lib/translation-status-summary';
-export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';
+export { hasUnbundlableBranchBody } from './lib/icu-to-transloco';
 export { translocoToICU } from './lib/transloco-to-icu';
 // Validation: import keys, locales, values and key-set conflicts
 export {
