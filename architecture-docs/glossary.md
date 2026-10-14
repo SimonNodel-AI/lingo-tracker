@@ -963,7 +963,7 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ### Project Defaults
 
-The browser-safe setup constants in `libs/domain/src/lib/project-defaults.ts`: `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, and `DEFAULT_TYPE_DIST_FILE`. Core re-exports the same values through its existing public surface. CLI flag records and prompt builders import them from domain, so importing metadata or generating help does not load core. Values and prompt defaults are unchanged.
+The browser-safe setup constants in `libs/domain/src/lib/project-defaults.ts`: `CONFIG_FILENAME`, `DEFAULT_CONFIG`, `DEFAULT_BUNDLE_DIST`, `DEFAULT_BUNDLE_NAME`, and `DEFAULT_TYPE_DIST_FILE`. Core publicly re-exports `CONFIG_FILENAME` and `DEFAULT_CONFIG`; its bundle setup defaults remain internal. CLI flag records and prompt builders import them from domain, so importing metadata or generating help does not load core. Values and prompt defaults are unchanged.
 
 Explained in context: [`core-library.md`](core-library.md)
 
@@ -1063,7 +1063,11 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ### Public Surface
 
-The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` barrels list their exports by name, never with `export *`. They list only names that something outside the library uses, plus the types those names' signatures need. A helper that only its own library uses stays exported from its file but not from the barrel. Core exports error classes used by app code and `TranslationError`, while internal classes remain available through the errors module. `libs/domain/src/index.spec.ts` and `libs/core/src/index.spec.ts` pin the libraries' runtime exports, so adding one is a deliberate change. `reindexMutation` stays internal to core because Collection Lifecycle reports its own mutations. `openCollection` remains public for CLI and other collection consumers.
+The names a library's `index.ts` barrel exports — everything a caller must know to use it. The `domain` and `core` interfaces expose runtime names with a non-test consumer in `apps/*/src` or another library, plus types needed by callers and operation signatures. Core's use of domain counts. Core also permits explicit, reasoned exceptions in its pin spec: `CONTRACT_EXPORTS` holds `TranslationError`, required by implementers of the public `TranslationProvider` interface; `APP_SPEC_SETUP_EXPORTS` holds `openProjectCollection` and `openResourceFolder`, which must each have an app-spec consumer. Other test-only uses do not justify a public export. Tests that need internal error fixtures import `libs/core/src/lib/errors/internal.ts` directly.
+
+`libs/domain/src/index.spec.ts` and `libs/core/src/index.spec.ts` pin and check their own runtime exports without importing across libraries. Each reads consumers with Node `fs` and parses named imports (including aliases and type imports), named re-exports, and namespace imports with dot or literal-string member access. The scans exclude each library's own files, `*.spec.ts`, `*.test.ts`, and `testing/` directories from normal consumption; core separately scans app specs for its listed setup helpers. Failures list every runtime name without a consumer or permitted exception. Type-only exports are excluded. Node dependencies stay in specs; domain's runtime remains browser-safe.
+
+Sub-barrels own named export lists: core forwards the public errors sub-barrel with `export *`, while the internal error barrel forwards all definitions. The error spec discovers subclasses rather than maintaining another list of internal names, so a new public error needs one list edit in `errors/index.ts`. `reindexMutation` stays internal to core because Collection Lifecycle reports its own mutations. `openCollection` remains public for CLI and other collection consumers.
 
 Explained in context: [`monorepo-structure.md`](monorepo-structure.md#public-surface), [`core-library.md`](core-library.md#public-surface)
 

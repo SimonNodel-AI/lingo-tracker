@@ -23,6 +23,8 @@ export default [
   {
     files: [
       'apps/cli/src/commands/add-locale.spec.ts',
+      'apps/cli/src/commands/edit-collection.test.ts',
+      'apps/cli/src/commands/translate-locale.test.ts',
       'apps/cli/src/delete-collection/delete-collection.test.ts',
       'apps/cli/src/runner/command-runner.spec.ts',
       'apps/cli/src/runner/cli-error-wording.spec.ts',
@@ -37,6 +39,7 @@ export default [
           allow: [
             ...boundaryOptions.allow,
             '../../../../libs/core/src/lib/errors/lingo-tracker-error',
+            '../../../../libs/core/src/lib/errors/internal',
             '../../../../libs/core/src/lib/errors/error-codes',
           ],
         },

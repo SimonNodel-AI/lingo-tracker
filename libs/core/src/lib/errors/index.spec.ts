@@ -58,52 +58,10 @@ function findErrorClasses(source: string): string[] {
 }
 
 describe('core error exports', () => {
-  it('keeps public exports in internal and accounts for every internal-only error subclass', () => {
-    // These errors serve core operations; callers outside core use their operation results.
-    // Adding an internal-only subclass requires a deliberate entry here or a public export.
-    const internalOnly = [
-      'BaseLocaleImmutableError',
-      'BundleAlreadyExistsError',
-      'BundleHierarchicalConflictError',
-      'CannotTranslateBaseLocaleError',
-      'CollectionAlreadyExistsError',
-      'CollectionBaseLocaleMismatchError',
-      'CollectionRenameBundleConflictError',
-      'CollectionRequiredByBundleError',
-      'ConfigChangedError',
-      'CoreOperationError',
-      'FolderMoveIntoDescendantError',
-      'FolderNotFoundError',
-      'GlossaryNoCollectionsError',
-      'InvalidBundleDefinitionError',
-      'InvalidBundleLocalesError',
-      'InvalidCollectionFolderError',
-      'InvalidFolderPathError',
-      'InvalidImportLocaleError',
-      'InvalidLocaleError',
-      'InvalidNameError',
-      'InvalidResourceKeyError',
-      'InvalidTranslationStatusError',
-      'LocaleAlreadyExistsError',
-      'LocaleNotFoundError',
-      'NoTranslationTargetLocalesError',
-      'ParentDirectoryMissingError',
-      'ResourceNotFoundError',
-      'TranslationLocaleNotConfiguredError',
-    ];
+  it('keeps public exports and every discovered error subclass in internal', () => {
     for (const [name, value] of Object.entries(errors)) {
       expect(internalErrors).toHaveProperty(name, value);
     }
-    const internalSubclasses = Object.entries(internalErrors).filter(
-      ([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError,
-    );
-    const publicNames = new Set(Object.keys(errors));
-    expect(
-      internalSubclasses
-        .filter(([name]) => !publicNames.has(name))
-        .map(([name]) => name)
-        .sort(),
-    ).toEqual(internalOnly);
     const subclasses = Object.values(modules).flatMap((module) =>
       Object.entries(module).filter(
         ([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError,
@@ -111,7 +69,6 @@ describe('core error exports', () => {
     );
     expect(subclasses.length).toBeGreaterThan(0);
     for (const [name, value] of subclasses) {
-      expect(publicNames.has(name) || internalOnly.includes(name)).toBe(true);
       expect(internalErrors).toHaveProperty(name, value);
     }
   });

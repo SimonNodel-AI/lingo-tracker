@@ -4,8 +4,8 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import type { MultipleBundleConstantNameError } from '../errors';
-import { BundleNotFoundError } from '../errors';
+import type { MultipleBundleConstantNameError } from '../errors/internal';
+import { BundleNotFoundError } from '../errors/internal';
 import { type BundleRunOutcome, generateBundles } from './generate-bundles';
 
 describe('generateBundles', () => {
