@@ -5,6 +5,8 @@ import { extractICUPlaceholders } from './icu-auto-fixer';
 import { classifyICUContent } from './icu-classifier';
 import {
   hasQuotedInterpolationDelimiter,
+  type IcuError,
+  type IcuParseOptions,
   icuQuotedRuns,
   isSubMessageKeyword,
   measureIcuWork,
@@ -14,7 +16,7 @@ import {
   visitIcuNodes,
 } from './icu-message';
 import { hasUnbundlableBranchBody, icuToTransloco } from './icu-to-transloco';
-import { extractVisibleTextRanges } from './preferred-terminology';
+import { applyPreferredTerm, extractVisibleTextRanges, findPreferredTermFindings } from './preferred-terminology';
 import { translocoToICU } from './transloco-to-icu';
 
 /** Work units the readers may spend per input character in the parse cost specs. */
@@ -844,10 +846,25 @@ it('recovers a malformed brace frame as one error node holding its content', () 
       kind: 'error',
       range: { start: 0, end: 11 },
       message: "Unquoted '{' does not start an argument at position 0",
+      cause: 'frame',
+      frame: {
+        closed: true,
+        innerBrace: false,
+        blank: false,
+        ownComma: false,
+        quoted: false,
+        wrapsInterpolation: false,
+      },
       nodes: [{ kind: 'literal', range: { start: 1, end: 10 }, inPlural: false }],
     },
     { kind: 'literal', range: { start: 11, end: 12 }, inPlural: false },
-    { kind: 'error', range: { start: 12, end: 13 }, message: 'Unmatched closing brace at position 12', nodes: [] },
+    {
+      kind: 'error',
+      range: { start: 12, end: 13 },
+      message: 'Unmatched closing brace at position 12',
+      cause: 'stray-close',
+      nodes: [],
+    },
   ]);
 });
 it('reads a stray brace as text in lenient mode', () => {
@@ -869,6 +886,80 @@ it('returns an error instead of throwing beyond the engine call stack', () => {
   const source = `${'{n, plural, other {'.repeat(10000)}x${'}}'.repeat(10000)}`;
   expect(() => parseIcuMessage(source)).not.toThrow();
   expect(parseIcuMessage(source).source).toBe(source);
+});
+
+describe('error causes and frame facts', () => {
+  const FRAME = {
+    closed: true,
+    innerBrace: false,
+    blank: false,
+    ownComma: false,
+    quoted: false,
+    wrapsInterpolation: false,
+  };
+  /** The first error node of `source`, depth first. */
+  const firstError = (source: string, options: IcuParseOptions = {}): IcuError | undefined => {
+    let found: IcuError | undefined;
+    visitIcuNodes(parseIcuMessage(source, options).nodes, (node) => {
+      if (!found && node.kind === 'error') found = node;
+      return !found;
+    });
+    return found;
+  };
+
+  for (const [source, options, frame] of [
+    ['{a b}', {}, FRAME],
+    ['{a, foo}', {}, { ...FRAME, ownComma: true }],
+    ['{ }', {}, { ...FRAME, blank: true }],
+    ['{}', {}, { ...FRAME, blank: true }],
+    ["{a '{' x}", {}, { ...FRAME, innerBrace: true, quoted: true }],
+    ['{{{a}}}', { interpolation: true }, { ...FRAME, innerBrace: true, wrapsInterpolation: true }],
+    ['{ {{a}} }', { interpolation: true }, { ...FRAME, innerBrace: true }],
+    ['{n, plural, other {{', {}, { ...FRAME, closed: false, blank: true }],
+  ] as const) {
+    it(`reads ${JSON.stringify(source)} as a frame with its facts`, () => {
+      const error = firstError(source, options);
+      expect(error?.cause).toBe('frame');
+      expect(error?.frame).toEqual(frame);
+    });
+  }
+
+  it('marks a strict closing brace with no open construct as stray-close', () => {
+    const error = firstError('x}y');
+    expect(error?.cause).toBe('stray-close');
+    expect(error?.frame).toBeUndefined();
+  });
+
+  it("marks a '#…{…' quoted run outside plural content as quote-escape", () => {
+    expect(firstError("'#{'")?.cause).toBe('quote-escape');
+  });
+
+  it('marks the end of an unclosed value as unclosed', () => {
+    const nodes = parseIcuMessage('{a').nodes;
+    const last = nodes[nodes.length - 1];
+    expect(last?.kind === 'error' ? last.cause : undefined).toBe('unclosed');
+  });
+
+  it('marks lenient group recovery tokens as stray-text', () => {
+    expect(firstError('{n, plural, other {x} {', { lenient: true })?.cause).toBe('stray-text');
+  });
+
+  it('marks nesting beyond the call stack as capacity', () => {
+    const error = firstError(`${'{n, plural, other {'.repeat(10000)}x${'}}'.repeat(10000)}`);
+    expect(error?.cause).toBe('capacity');
+    expect(error?.frame).toBeUndefined();
+  });
+
+  it('records brace facts on arguments and groups', () => {
+    const [argument, , group] = parseIcuMessage('{a} {n, plural, other {x}}').nodes;
+    expect(argument).toMatchObject({ kind: 'argument', closed: true, innerBrace: false });
+    expect(group).toMatchObject({ kind: 'group', closed: true, innerBrace: true });
+    expect(parseIcuMessage('{{a}}', { interpolation: true }).nodes[0]).toMatchObject({
+      closed: true,
+      innerBrace: true,
+    });
+    expect(parseIcuMessage('{n, plural, other {x}').nodes[0]).toMatchObject({ kind: 'group', closed: false });
+  });
 });
 
 describe('round-1 ruling pins', () => {
@@ -962,32 +1053,52 @@ const ADVERSARIAL: Record<string, (n: number) => string> = {
   'quoted interpolations': (n) => "'{{a}}'".repeat(n / 7),
   'many interpolations': (n) => '{{a}}'.repeat(n / 5),
   'many case bodies': (n) => `{n,plural,${'one {{x}} '.repeat(n / 10)}other {y}}`,
+  'tags between letters': (n) => 'a<b></b>'.repeat(n / 8),
+  'terms between arguments': (n) => 'a{x}'.repeat(n / 4),
+  'plural text for a # term': (n) => `{n, plural, other {${'a '.repeat(n / 2)}}}`,
+  'no-break spaces before a malformed case body': (n) => `{n,select,${'\u00a0'.repeat(n)}.{{x}} other{y}}`,
+  'unclosed comment openers': (n) => '<!--'.repeat(n / 4),
+  'nested argument styles': (n) => `${'{x,number,'.repeat(n / 11)}a${'}'.repeat(n / 11)}`,
+};
+
+/** The readers, in two groups; each group is bounded by the work constant on its own. */
+const READER_GROUPS: Record<string, (value: string) => void> = {
+  'the parser, converters and checks': (value) => {
+    for (const options of [{}, { interpolation: true }, { lenient: true }, { interpolation: true, lenient: true }]) {
+      parseIcuMessage(value, options);
+    }
+    translocoToICU(value);
+    icuToTransloco(value);
+    hasUnbundlableBranchBody(value);
+    hasQuotedInterpolationDelimiter(value);
+    extractICUPlaceholders(value);
+    compareIcuArguments(value, value);
+    classifyICUContent(value);
+  },
+  'the preferred-terminology readers': (value) => {
+    extractVisibleTextRanges(value);
+    findPreferredTermFindings(value, [{ discouraged: 'a', preferred: 'b' }]);
+    applyPreferredTerm(value, { discouraged: 'a', preferred: 'b' });
+    applyPreferredTerm(value, { discouraged: 'a', preferred: 'C#' });
+  },
 };
 
 function runEveryReader(value: string): void {
-  for (const options of [{}, { interpolation: true }, { lenient: true }, { interpolation: true, lenient: true }]) {
-    parseIcuMessage(value, options);
-  }
-  translocoToICU(value);
-  icuToTransloco(value);
-  hasUnbundlableBranchBody(value);
-  hasQuotedInterpolationDelimiter(value);
-  extractICUPlaceholders(value);
-  compareIcuArguments(value, value);
-  classifyICUContent(value);
-  extractVisibleTextRanges(value);
+  for (const readers of Object.values(READER_GROUPS)) readers(value);
 }
 
 describe('parse cost', () => {
   // Every scan records its work through countIcuWork, so a super-linear path fails here
   // deterministically, whatever the machine's load.
   for (const [description, make] of Object.entries(ADVERSARIAL)) {
-    it(`stays within a linear work bound for ${description}`, () => {
-      for (const length of [8000, 32000]) {
-        const value = make(length);
-        expect(measureIcuWork(() => runEveryReader(value))).toBeLessThanOrEqual(WORK_PER_CHARACTER * value.length);
-      }
-    });
+    for (const [group, readers] of Object.entries(READER_GROUPS)) {
+      it(`stays within a linear work bound for ${description} in ${group}`, () => {
+        for (const length of [8000, 32000]) {
+          const value = make(length);
+          expect(measureIcuWork(() => readers(value))).toBeLessThanOrEqual(WORK_PER_CHARACTER * value.length);
+        }
+      });
+    }
   }
 });
 

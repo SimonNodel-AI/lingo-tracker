@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { openCollection } from '../config/open-collection';
 import {
+  BracedPlaceholderError,
   InvalidResourceKeyError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
@@ -14,6 +15,7 @@ import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { addResource } from './add-resource';
 import { addResources } from './add-resources';
+import { calculateChecksum as md5 } from './checksum';
 import * as resourceFolder from './resource-folder';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
@@ -52,6 +54,55 @@ describe('addResources (real fs)', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
+  it('rejects a braced value in a later batch item before any writes', async () => {
+    await expect(
+      addResources(
+        collection(),
+        [
+          { key: 'common.ok', baseValue: 'OK' },
+          { key: 'common.bad', baseValue: 'Bad', translations: [{ locale: 'fr', value: '{{{a}}}' }] },
+        ],
+        { onMutation },
+      ),
+    ).rejects.toThrow(BracedPlaceholderError);
+    expect(existsSync(join(root, 'translations'))).toBe(false);
+    expect(collected).toEqual([]);
+    await addResource(collection(), { key: 'common.existing', baseValue: 'Existing' });
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((name) =>
+      join(root, 'translations', 'common', name),
+    );
+    const before = paths.map((path) => readFileSync(path));
+    await expect(
+      addResources(
+        collection(),
+        [
+          { key: 'common.ok', baseValue: 'OK' },
+          { key: 'common.bad', baseValue: '{{{a}}}' },
+        ],
+        { onMutation },
+      ),
+    ).rejects.toThrow(BracedPlaceholderError);
+    expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    expect(collected).toEqual([]);
+  });
+
+  it('stores accepted placeholder-only case bodies and their metadata in a batch', async () => {
+    const value = '{n, plural, other {{{a}}}}';
+    const stored = '{n, plural, other {{a}}}';
+    await addResources(collection(), [
+      { key: 'common.ok', baseValue: value, translations: [{ locale: 'fr', value, status: 'verified' }] },
+    ]);
+    expect(JSON.parse(readFileSync(file('common', 'resource_entries.json'), 'utf8'))).toEqual({
+      ok: { source: stored, fr: stored, de: stored },
+    });
+    expect(JSON.parse(readFileSync(file('common', 'tracker_meta.json'), 'utf8'))).toEqual({
+      ok: {
+        en: { checksum: md5(stored) },
+        fr: { checksum: md5(stored), baseChecksum: md5(stored), status: 'verified' },
+        de: { checksum: md5(stored), baseChecksum: md5(stored), status: 'new' },
+      },
+    });
+  });
   it('validates supplied locales before existence and batch duplicate checks', async () => {
     const provider = new InMemoryTranslationProvider();
     const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });

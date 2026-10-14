@@ -2,7 +2,7 @@ import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors';
 import { describeFolderProblem } from '../resource/collection-folders';
 import type { RunOutcome } from '../run-outcome';
-import { type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
+import { type NormalizeFinding, type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
 
 const NUMERIC_FIELDS = [
   'entriesProcessed',
@@ -14,7 +14,10 @@ const NUMERIC_FIELDS = [
   'foldersRemoved',
 ] as const;
 
-export type CollectionNormalizeResult = Pick<NormalizeResult, (typeof NUMERIC_FIELDS)[number] | 'problems'> & {
+export type CollectionNormalizeResult = Pick<
+  NormalizeResult,
+  (typeof NUMERIC_FIELDS)[number] | 'problems' | 'findings'
+> & {
   collectionName: string;
 };
 
@@ -31,6 +34,7 @@ export interface NormalizeCollectionsOptions extends NormalizeOptions {
 }
 
 export interface NormalizeCollectionsResult {
+  readonly findings: readonly (NormalizeFinding & { readonly collectionName: string })[];
   readonly outcome: RunOutcome;
   readonly collections: CollectionNormalizeResult[];
   readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
@@ -42,6 +46,7 @@ export interface NormalizeCollectionsResult {
 export function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
   return {
     outcome: 'succeeded',
+    findings: [],
     collections: [],
     totals: {
       ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
@@ -95,5 +100,15 @@ export async function normalizeCollections(
   for (const result of results) {
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }
-  return { outcome: errors.length > 0 ? 'failed' : 'succeeded', collections: results, totals, errors, warnings };
+  const findings = results.flatMap(({ collectionName, findings }) =>
+    findings.map((finding) => ({ collectionName, ...finding })),
+  );
+  return {
+    outcome: errors.length > 0 ? 'failed' : 'succeeded',
+    collections: results,
+    totals,
+    errors,
+    warnings,
+    findings,
+  };
 }

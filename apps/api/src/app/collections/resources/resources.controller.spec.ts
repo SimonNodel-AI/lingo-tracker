@@ -7,6 +7,7 @@ import {
   type TranslationProvider,
 } from '@simoncodes-ca/core';
 import type { ResourceTreeDto, SearchResultsDto, TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
+import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
 import { HttpProject } from '../../testing/http-project';
 
 // Inject only the external provider through the public operation options. Each wrapper
@@ -97,6 +98,29 @@ describe('ResourcesController HTTP (real project)', () => {
   });
 
   describe('createResources', () => {
+    it('rejects a braced value with a 400 message and details before writing', async () => {
+      await project.seed('app.button.existing');
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map(
+        (file) => `translations/test/app/button/${file}`,
+      );
+      const before = paths.map((path) => project.read(path));
+      const found = findBracedPlaceholders('{{{a}}}')[0];
+      expect(found).toBeDefined();
+      if (!found) throw new Error('Missing finding');
+      const detail = describeBracedPlaceholder(found);
+      expect(await request('POST', { ...dto, baseValue: '{{{a}}}' })).toEqual({
+        status: 400,
+        body: {
+          statusCode: 400,
+          error: 'Bad Request',
+          message: `Value for locale "en" is not valid: ${detail}`,
+          errors: [detail],
+        },
+      });
+      expect(mockProvider.calls).toEqual([]);
+      expect(paths.map((path) => project.read(path))).toEqual(before);
+    });
+
     it('should successfully create a single resource', async () => {
       expect(await request('POST', dto)).toEqual({ status: 201, body: { entriesCreated: 1, created: true } });
       expect(entries()).toEqual({ ok: { source: 'OK', 'fr-ca': 'OK', es: 'OK' } });
@@ -456,6 +480,31 @@ describe('ResourcesController HTTP (real project)', () => {
   describe('update', () => {
     beforeEach(async () => {
       await project.seed(dto.key);
+    });
+    it.each([
+      { locale: 'en', changes: { baseValue: '{{{a}}}' } },
+      { locale: 'fr-ca', changes: { baseValue: 'Changed', locales: { 'fr-ca': { value: '{{{a}}}' } } } },
+    ])('rejects braced PATCH values for $locale without changing files', async ({ locale, changes }) => {
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map(
+        (file) => `translations/test/app/button/${file}`,
+      );
+      const before = paths.map((path) => project.read(path));
+      const found = findBracedPlaceholders('{{{a}}}')[0];
+      expect(found).toBeDefined();
+      if (!found) throw new Error('Missing finding');
+      const detail = describeBracedPlaceholder(found);
+      expect(await request('PATCH', { key: dto.key, ...changes, moveTo: 'shared' })).toEqual({
+        status: 400,
+        body: {
+          statusCode: 400,
+          error: 'Bad Request',
+          message: `Value for locale "${locale}" is not valid: ${detail}`,
+          errors: [detail],
+        },
+      });
+      expect(paths.map((path) => project.read(path))).toEqual(before);
+      expect(project.exists('translations/test/shared')).toBe(false);
+      expect(mockProvider.calls).toEqual([]);
     });
     it('answers 400 for an unknown locale status', async () => {
       expect(

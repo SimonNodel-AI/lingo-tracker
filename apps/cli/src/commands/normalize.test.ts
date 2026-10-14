@@ -7,7 +7,7 @@ import { type CommandProject, createCommandProject } from '../testing/command-pr
 import { type NormalizeOptions, normalizeCommand } from './normalize';
 import { NORMALIZE_FLAGS } from './normalize-flags';
 
-type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
+type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals' | 'findings'>;
 const zeroTotals = {
   entriesProcessed: 0,
   localesAdded: 0,
@@ -55,6 +55,30 @@ describe('normalizeCommand (real project)', () => {
     vi.restoreAllMocks();
     for (const path of restorePermissions.splice(0)) chmodSync(path, 0o755);
     project.cleanup();
+  });
+
+  it.each([
+    ['{{{a}}}', 'braced-placeholder'],
+    ['{p, plural, offset:2other{x}}', 'collapsed-case-body'],
+  ])('prints findings and includes them in JSON with exit 0: %s', async (value, kind) => {
+    project.write(entriesPath, { hello: { source: value } });
+    const before = project.read(entriesPath);
+    const dry = await project.run(normalizeCommand, { collection: 'main', dryRun: true });
+    const normal = await project.run(normalizeCommand, { collection: 'main' });
+    expect(normal.exitCode).toBe(0);
+    expect(dry.exitCode).toBe(0);
+    expect(dry.stderr).toBe(`${normal.stderr}⚠️  Dry run completed - no changes were made.\n`);
+    expect(normal.stderr).toContain('⚠️  hello (en): ');
+    expect(project.json(entriesPath)).toMatchObject({ hello: { source: value } });
+    const json = await project.run(normalizeCommand, { collection: 'main', json: true });
+    expect(json.exitCode).toBe(0);
+    expect(json.stderr).toBe('');
+    const report = payload(json.stdout);
+    expect(report.findings).toHaveLength(2);
+    expect(report.findings[0]).toMatchObject({ collectionName: 'main', key: 'hello', locale: 'en', kind });
+    expect(report.findings[1]).toMatchObject({ collectionName: 'main', key: 'hello', locale: 'fr', kind });
+    expect(normal.stderr).toBe(`⚠️  hello (en): ${report.findings[0]?.detail}\n`);
+    expect(before).toContain(value);
   });
 
   it('normalizes the named collection', async () => {
@@ -141,8 +165,8 @@ describe('normalizeCommand (real project)', () => {
     expect(result.exitCode).toBe(1);
     expectFailure(result.stderr);
     expect(writes).toEqual([result.stdout]);
-    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
-    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals, findings: [] });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals, findings: [] }, null, 2)}\n`);
   });
   it('reports read-only collection on stderr while keeping JSON on stdout', async () => {
     const result = await project.run(normalizeCommand, { collection: 'vendor', json: true });
@@ -150,8 +174,8 @@ describe('normalizeCommand (real project)', () => {
     expect(result.stderr).toBe(
       '❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
     );
-    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
-    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals, findings: [] });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals, findings: [] }, null, 2)}\n`);
   });
   it.skipIf(process.getuid?.() === 0)('reports a pruning removal failure and retains the empty folder', async () => {
     const root = join(project.cwd, 'translations/main');
@@ -219,8 +243,8 @@ describe('normalizeCommand (real project)', () => {
     const result = await project.run(normalizeCommand, { collection: 'main', json: true, dryRun: true });
     expect(result.exitCode).toBe(1);
     expectFailure(result.stderr);
-    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
-    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals, findings: [] });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals, findings: [] }, null, 2)}\n`);
     expect(project.read(entriesPath)).toBe(before);
     expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
   });
@@ -285,8 +309,8 @@ describe('normalizeCommand (real project)', () => {
     const result = await project.run(normalizeCommand, { all: true, yes: true, json: true });
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toBe(skippedVendor);
-    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
-    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
+    expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals, findings: [] });
+    expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals, findings: [] }, null, 2)}\n`);
   });
   it('offers collection choices and all in interactive mode', async () => {
     rawEntry();

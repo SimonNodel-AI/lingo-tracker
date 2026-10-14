@@ -1,6 +1,8 @@
 // The public surface of @simoncodes-ca/domain: browser-safe rules shared by core, the API, the CLI and the Tracker.
 // Only names with a consumer outside this library are listed; everything else is a module-level detail.
 
+// ICU/Transloco: conversion, classification, placeholder repair and ICU checks
+export { type BracedPlaceholder, describeBracedPlaceholder, findBracedPlaceholders } from './lib/braced-placeholders';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,
@@ -26,6 +28,7 @@ export {
   type TranslatedValueViolation,
   type ValueCheckOptions,
 } from './lib/check-translated-value';
+export { type CollapsedCaseBody, findCollapsedCaseBodies } from './lib/collapsed-case-bodies';
 // Collection settings: shared inheritance and base-locale default
 export { DEFAULT_BASE_LOCALE, findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
 // Tags
@@ -46,7 +49,6 @@ export {
   parentFolderPath,
   rebaseFolderPath,
 } from './lib/folder-path';
-// ICU/Transloco: conversion, classification, placeholder repair and ICU checks
 export { type ArgumentMismatch, compareIcuArguments } from './lib/icu-arguments';
 export {
   hasICUPlaceholders,

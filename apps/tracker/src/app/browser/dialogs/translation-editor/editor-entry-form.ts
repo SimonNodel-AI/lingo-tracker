@@ -3,6 +3,7 @@ import { FormArray, FormControl, FormGroup, Validators } from '@angular/forms';
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { DEFAULT_MISSING_METADATA_STATUS, isNeedsWorkStatus, summaryTarget } from '@simoncodes-ca/domain';
 import { merge, type Subscription } from 'rxjs';
+import { bracedPlaceholderValidator } from '../../../shared/validators/braced-placeholder.validator';
 import { segmentValidator } from '../../../shared/validators/segment.validator';
 import {
   addTag as addDraftTag,
@@ -19,7 +20,10 @@ export class EditorEntryForm {
       validators: [Validators.required, segmentValidator],
       nonNullable: true,
     }),
-    baseValue: new FormControl<string>('', { validators: [Validators.required], nonNullable: true }),
+    baseValue: new FormControl<string>('', {
+      validators: [Validators.required, bracedPlaceholderValidator],
+      nonNullable: true,
+    }),
     comment: new FormControl<string>('', { nonNullable: true }),
     translations: new FormArray<
       FormGroup<{
@@ -59,7 +63,7 @@ export class EditorEntryForm {
       translations.push(
         new FormGroup({
           locale: new FormControl(locale, { nonNullable: true }),
-          value: new FormControl(target?.value ?? '', { nonNullable: true }),
+          value: new FormControl(target?.value ?? '', { validators: [bracedPlaceholderValidator], nonNullable: true }),
           status: new FormControl<TranslationStatus>(target?.status ?? DEFAULT_MISSING_METADATA_STATUS, {
             nonNullable: true,
           }),

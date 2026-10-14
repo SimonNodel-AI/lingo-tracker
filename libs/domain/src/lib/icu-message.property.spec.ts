@@ -1,15 +1,26 @@
 import { parse, type Token } from '@messageformat/parser';
 import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { type IcuNode, type IcuParseOptions, type IcuRange, parseIcuMessage, visitIcuNodes } from './icu-message';
+import {
+  type IcuNode,
+  type IcuParseOptions,
+  type IcuRange,
+  isBareSelector,
+  isBareSelectorBefore,
+  parseIcuMessage,
+  visitIcuNodes,
+} from './icu-message';
 import { hasUnbundlableBranchBody, icuToTransloco } from './icu-to-transloco';
 import {
   arbitraryMessage,
+  gluedSelectorMessage,
+  icuishCompilationMessage,
   icuishMessage,
   identifier,
   knownValidRuntimeMessage,
   quoteStressMessage,
   supportedMessage,
+  unicodeSpacedMessage,
 } from './testing/icu-arbitraries';
 import { translocoToICU } from './transloco-to-icu';
 
@@ -31,6 +42,7 @@ const anyMessage = fc.oneof(
   arbitraryMessage,
   icuishMessage,
   quoteStressMessage,
+  unicodeSpacedMessage,
   spacedHead.map((text) => `{${text}`),
   spacedHead.map((text) => `{n,select,${text}`),
 );
@@ -128,6 +140,15 @@ describe('ICU message properties', () => {
     );
   });
 
+  it('accepts a Unicode-spaced message only when the parser oracle accepts it', () => {
+    fc.assert(
+      fc.property(unicodeSpacedMessage, (source) => {
+        if (parseIcuMessage(source).ok) expect(() => parse(source)).not.toThrow();
+      }),
+      { numRuns: 5000 },
+    );
+  });
+
   it('reads an argument head as the sticky header pattern does', () => {
     const header = /\{\s*([^\p{Pat_Syn}\p{Pat_WS}]+)\s*(?=[},]|$)/uy;
     fc.assert(
@@ -161,6 +182,128 @@ describe('ICU message properties', () => {
   });
 });
 
+// Every generator, valid and malformed, for properties stated over "every arbitrary".
+const everyArbitrary = fc.oneof(
+  anyMessage,
+  supportedMessage,
+  knownValidRuntimeMessage,
+  icuishCompilationMessage,
+  gluedSelectorMessage,
+);
+
+// The selector recognizer reads the pattern below in linear time; the pattern stays as its oracle.
+const BARE_SELECTOR_PATTERN = /^\s*(?:offset\s*:\s*\d+(?!\d)\s*)?(?:=\d+|[^\p{Pat_Syn}\p{Pat_WS}]+)\s*$/u;
+const selectorTail = fc
+  .array(
+    fc.constantFrom(
+      ' ',
+      '\u00a0',
+      '\u2000',
+      '\u200e',
+      '\ufeff',
+      '\t',
+      'offset',
+      'o',
+      ':',
+      '1',
+      '2',
+      '=',
+      'a',
+      'ä',
+      '日',
+      '🙂',
+      '.',
+      '#',
+      '\ud800',
+    ),
+    { maxLength: 8 },
+  )
+  .map((parts) => parts.join(''));
+
+describe('bare selector recognizer', () => {
+  it('accepts exactly what the selector pattern accepts', () => {
+    fc.assert(
+      fc.property(fc.oneof(selectorTail, fc.string({ maxLength: 8 })), (tail) => {
+        expect(isBareSelector(tail)).toBe(BARE_SELECTOR_PATTERN.test(tail));
+      }),
+      { numRuns: 20000 },
+    );
+  });
+
+  for (const [tail, expected] of [
+    [' offset:2other', true],
+    [' offset:2=2', true],
+    [' offset:1one ', true],
+    [' männlich ', true],
+    ['\u00a0', true],
+    ['', false],
+    ['  ', false],
+    [' offset:12 ', false],
+    [' offset:2', false],
+    [' a.b ', false],
+    [' a b ', false],
+    [' offset:1 offset:2 other', false],
+    ['=', false],
+    ['=12', true],
+  ] as const) {
+    it(`reads ${JSON.stringify(tail)} as ${expected ? 'a selector' : 'no selector'}`, () => {
+      expect(isBareSelector(tail)).toBe(expected);
+      expect(BARE_SELECTOR_PATTERN.test(tail)).toBe(expected);
+    });
+  }
+});
+
+// P2.2: the parser's innerBrace fact equals a scan of the text between the delimiters.
+describe('ICU message brace facts', () => {
+  it('records innerBrace as a brace between the delimiters, for every argument, group and frame', () => {
+    fc.assert(
+      fc.property(everyArbitrary, (source) => {
+        for (const options of MODES) {
+          visitIcuNodes(parseIcuMessage(source, options).nodes, (node) => {
+            const facts =
+              node.kind === 'error' ? node.frame : node.kind === 'literal' || node.kind === 'pound' ? undefined : node;
+            if (!facts) return;
+            const { start, end } = node.range;
+            expect(facts.innerBrace).toBe(/[{}]/.test(source.slice(start + 1, facts.closed ? end - 1 : end)));
+            if (facts.closed) expect(source[end - 1]).toBe('}');
+          });
+        }
+      }),
+      { numRuns: 3000 },
+    );
+  });
+});
+
+/** P2.1 oracle: the regex the detector applied to a lone case node's text before it read node facts. */
+function regexUnbundlableBranchBody(value: string): boolean {
+  if (!value.includes('{{')) return false;
+  let found = false;
+  visitIcuNodes(parseIcuMessage(value, { interpolation: true }).nodes, (node) => {
+    if (found || node.kind !== 'group') return !found;
+    found = node.cases.some((branch) => {
+      const [only, ...rest] = branch.nodes;
+      if (!only || rest.length > 0 || only.range.start !== branch.body.start || only.range.end !== branch.body.end) {
+        return false;
+      }
+      const bareArgument = only.kind === 'argument' && only.syntax === 'icu' && only.format === undefined;
+      return !bareArgument && /^\{[^{}]*\}?$/.test(value.slice(only.range.start, only.range.end));
+    });
+    return !found;
+  });
+  return found;
+}
+
+describe('hasUnbundlableBranchBody facts', () => {
+  it('reads brace facts as the text regex over the same parse did', () => {
+    fc.assert(
+      fc.property(everyArbitrary, (value) => {
+        expect(hasUnbundlableBranchBody(value)).toBe(regexUnbundlableBranchBody(value));
+      }),
+      { numRuns: 5000 },
+    );
+  });
+});
+
 describe('ICU message conversion properties', () => {
   it('never throws on arbitrary Unicode or brace-heavy strings', () => {
     fc.assert(
@@ -183,6 +326,22 @@ describe('ICU message conversion properties', () => {
         expect(read).toEqual(names);
         expect(argumentNames(parse(translocoToICU(input)))).toEqual(names);
       }),
+    );
+  });
+
+  // P1.2: the bundler wraps every placeholder-only case body of a strict-ok value, so the
+  // converter's position rule must open every case the strict grammar opens.
+  it('opens every case of a strict-ok message by the converter position rule', () => {
+    fc.assert(
+      fc.property(everyArbitrary, (source) => {
+        const message = parseIcuMessage(source);
+        if (!message.ok) return;
+        visitIcuNodes(message.nodes, (node) => {
+          if (node.kind !== 'group') return;
+          for (const branch of node.cases) expect(isBareSelectorBefore(source, branch.body.start - 1)).toBe(true);
+        });
+      }),
+      { numRuns: 5000 },
     );
   });
 

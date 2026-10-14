@@ -434,6 +434,38 @@ describe('TranslationEditorDialog', () => {
       expect(spectator.query('[data-testid="locales-drawer"]')).toBeNull();
     });
 
+    it('should show the braced-placeholder error for the base value and a translation row', () => {
+      component.session.panels.openLocalesDrawer();
+      component.session.form.controls.baseValue.markAsTouched();
+      component.session.form.controls.baseValue.setValue('Hi {{{who}}}');
+      const row = component.session.getLocaleFormGroup(0).controls.value;
+      row.markAsTouched();
+      row.setValue('Salut {{{who}}}');
+      spectator.detectChanges();
+
+      const base = spectator.query('#translation-editor-base-value-error');
+      const rowError = spectator.query('#translation-editor-locale-error-0');
+      expect(base?.querySelector('code')?.textContent).toBe('{{who}}');
+      expect(rowError?.querySelector('code')?.textContent).toBe('{{who}}');
+      expect(spectator.query('[data-testid="locales-drawer"] textarea')?.getAttribute('aria-invalid')).toBe('true');
+    });
+
+    it('should open the drawer and focus the braced translation row when a submit fails on it', async () => {
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.getLocaleFormGroup(0).controls.value.setValue('Salut {{{who}}}');
+
+      await component.session.onSubmit();
+      spectator.detectChanges();
+      await flushFocus();
+
+      const row = spectator.query<HTMLTextAreaElement>('[data-testid="locales-drawer"] textarea');
+      expect(component.session.panels.isLocalesDrawerOpen()).toBe(true);
+      expect(spectator.query('#translation-editor-locale-error-0')?.querySelector('code')?.textContent).toBe('{{who}}');
+      expect(document.activeElement).toBe(row);
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
     it('should edit the same FormArray the save path reads', () => {
       component.session.panels.openLocalesDrawer();
       spectator.detectChanges();

@@ -1,4 +1,5 @@
 import { parse, type Token } from '@messageformat/parser';
+import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
   applyPreferredTerm,
@@ -7,6 +8,7 @@ import {
   normalizePreferredTermRules,
   type PreferredTermRule,
   sortPreferredTermRules,
+  tagRanges,
   validatePreferredTermRules,
 } from './preferred-terminology';
 
@@ -513,9 +515,33 @@ it('replaces visible text after an unmatched literal opening brace and apostroph
 it('keeps quoted literal ranges after an unknown lowercase formatter', () => {
   expect(extractVisibleTextRanges("{pa,unknown}'{x}'")).toEqual([{ start: 12, end: 17 }]);
 });
-it('reads a case body behind an unspaced offset as the stored-value converter left it', () => {
-  expect(extractVisibleTextRanges('{p,plural,offset:2other{{x}} other{y}}')).toEqual([
-    { start: 24, end: 27 },
-    { start: 35, end: 36 },
-  ]);
+// I1: HEAD bug fixed. The case body behind an unspaced offset is an argument, not text.
+it('reads a case body behind an unspaced offset as a case body holding its argument', () => {
+  expect(extractVisibleTextRanges('{p,plural,offset:2other{{x}} other{y}}')).toEqual([{ start: 35, end: 36 }]);
+});
+
+describe('tag scanner', () => {
+  // The scanner reads this pattern in one pass; the pattern stays as its oracle.
+  const TAG_PATTERN = /<!--[\s\S]*?-->|<\/?[\p{L}_:][^<>"']*(?:(?:"[^"<]*"|'[^'<]*')[^<>"']*)*>/gu;
+  const markup = fc
+    .array(
+      fc.constantFrom('<', '>', '/', '!', '--', '-', '<!--', '-->', '"', "'", 'a', 'é', '日', '_', ':', ' ', '=', '3'),
+      {
+        maxLength: 16,
+      },
+    )
+    .map((parts) => parts.join(''));
+
+  it('finds exactly the tags and comments the pattern finds', () => {
+    fc.assert(
+      fc.property(fc.oneof(markup, fc.string({ maxLength: 16 })), (value) => {
+        const expected = [...value.matchAll(TAG_PATTERN)].map((match) => ({
+          start: match.index,
+          end: match.index + match[0].length,
+        }));
+        expect(tagRanges(value)).toEqual(expected);
+      }),
+      { numRuns: 20000 },
+    );
+  });
 });

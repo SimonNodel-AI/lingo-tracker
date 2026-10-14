@@ -16,6 +16,37 @@ describe('normalize', () => {
   const meta = (folder: string) => readJson(folder, 'tracker_meta.json');
   const entries = (folder: string) => readJson(folder, 'resource_entries.json');
 
+  it.each([
+    ['{p, plural, offset:2other{x}}', 'collapsed-case-body'],
+    ['{{{a}}}', 'braced-placeholder'],
+  ])('reports %s without changing bytes or checksums', async (value, kind) => {
+    const checksum = md5(value);
+    const folder = writeFolderFiles(dir(), 'common', {
+      entries: { ok: { source: value, fr: value, es: value } },
+      meta: {
+        ok: {
+          en: { checksum },
+          fr: { checksum, baseChecksum: checksum, status: 'new' },
+          es: { checksum, baseChecksum: checksum, status: 'new' },
+        },
+      },
+    });
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) => join(folder, file));
+    const before = paths.map((path) => readFileSync(path));
+    const dry = await normalize(collection(), { dryRun: true });
+    const result = await normalize(collection());
+    expect(result.findings).toEqual(dry.findings);
+    expect(result.findings.map(({ key, locale, kind }) => ({ key, locale, kind }))).toEqual(
+      ['en', 'fr', 'es'].map((locale) => ({ key: 'common.ok', locale, kind })),
+    );
+    expect(result).toMatchObject({ valuesConverted: 0, filesCreated: 0, filesUpdated: 0, localesAdded: 0 });
+    expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    if (kind === 'collapsed-case-body')
+      expect(result.findings[0]?.detail).toBe(
+        "case 'other' body {x} may have been the placeholder {{x}}; earlier versions dropped one brace pair here. If it was a placeholder, edit the value to restore it.",
+      );
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -198,6 +229,7 @@ describe('normalize', () => {
       foldersRemoved: 0,
       dryRun: false,
       problems: [],
+      findings: [],
     });
     expect({ entries: entries(folder), meta: meta(folder) }).toEqual(before);
   });
@@ -249,6 +281,7 @@ describe('normalize', () => {
         foldersRemoved: 0,
         dryRun,
         problems: [],
+        findings: [],
       });
     }
   });

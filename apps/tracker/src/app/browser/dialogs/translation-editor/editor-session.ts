@@ -128,13 +128,26 @@ export class EditorSession {
     return this.entry.form.controls.key.invalid && (this.entry.form.controls.key.touched || this.submitAttempted());
   });
 
-  /** True once the English value is both missing and worth complaining about. */
+  /** True once the English value is both invalid (missing or braced) and worth complaining about. */
   readonly showBaseValueError = computed(() => {
     this.entry.formState();
     return (
       this.entry.form.controls.baseValue.invalid &&
       (this.entry.form.controls.baseValue.touched || this.submitAttempted())
     );
+  });
+
+  /** True once the translation row's value is invalid and worth complaining about. */
+  showLocaleValueError(index: number): boolean {
+    this.entry.formState();
+    const value = this.getLocaleFormGroup(index).controls.value;
+    return value.invalid && (value.touched || this.submitAttempted());
+  }
+
+  /** The first translation row whose value is invalid, -1 when none is. */
+  readonly firstInvalidLocaleIndex = computed(() => {
+    this.entry.formState();
+    return this.entry.form.controls.translations.controls.findIndex((group) => group.controls.value.invalid);
   });
 
   /** How many similar values are pinned in the context column right now. */
@@ -461,11 +474,20 @@ export class EditorSession {
     this.entry.form.markAllAsTouched();
     this.errorMessage.set(this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
 
+    const { key, baseValue } = this.entry.form.controls;
+    if (key.valid && baseValue.valid && this.firstInvalidLocaleIndex() >= 0) {
+      // The offending field is a translation row, which only the drawer shows.
+      this.panels.closeFolderPopover(false);
+      this.panels.openLocalesDrawer();
+      this.panels.requestFocus('invalid-locale-value');
+      return;
+    }
+
     // Focus belongs to the offending field, not to whatever opened the panel.
     this.panels.closeAll();
 
     queueMicrotask(() => {
-      if (!this.#destroyed) this.options.focus(this.entry.form.controls.key.invalid ? 'key' : 'base-value');
+      if (!this.#destroyed) this.options.focus(key.invalid ? 'key' : 'base-value');
     });
   }
 

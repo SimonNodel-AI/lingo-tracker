@@ -239,6 +239,18 @@ describe('ResourceFolder', () => {
   });
 
   describe('setEntry', () => {
+    it('holds braced base and translations with their checksums', () => {
+      const value = '{{{a}}}';
+      const meta = {
+        en: { checksum: md5(value) },
+        fr: { checksum: md5(value), baseChecksum: md5(value), status: 'new' as const },
+      };
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setEntry('ok', { source: value, fr: value }, meta, { targetLocales: ['fr', 'de'] });
+      expect(folder.get('ok')?.entry).toEqual({ source: value, fr: value, de: value });
+      expect(folder.get('ok')?.meta?.['en']).toEqual(meta.en);
+      expect(folder.get('ok')?.meta?.['fr']).toEqual(meta.fr);
+    });
     it('normalizes all locale values and updates checksums for converted values', () => {
       const folder = openResourceFolder(folderPath, { baseLocale: 'fr' });
       folder.setEntry(
@@ -303,6 +315,22 @@ describe('ResourceFolder', () => {
   });
 
   describe('normalizeEntry', () => {
+    it('holds braced values and leaves their checksums unchanged', () => {
+      const value = '{{{a}}}';
+      const meta = {
+        en: { checksum: md5(value) },
+        fr: { checksum: md5(value), baseChecksum: md5(value), status: 'new' as const },
+      };
+      writePair({ ok: { source: value, fr: value } }, { ok: meta });
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      expect(folder.normalizeEntry('ok', ['fr'])).toEqual({
+        valuesConverted: 0,
+        tagsNormalized: 0,
+        localesAdded: 0,
+        changed: false,
+      });
+      expect(folder.get('ok')).toEqual({ entry: { source: value, fr: value }, meta });
+    });
     it('converts the base and every translation once, counting changed values and seeded locales', () => {
       const source = { source: 'Hello {{ name }}!', fr: 'Bonjour {{ name }} !', es: 'Hola {name}' };
       writePair({ hello: source }, {});

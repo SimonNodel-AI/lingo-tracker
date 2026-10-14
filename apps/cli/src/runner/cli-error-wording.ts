@@ -163,6 +163,7 @@ const CLI_BY_CODE = {
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
     message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
+  BRACED_PLACEHOLDER: original,
   RESOURCE_ALREADY_EXISTS: (error, commandName) =>
     commandName === ADD_RESOURCE_COMMAND_NAME
       ? {

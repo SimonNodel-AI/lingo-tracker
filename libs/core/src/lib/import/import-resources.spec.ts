@@ -59,6 +59,82 @@ describe('importResources', () => {
   const stored = (folderKey: string, key: string) =>
     openResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
 
+  it.each([false, true])('partitions braced resources before conversion (dryRun=%s)', (dryRun) => {
+    const result = importResources(
+      collection,
+      [
+        { key: 'common.bad', value: '{{{a}}}' },
+        { key: 'common.good', value: '{n, plural, other {{{a}}}}' },
+      ],
+      { locale: 'en', strategy: 'migration', dryRun },
+    );
+    expect(result.resourcesFailed).toBe(1);
+    expect(result.resourcesCreated).toBe(1);
+    expect(result.errors[0]).toContain('Braced placeholder: "common.bad": Value: Placeholder {{a}} at position 0');
+    expect(result.changes).toContainEqual({
+      key: 'common.bad',
+      type: 'failed',
+      reason: expect.stringContaining('inside literal braces'),
+    });
+    expect(stored('common', 'bad')).toBeUndefined();
+    if (!dryRun) expect(stored('common', 'good')?.entry.source).toBe('{n, plural, other {{a}}}');
+  });
+
+  it.each([
+    false,
+    true,
+  ])('rejects a braced creation base without writes and continues importing (dryRun=%s)', (dryRun) => {
+    seed('common', { existing: { source: 'Existing', es: 'Existente' } });
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) => join(folderOf('common'), file));
+    const before = paths.map((path) => readFileSync(path));
+    const bad = { key: 'common.bad', value: 'Bonjour', baseValue: '{{{a}}}' };
+    const options = { locale: 'fr', strategy: 'migration' as const, createMissing: true, dryRun };
+    const rejected = importResources(collection, [bad], options);
+    expect(rejected).toMatchObject({ resourcesFailed: 1, resourcesCreated: 0, filesModified: [] });
+    expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    const result = importResources(
+      collection,
+      [bad, { key: 'common.good', value: 'Bonjour', baseValue: 'Hello' }],
+      options,
+    );
+    expect(result).toMatchObject({ resourcesFailed: 1, resourcesCreated: 1, dryRun });
+    expect(result.errors).toEqual(rejected.errors);
+    expect(result.errors[0]).toContain('Braced placeholder: "common.bad": Base value: Placeholder {{a}} at position 0');
+    expect(result.changes).toContainEqual({
+      key: 'common.bad',
+      type: 'failed',
+      reason: expect.stringContaining('inside literal braces'),
+    });
+    expect(stored('common', 'bad')).toBeUndefined();
+    expect(stored('common', 'existing')?.entry).toEqual({ source: 'Existing', es: 'Existente' });
+    if (dryRun) {
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+      expect(stored('common', 'good')).toBeUndefined();
+    } else {
+      expect(stored('common', 'good')?.entry).toEqual({ source: 'Hello', fr: 'Bonjour' });
+      expect(stored('common', 'good')?.meta).toEqual({
+        en: { checksum: calculateChecksum('Hello') },
+        fr: { checksum: calculateChecksum('Bonjour'), baseChecksum: calculateChecksum('Hello'), status: 'translated' },
+      });
+    }
+  });
+
+  it('labels findings from both imported strings in the error and failed change', () => {
+    const value = '{{{translation}}}';
+    const baseValue = '{{{source}}}';
+    const result = importResources(collection, [{ key: 'common.bad', value, baseValue }], {
+      locale: 'fr',
+      strategy: 'migration',
+      createMissing: true,
+    });
+    expect(result.errors[0]).toContain('Value: Placeholder {{translation}} at position 0');
+    expect(result.errors[0]).toContain('Base value: Placeholder {{source}} at position 0');
+    expect(result.changes).toEqual([
+      { key: 'common.bad', type: 'failed', reason: expect.stringMatching(/^Value: .*\nBase value: /) },
+    ]);
+    expect(stored('common', 'bad')).toBeUndefined();
+  });
+
   describe('target-locale import', () => {
     it('writes the translation, sets its status and base checksum, and reports the change', () => {
       seed('common.buttons', { ok: { source: 'OK' }, cancel: { source: 'Cancel', es: 'Cancelar' } });

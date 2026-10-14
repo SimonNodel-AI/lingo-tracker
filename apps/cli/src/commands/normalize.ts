@@ -65,6 +65,8 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
                 ConsoleFormatter.indent(`✅ Files created: ${item.filesCreated}`);
                 ConsoleFormatter.indent(`✅ Files updated: ${item.filesUpdated}`);
                 ConsoleFormatter.indent(`✅ Folders removed: ${item.foldersRemoved}`);
+                for (const { key, locale, detail } of item.findings)
+                  ConsoleFormatter.warning(`${key} (${locale}): ${detail}`);
               }
               break;
             }
@@ -101,7 +103,7 @@ function reportNormalize(
   const summary = result.totals;
   return printRunReport({
     presentation: options.json
-      ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
+      ? { kind: 'json', payload: { collections: result.collections, totals: result.totals, findings: result.findings } }
       : { kind: 'text' },
     section: collectionCount > 1 ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
     counts:

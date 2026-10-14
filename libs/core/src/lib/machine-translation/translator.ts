@@ -21,7 +21,12 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { checkTranslatedValue, classifyICUContent, translocoToICU } from '@simoncodes-ca/domain';
+import {
+  checkTranslatedValue,
+  classifyICUContent,
+  findBracedPlaceholders,
+  translocoToICU,
+} from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -207,7 +212,7 @@ async function translateForLocale(
     }
 
     const restored = restorePlaceholders(results[next++].translatedText, item.placeholders);
-    if (!restored.success) {
+    if (!restored.success || findBracedPlaceholders(restored.value).length > 0) {
       skipped.push({ key, locale: targetLocale, reason: 'placeholder-mismatch' });
       continue;
     }

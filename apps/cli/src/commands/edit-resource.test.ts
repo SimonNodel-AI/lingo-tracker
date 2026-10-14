@@ -1,3 +1,4 @@
+import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
@@ -16,6 +17,16 @@ describe('editResourceCommand (real project)', () => {
   });
   afterEach(() => project.cleanup());
 
+  it('prints the braced-placeholder diagnostic and preserves the entry', async () => {
+    const before = entries();
+    const result = await project.run(editResourceCommand, { key, baseValue: '{{{a}}}' });
+    expect(result.exitCode).toBe(1);
+    const found = findBracedPlaceholders('{{{a}}}')[0];
+    expect(found).toBeDefined();
+    if (!found) throw new Error('Missing finding');
+    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid: ${describeBracedPlaceholder(found)}\n`);
+    expect(entries()).toEqual(before);
+  });
   it('updates the base value and reports success', async () => {
     const result = await project.run(editResourceCommand, { key, baseValue: 'OK Updated' });
     expect(result.exitCode).toBe(0);

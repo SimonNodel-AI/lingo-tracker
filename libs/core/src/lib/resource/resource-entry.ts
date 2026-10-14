@@ -49,6 +49,7 @@ import type { ResourceTreeEntry } from './resource-tree-types';
 import { selectTranslationRow, translationBatch } from './translation-batch';
 import { assertTranslationStatus } from './translation-status-input';
 import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
+import { assertNoBracedPlaceholders } from './value-syntax';
 
 interface LocatedEntry {
   readonly resolvedKey: string;
@@ -90,8 +91,12 @@ function validateAddChanges(collection: Collection, changes: EntryAddChanges): v
     collection,
     (changes.translations ?? []).map(({ locale }) => locale),
   );
+  assertNoBracedPlaceholders(collection.baseLocale, changes.baseValue);
   for (const translation of changes.translations ?? []) {
     if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
+  for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
+    assertNoBracedPlaceholders(translation.locale, translation.value);
   }
 }
 
@@ -453,11 +458,17 @@ async function editEntry(
     throw new ResourceNotFoundError(resource.resolvedKey);
   }
 
+  if (changes.baseValue !== undefined && changes.baseValue !== current.entry.source) {
+    assertNoBracedPlaceholders(baseLocale, changes.baseValue);
+  }
   const requestedTranslations = Object.entries(changes.translations ?? {});
   for (const [, translation] of requestedTranslations) {
     if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
   const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
+  for (const [locale, translation] of translations) {
+    if (translation.value !== current.entry[locale]) assertNoBracedPlaceholders(locale, translation.value);
+  }
   assertCollectionLocales(
     collection,
     translations.map(([locale]) => locale),
@@ -473,7 +484,12 @@ async function editEntry(
   let hasChanges = false;
 
   // setBase applies the Staleness rule to every translation.
-  const baseValue = changes.baseValue === undefined ? undefined : translocoToICU(changes.baseValue);
+  const baseValue =
+    changes.baseValue === undefined
+      ? undefined
+      : changes.baseValue === previousBase
+        ? previousBase
+        : translocoToICU(changes.baseValue);
   const baseChanged = baseValue !== undefined && baseValue !== previousBase;
   if (baseChanged) {
     folder.setBase(entryKey, baseValue);
@@ -488,7 +504,7 @@ async function editEntry(
   }
 
   for (const [locale, { value, status }] of translations) {
-    if (translocoToICU(value) !== entry[locale]) {
+    if (value !== entry[locale] && translocoToICU(value) !== entry[locale]) {
       folder.setTranslation(entryKey, locale, value, status);
       hasChanges = true;
     } else {

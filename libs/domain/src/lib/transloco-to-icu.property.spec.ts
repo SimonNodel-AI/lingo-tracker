@@ -1,7 +1,49 @@
 import * as fc from 'fast-check';
+import { findBracedPlaceholders } from './braced-placeholders';
 import { icuToTransloco } from './icu-to-transloco';
-import { arbitraryMessage, identifier, messageText, supportedMessage } from './testing/icu-arbitraries';
+import {
+  arbitraryMessage,
+  gluedSelectorMessage,
+  icuishCompilationMessage,
+  icuishMessage,
+  identifier,
+  messageText,
+  quoteStressMessage,
+  supportedMessage,
+  unicodeSpacedMessage,
+} from './testing/icu-arbitraries';
 import { translocoToICU } from './transloco-to-icu';
+
+// Develop outputs for Unicode-spaced headers: the converter reads the keyword trimmed, the strict grammar does not.
+const UNICODE_SPACED_EXAMPLES: readonly { input: string; inbound: string; outbound: string }[] = [
+  { input: '{n,plural ,other{{x}}}', inbound: '{n,plural ,other{{x}}}', outbound: '{n,plural ,other{{{x}}}}' },
+  { input: '{n,plural ,other{{{x}}}}', inbound: '{n,plural ,other{{x}}}', outbound: '{n,plural ,other{{{x}}}}' },
+  // U+00A0 is a name character too, so the strict grammar reads it into the type and the bundler leaves the value.
+  {
+    input: '{n,plural\u00a0,other{{x}}}',
+    inbound: '{n,plural\u00a0,other{{x}}}',
+    outbound: '{n,plural\u00a0,other{{x}}}',
+  },
+  {
+    input: '{n,plural\u00a0,other{{{x}}}}',
+    inbound: '{n,plural\u00a0,other{{x}}}',
+    outbound: '{n,plural\u00a0,other{{{x}}}}',
+  },
+  {
+    input: '{n,plural\u3000,other{{x}}}',
+    inbound: '{n,plural\u3000,other{{x}}}',
+    outbound: '{n,plural\u3000,other{{x}}}',
+  },
+];
+
+describe('translocoToICU Unicode-spaced headers', () => {
+  for (const example of UNICODE_SPACED_EXAMPLES) {
+    it(`keeps the develop output for ${JSON.stringify(example.input)}`, () => {
+      expect(translocoToICU(example.input)).toBe(example.inbound);
+      expect(icuToTransloco(example.input)).toBe(example.outbound);
+    });
+  }
+});
 
 describe('translocoToICU properties', () => {
   it('normalizes generated simple and dotted interpolations and round trips them', () => {
@@ -24,6 +66,15 @@ describe('translocoToICU properties', () => {
     );
   });
 
+  it('keeps a placeholder-only case body behind a glued or non-ASCII selector, and its exported form', () => {
+    fc.assert(
+      fc.property(gluedSelectorMessage, (message) => {
+        expect(translocoToICU(message)).toBe(message);
+        expect(translocoToICU(icuToTransloco(message))).toBe(message);
+      }),
+    );
+  });
+
   it('leaves supported ICU messages intact and converts their exported form back exactly', () => {
     fc.assert(
       fc.property(supportedMessage, (message) => {
@@ -34,13 +85,17 @@ describe('translocoToICU properties', () => {
   });
 });
 
-// Also fails on HEAD: {{{name}}} becomes {{name}}, then {name}; outside this refactor's scope.
-it.fails('is idempotent on arbitrary messages', () => {
+// Only braced placeholders, which entry points reject, convert again on a second pass.
+it('is idempotent on arbitrary messages that pass validation', () => {
   fc.assert(
-    fc.property(arbitraryMessage, (value) => {
-      const once = translocoToICU(value);
-      expect(translocoToICU(once)).toBe(once);
-    }),
-    { examples: [['{{{name}}}']] },
+    fc.property(
+      fc.oneof(arbitraryMessage, icuishMessage, quoteStressMessage, unicodeSpacedMessage, icuishCompilationMessage),
+      (value) => {
+        fc.pre(findBracedPlaceholders(value).length === 0);
+        const once = translocoToICU(value);
+        expect(translocoToICU(once)).toBe(once);
+      },
+    ),
+    { numRuns: 5000, examples: [['{{{name}}}'], ['{n, plural, other {{{name}}}}']] },
   );
 });

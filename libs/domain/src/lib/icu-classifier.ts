@@ -1,11 +1,4 @@
-import {
-  countIcuWork,
-  type IcuError,
-  type IcuRange,
-  icuQuotedRuns,
-  overlapsIcuRun,
-  parseIcuMessage,
-} from './icu-message';
+import { type IcuError, parseIcuMessage } from './icu-message';
 
 /**
  * ICU Message Format Classification
@@ -45,8 +38,11 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
  * contains only an identifier or index with no comma.
  *
  * Each top-level brace group of the ICU Message tree is judged whole. Apostrophes
- * follow ICU quoting, so `it's {name}` holds a placeholder and `'{x}'` is text. An
- * unclosed or empty group is `'complex-icu'`, so the value is skipped.
+ * follow ICU quoting, so `it's {name}` holds a placeholder and `'{x}'` is text. A
+ * malformed top-level brace frame is a simple placeholder when it is closed, holds
+ * something, has no comma of its own and overlaps no quoted run, whatever it nests:
+ * `{some text}`, `{a {{x}}}`, `{outer {x, number}}`. An unclosed, empty or quoted frame
+ * is `'complex-icu'`, and so is a value the parser cannot read, so the value is skipped.
  *
  * @param value - The translation string to classify.
  * @returns The ICU classification for the string.
@@ -71,7 +67,6 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
  */
 export function classifyICUContent(value: string): ICUClassification {
   const message = parseIcuMessage(value, { interpolation: true });
-  const quoted = icuQuotedRuns(value);
   let foundSimple = false;
   let foundComplex = false;
 
@@ -90,8 +85,9 @@ export function classifyICUContent(value: string): ICUClassification {
         foundComplex = true;
         break;
       case 'error':
-        if (isUnmatchedText(value, node)) break;
-        if (isPlainBraceFrame(value, node, quoted)) foundSimple = true;
+        // A stray `}` or a malformed quoted run is text, not a brace group.
+        if (node.cause === 'stray-close' || node.cause === 'quote-escape') break;
+        if (isProtectableFrame(node)) foundSimple = true;
         else foundComplex = true;
         break;
     }
@@ -103,43 +99,14 @@ export function classifyICUContent(value: string): ICUClassification {
   return foundSimple ? 'simple-placeholders' : 'plain';
 }
 
-/** A stray `}` or a malformed quoted run: text, not a brace group. */
-function isUnmatchedText(value: string, node: IcuError): boolean {
-  return node.range.end > node.range.start && value[node.range.start] !== '{';
-}
-
 /**
  * A closed brace frame that is no argument but can be protected like a simple placeholder,
- * e.g. `{some text}` or `{a {{x}}}`. It must hold something, have no comma of its own,
- * contain no quoted run, and hold nothing but text, simple arguments and frames of the same
- * kind. Anything else — a formatter, a group, a malformed quote, an empty or unclosed frame
- * — leaves the value complex, so the translator skips it rather than send it unprotected.
+ * e.g. `{some text}` or `{a {{x}}}`: it holds something, has no comma of its own and
+ * overlaps no quoted run. Anything else — an empty or unclosed frame, an unclosed value,
+ * nesting beyond the parser's capacity — leaves the value complex, so the translator
+ * skips it rather than send it unprotected.
  */
-function isPlainBraceFrame(value: string, node: IcuError, quoted: readonly IcuRange[]): boolean {
-  const { start, end } = node.range;
-  if (end - start < 2 || value[end - 1] !== '}' || isBlank(value, start + 1, end - 1)) return false;
-  if (overlapsIcuRun(quoted, start, end)) return false;
-  // The frame's own text: everything inside its braces except nested constructs.
-  let own = '';
-  let position = start + 1;
-  for (const child of node.nodes) {
-    if (child.kind === 'literal') continue;
-    const simpleArgument = child.kind === 'argument' && child.format === undefined && child.name !== '';
-    if (!simpleArgument && !(child.kind === 'error' && isPlainBraceFrame(value, child, quoted))) return false;
-    own += value.slice(position, child.range.start);
-    position = child.range.end;
-  }
-  own += value.slice(position, end - 1);
-  countIcuWork(own.length + node.nodes.length);
-  return !own.includes(',');
-}
-
-const BLANK = /\s*/y;
-
-/** Whether `[start, end)` of `value` is whitespace only; scans no further than its first non-space. */
-function isBlank(value: string, start: number, end: number): boolean {
-  BLANK.lastIndex = start;
-  BLANK.exec(value);
-  countIcuWork(BLANK.lastIndex - start + 1);
-  return BLANK.lastIndex >= end;
+function isProtectableFrame(node: IcuError): boolean {
+  const frame = node.frame;
+  return frame?.closed === true && !frame.blank && !frame.ownComma && !frame.quoted;
 }

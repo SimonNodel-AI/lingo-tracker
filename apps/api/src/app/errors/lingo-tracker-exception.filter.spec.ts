@@ -30,6 +30,16 @@ import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-ex
 describe('toHttpException', () => {
   const cases = [
     [
+      new core.BracedPlaceholderError('en', ['braced']),
+      400,
+      {
+        message: 'Value for locale "en" is not valid: braced',
+        error: 'Bad Request',
+        statusCode: 400,
+        errors: ['braced'],
+      },
+    ],
+    [
       new internalErrors.BundleHierarchicalConflictError('main', ['a.b']),
       400,
       {
