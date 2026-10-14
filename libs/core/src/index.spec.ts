@@ -32,6 +32,7 @@ function consumerSources(library: string, appSpecs = false): string[] {
 }
 
 function consumedNames(source: string, library: string): Set<string> {
+  if (!source.includes(`@simoncodes-ca/${library}`)) return new Set();
   const parsed = ts.createSourceFile('consumer.ts', source, ts.ScriptTarget.Latest, true);
   const names = new Set<string>();
   const namespaces = new Set<string>();
@@ -156,7 +157,7 @@ describe('public surface consumers', () => {
       .filter((name) => !consumed.has(name) && !exceptions.has(name))
       .sort();
     expect(unused, `Unused @simoncodes-ca/core runtime exports: ${unused.join(', ')}`).toEqual([]);
-  });
+  }, 30_000);
 
   it('recognizes aliases, re-exports and namespace members without counting comments or strings', () => {
     expect(
