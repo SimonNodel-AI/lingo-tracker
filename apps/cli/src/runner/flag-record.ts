@@ -26,13 +26,55 @@ export type FlagRecord =
       ))
   | { readonly argument: readonly [name: string, description: string] };
 
+export type PromptFactory<Options, Context> = (
+  options: Options,
+  context: Context,
+  defaultValue: string | boolean | undefined,
+) => prompts.PromptObject[];
+
 /** Every Options key has exactly one record. Object literals reject extra keys as well. */
 export type FlagRecords<Options, Context = never, PromptAnswers = Options> = {
   readonly [Key in keyof Required<Options>]: FlagRecord & {
     readonly selection?: SelectionRecord<Options, PromptAnswers>;
-    readonly prompt?: (options: Options, context: Context) => prompts.PromptObject[];
+    readonly prompt?: PromptFactory<Options, Context>;
+    readonly promptOrder?: number;
   };
 };
+
+/** Per-field resolution preserves the exact result type without a prompt context. */
+export type ResolvingFlagRecords<
+  Options,
+  Context,
+  Results extends Record<keyof Required<Options>, object>,
+  Values = Options,
+> = {
+  readonly [Key in keyof Required<Options>]: Extract<FlagRecord, { readonly flags: string }> &
+    FlagRecords<Options, Context, Values>[Key] & {
+      readonly resolve: (values: Values, defaultValue: string | boolean | undefined) => Results[Key];
+    };
+};
+
+/** Prompt dependency order is explicit when it differs from registration order. */
+export type OrderedResolvingFlagRecords<Options, Context, Results extends Record<keyof Required<Options>, object>> = {
+  readonly [Key in keyof Required<Options>]: ResolvingFlagRecords<Options, Context, Results>[Key] &
+    (
+      | { readonly prompt: PromptFactory<Options, Context>; readonly promptOrder: number }
+      | { readonly prompt?: never; readonly promptOrder?: never }
+    );
+};
+
+function flagDefault(record: FlagRecord): string | boolean | undefined {
+  if ('argument' in record) return undefined;
+  const value = record.helpDefault ?? record.defaultValue ?? record.runtimeDefault;
+  return typeof value === 'string' || typeof value === 'boolean' ? value : undefined;
+}
+
+export function resolveFlag<Values, Resolved>(
+  record: FlagRecord & { readonly resolve: (values: Values, defaultValue: string | boolean | undefined) => Resolved },
+  values: Values,
+): Resolved {
+  return record.resolve(values, flagDefault(record));
+}
 
 /** Enforce both directions even for records assembled with object spreads. */
 export function defineFlags<Options, Context = never, PromptAnswers = Options>() {
@@ -47,9 +89,34 @@ export function flagQuestions<Options, Context>(
   context: Context,
 ): prompts.PromptObject[] {
   const fields: readonly (FlagRecord & {
-    readonly prompt?: (options: Options, context: Context) => prompts.PromptObject[];
+    readonly prompt?: PromptFactory<Options, Context>;
+    readonly promptOrder?: number;
   })[] = Object.values(records);
-  return fields.flatMap((record) => record.prompt?.(options, context) ?? []);
+  return fields
+    .map((record, index) => ({ record, order: record.promptOrder ?? index }))
+    .sort((left, right) => left.order - right.order)
+    .flatMap(({ record }) => record.prompt?.(options, context, flagDefault(record)) ?? []);
+}
+
+type PromptFree<Record> = Record extends unknown ? Omit<Record, 'prompt' | 'promptOrder'> : never;
+
+/** Command-specific question builders consume prompts separately from runner flags. */
+export function withoutFlagPrompts<Records extends Readonly<Record<string, FlagRecord>>>(
+  records: Records,
+): { readonly [Key in keyof Records]: PromptFree<Records[Key]> } {
+  return Object.fromEntries(
+    Object.entries(records).map(([key, record]) => {
+      const {
+        prompt: _prompt,
+        promptOrder: _promptOrder,
+        ...fields
+      } = record as FlagRecord & {
+        readonly prompt?: unknown;
+        readonly promptOrder?: number;
+      };
+      return [key, fields];
+    }),
+  ) as unknown as { readonly [Key in keyof Records]: PromptFree<Records[Key]> };
 }
 
 export function registerFlags(command: Command, records: Readonly<Record<string, FlagRecord>>): void {
@@ -106,7 +173,7 @@ export interface SelectionRecord<Options = Record<string, unknown>, PromptAnswer
   readonly emptyPromptError?: string;
 }
 
-/** Shared decoder for flag records and the richer export option table. */
+/** Decode selections from flag records. */
 function resolveSelection(
   record: Extract<FlagRecord, { readonly flags: string }>,
   flag: unknown,

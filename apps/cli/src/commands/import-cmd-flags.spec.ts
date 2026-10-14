@@ -2,16 +2,16 @@ import { Command } from 'commander';
 import { describe, expect, it, vi } from 'vitest';
 import { registerFlags } from '../runner/flag-record';
 import {
-  IMPORT_OPTION_TABLE,
-  type ImportTableContext,
+  IMPORT_FLAGS,
+  type ImportPromptContext,
   type ResolvedImportOptions,
-  resolveImportTable,
-} from './import-option-table';
+  resolveImportFlags,
+} from './import-cmd-flags';
 import type { ImportCommandOptions } from './import-options';
-import { type OrderedCommandOptionRecord, orderedTableQuestions, tableFlags } from './option-table';
+import { type OrderedResolvingFlagRecords, flagQuestions } from '../runner/flag-record';
 
 vi.mock('@simoncodes-ca/core', () => {
-  throw new Error('Option tables must load without core or command handlers.');
+  throw new Error('Flag records must load without core or command handlers.');
 });
 
 const flagCases: Record<string, { argv: string[]; value: unknown }> = {
@@ -28,7 +28,7 @@ const flagCases: Record<string, { argv: string[]; value: unknown }> = {
   dryRun: { argv: ['--dry-run'], value: true },
   verbose: { argv: ['--verbose'], value: true },
 };
-const context: ImportTableContext = {
+const context: ImportPromptContext = {
   configuredLocales: ['en', 'fr'],
   baseLocale: 'en',
   sourceExists: () => true,
@@ -36,7 +36,11 @@ const context: ImportTableContext = {
 };
 
 // @ts-expect-error A prompted import record must specify its prompt order.
-const _missingOrder: OrderedCommandOptionRecord<ImportCommandOptions, ImportTableContext> = {
+const _missingOrder: OrderedResolvingFlagRecords<
+  ImportCommandOptions,
+  ImportPromptContext,
+  Record<keyof Required<ImportCommandOptions>, object>
+>['source'] = {
   flags: '--source <path>',
   description: 'Source',
   defaultValue: undefined,
@@ -44,13 +48,13 @@ const _missingOrder: OrderedCommandOptionRecord<ImportCommandOptions, ImportTabl
   resolve: () => ({}),
 };
 // @ts-expect-error The locale record must return its locale field.
-const _missingLocaleRule: typeof IMPORT_OPTION_TABLE.locale = { ...IMPORT_OPTION_TABLE.locale, resolve: () => ({}) };
+const _missingLocaleRule: typeof IMPORT_FLAGS.locale = { ...IMPORT_FLAGS.locale, resolve: () => ({}) };
 
-describe('import option table', () => {
-  for (const [key, record] of Object.entries(IMPORT_OPTION_TABLE)) {
+describe('import flag records', () => {
+  for (const [key, record] of Object.entries(IMPORT_FLAGS)) {
     it(`defines registration, defaults and resolution for ${key}`, () => {
       const command = new Command();
-      registerFlags(command, tableFlags({ [key]: record }));
+      registerFlags(command, { [key]: record });
       const testCase = flagCases[key];
       expect(testCase).toBeDefined();
       command.parse(testCase.argv, { from: 'user' });
@@ -59,7 +63,7 @@ describe('import option table', () => {
   }
 
   it('covers every command options key and registers without loading handlers', () => {
-    const registrations = tableFlags(IMPORT_OPTION_TABLE);
+    const registrations = IMPORT_FLAGS;
     const command = new Command();
     registerFlags(command, registrations);
     expect(command.options).toHaveLength(13);
@@ -81,7 +85,7 @@ describe('import option table', () => {
   });
 
   it('builds every import prompt in dependency order and omits supplied flags', () => {
-    const questions = orderedTableQuestions<ImportCommandOptions, ImportTableContext>(IMPORT_OPTION_TABLE, {}, context);
+    const questions = flagQuestions<ImportCommandOptions, ImportPromptContext>(IMPORT_FLAGS, {}, context);
     expect(questions.map((question) => question.name)).toEqual([
       'source',
       'format',
@@ -110,8 +114,8 @@ describe('import option table', () => {
       'createMissing',
     ]);
     expect(
-      orderedTableQuestions<ImportCommandOptions, ImportTableContext>(
-        IMPORT_OPTION_TABLE,
+      flagQuestions<ImportCommandOptions, ImportPromptContext>(
+        IMPORT_FLAGS,
         {
           source: 'messages.json',
           format: 'json',
@@ -127,7 +131,7 @@ describe('import option table', () => {
   });
 
   it('resolves the complete result while rejecting omitted fields at compile time', () => {
-    const options = resolveImportTable({}, context);
+    const options = resolveImportFlags({});
     expect(options).toEqual({
       source: undefined,
       format: undefined,

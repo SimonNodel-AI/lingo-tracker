@@ -2,16 +2,16 @@ import { Command } from 'commander';
 import { describe, expect, it, vi } from 'vitest';
 import { registerFlags } from '../runner/flag-record';
 import {
-  EXPORT_OPTION_TABLE,
-  type ExportAnswers,
-  type ExportTableContext,
+  EXPORT_FLAGS,
+  type ExportPromptContext,
   type ResolvedExportOptions,
-  resolveExportTable,
-} from './export-option-table';
-import { type TableRegistration, tableFlags, tableQuestions } from './option-table';
+  resolveExportFlags,
+} from './export-cmd-flags';
+import type { ExportCommandOptions } from './export-options';
+import { type FlagRecord, flagQuestions } from '../runner/flag-record';
 
 vi.mock('@simoncodes-ca/core', () => {
-  throw new Error('Option tables must load without core or command handlers.');
+  throw new Error('Flag records must load without core or command handlers.');
 });
 
 const flagCases: Record<string, { argv: string[]; value: unknown }> = {
@@ -33,7 +33,7 @@ const flagCases: Record<string, { argv: string[]; value: unknown }> = {
   dryRun: { argv: ['--dry-run'], value: true },
   verbose: { argv: ['--verbose'], value: true },
 };
-const context: ExportTableContext = {
+const context: ExportPromptContext = {
   config: {},
   targetLocales: ['fr'],
   outputInitial: 'custom/export',
@@ -41,7 +41,7 @@ const context: ExportTableContext = {
 };
 
 // @ts-expect-error A list registration cannot silently discard a custom parser.
-const _invalidList: TableRegistration = {
+const _invalidList: FlagRecord = {
   flags: '--locales <list>',
   description: 'Locales',
   defaultValue: undefined,
@@ -49,26 +49,26 @@ const _invalidList: TableRegistration = {
   parse: (value: string) => value,
 };
 // @ts-expect-error The status record must return its status field.
-const _missingStatusRule: typeof EXPORT_OPTION_TABLE.status = { ...EXPORT_OPTION_TABLE.status, resolve: () => ({}) };
+const _missingStatusRule: typeof EXPORT_FLAGS.status = { ...EXPORT_FLAGS.status, resolve: () => ({}) };
 // @ts-expect-error The locale record must return its locales field.
-const _missingLocalesRule: typeof EXPORT_OPTION_TABLE.locale = { ...EXPORT_OPTION_TABLE.locale, resolve: () => ({}) };
+const _missingLocalesRule: typeof EXPORT_FLAGS.locale = { ...EXPORT_FLAGS.locale, resolve: () => ({}) };
 
-const _invalidSelectionPrompt: typeof EXPORT_OPTION_TABLE.collection = {
-  ...EXPORT_OPTION_TABLE.collection,
+const _invalidSelectionPrompt: typeof EXPORT_FLAGS.collection = {
+  ...EXPORT_FLAGS.collection,
   // @ts-expect-error A selection prompt must name an actual export answer key.
   selection: { prompt: 'collectons' },
 };
-const _invalidAllFlag: typeof EXPORT_OPTION_TABLE.collection = {
-  ...EXPORT_OPTION_TABLE.collection,
+const _invalidAllFlag: typeof EXPORT_FLAGS.collection = {
+  ...EXPORT_FLAGS.collection,
   // @ts-expect-error An all flag must name an actual command option key.
   selection: { allFlag: 'collections' },
 };
 
-describe('export option table', () => {
-  for (const [key, record] of Object.entries(EXPORT_OPTION_TABLE)) {
+describe('export flag records', () => {
+  for (const [key, record] of Object.entries(EXPORT_FLAGS)) {
     it(`defines registration, defaults and resolution for ${key}`, () => {
       const command = new Command();
-      registerFlags(command, tableFlags({ [key]: record }));
+      registerFlags(command, { [key]: record });
       const testCase = flagCases[key];
       expect(testCase).toBeDefined();
       command.parse(testCase.argv, { from: 'user' });
@@ -77,7 +77,7 @@ describe('export option table', () => {
   }
 
   it('covers every command options key and registers without loading handlers', () => {
-    const registrations = tableFlags(EXPORT_OPTION_TABLE);
+    const registrations = EXPORT_FLAGS;
     const command = new Command();
     registerFlags(command, registrations);
     expect(command.options).toHaveLength(17);
@@ -100,7 +100,7 @@ describe('export option table', () => {
   });
 
   it('builds every export prompt in record order and omits supplied flags', () => {
-    const questions = tableQuestions<ExportAnswers, ExportTableContext>(EXPORT_OPTION_TABLE, {}, context);
+    const questions = flagQuestions<ExportCommandOptions, ExportPromptContext>(EXPORT_FLAGS, {}, context);
     expect(questions.map((question) => question.name)).toEqual([
       'format',
       'collections',
@@ -119,8 +119,8 @@ describe('export option table', () => {
     ]);
     expect(questions.find((question) => question.name === 'output')?.initial).toBe('custom/export');
     expect(
-      tableQuestions<ExportAnswers, ExportTableContext>(
-        EXPORT_OPTION_TABLE,
+      flagQuestions<ExportCommandOptions, ExportPromptContext>(
+        EXPORT_FLAGS,
         {
           format: 'json',
           collection: ['main'],
@@ -143,7 +143,7 @@ describe('export option table', () => {
   });
 
   it('resolves the complete result while rejecting omitted fields at compile time', () => {
-    const options = resolveExportTable({}, context);
+    const options = resolveExportFlags({});
     expect(options).toEqual({
       format: undefined,
       outputDirectory: undefined,

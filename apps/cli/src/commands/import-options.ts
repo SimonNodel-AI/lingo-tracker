@@ -1,13 +1,8 @@
 import { detectImportFormat, type ImportFormat } from '@simoncodes-ca/core';
 import type { ImportStrategy } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
-import {
-  IMPORT_OPTION_TABLE,
-  type ImportTableContext,
-  resolveImportTable,
-  resolveStrategy,
-} from './import-option-table';
-import { orderedTableQuestions } from './option-table';
+import { IMPORT_FLAGS, type ImportPromptContext, resolveImportFlags, resolveStrategy } from './import-cmd-flags';
+import { flagQuestions } from '../runner/flag-record';
 
 export interface ImportCommandOptions {
   format?: ImportFormat;
@@ -41,16 +36,11 @@ function sourceFormat(source: string): ImportFormat | undefined {
 }
 
 export function resolveImportOptions(values: ImportCommandOptions) {
-  return resolveImportTable(values, {
-    configuredLocales: [],
-    baseLocale: '',
-    sourceExists: () => false,
-    sourceFormat,
-  });
+  return resolveImportFlags(values);
 }
 export function importQuestions(options: ImportCommandOptions, context: ImportOptionsContext): prompts.PromptObject[] {
   resolveStrategy(options.strategy);
-  return orderedTableQuestions<ImportCommandOptions, ImportTableContext>(IMPORT_OPTION_TABLE, options, {
+  return flagQuestions<ImportCommandOptions, ImportPromptContext>(IMPORT_FLAGS, options, {
     ...context,
     sourceFormat,
   });

@@ -2,6 +2,7 @@ import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } 
 import * as fs from 'fs';
 import * as path from 'path';
 import { cliErrorWording } from '../runner/cli-error-wording';
+import { withoutFlagPrompts } from '../runner/flag-record';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
@@ -11,7 +12,7 @@ import { type ImportCommandOptions, importQuestions, resolveImportOptions } from
 export type { ImportCommandOptions } from './import-options';
 
 export const importCommand = defineCommand<ImportCommandOptions>()({
-  flags: IMPORT_FLAGS,
+  flags: withoutFlagPrompts(IMPORT_FLAGS),
   name: 'Import',
   collection: 'writable',
   prompts: (options, { collection, cwd }) =>

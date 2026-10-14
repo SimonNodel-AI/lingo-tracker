@@ -2,13 +2,8 @@ import { DEFAULT_CONFIG, type ExportFormat, type LingoTrackerConfig } from '@sim
 import type prompts from 'prompts';
 import { flagName } from '../runner/flag-record';
 import { type ExplicitEmptyList, type Selection, selectionNames, selectionPrompt } from '../utils';
-import {
-  EXPORT_OPTION_TABLE,
-  type ExportAnswers,
-  type ExportTableContext,
-  resolveExportTable,
-} from './export-option-table';
-import { tableQuestions } from './option-table';
+import { EXPORT_FLAGS, type ExportAnswers, type ExportPromptContext, resolveExportFlags } from './export-cmd-flags';
+import { flagQuestions } from '../runner/flag-record';
 
 export interface ExportCommandOptions {
   format?: ExportFormat;
@@ -50,16 +45,14 @@ export function resolveExportOptions(
     locale: selectionNames(selections.locale),
     status: selections.status?.kind === 'some' ? selections.status.names : values.status,
   };
-  const options = resolveExportTable(values, tableContext({ config: {}, targetLocales: [] }));
+  const options = resolveExportFlags(values);
   const advisories =
     options.basePropertyName && !options.includeBase
-      ? [
-          `${flagName(EXPORT_OPTION_TABLE.basePropertyName)} has no effect without ${flagName(EXPORT_OPTION_TABLE.includeBase)}`,
-        ]
+      ? [`${flagName(EXPORT_FLAGS.basePropertyName)} has no effect without ${flagName(EXPORT_FLAGS.includeBase)}`]
       : [];
   return { options, advisories };
 }
-function tableContext(context: ExportOptionsContext): ExportTableContext {
+function promptContext(context: ExportOptionsContext): ExportPromptContext {
   return {
     ...context,
     outputInitial: context.config.exportFolder || DEFAULT_CONFIG.exportFolder,
@@ -67,5 +60,5 @@ function tableContext(context: ExportOptionsContext): ExportTableContext {
   };
 }
 export function exportQuestions(options: ExportCommandOptions, context: ExportOptionsContext): prompts.PromptObject[] {
-  return tableQuestions<ExportAnswers, ExportTableContext>(EXPORT_OPTION_TABLE, options, tableContext(context));
+  return flagQuestions<ExportCommandOptions, ExportPromptContext>(EXPORT_FLAGS, options, promptContext(context));
 }

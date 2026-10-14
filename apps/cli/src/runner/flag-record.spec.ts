@@ -99,6 +99,41 @@ describe('command flag records', () => {
     expect(second.opts()).toEqual({ tag: [] });
   });
 
+  it('asks flag questions before command questions and delivers both answers', async () => {
+    const calls: unknown[] = [];
+    const command = defineCommand<{ locale?: string; value?: string }>()({
+      name: 'Questions',
+      collection: 'none',
+      config: false,
+      flags: defineFlags<{ locale?: string; value?: string }>()({
+        locale: {
+          flags: '--locale <locale>',
+          prompt: () => [{ type: 'text', name: 'locale', message: 'Locale' }],
+        },
+        value: { flags: '--value <value>' },
+      }),
+      prompts: () => [{ type: 'text', name: 'value', message: 'Value' }],
+      run: ({ answers }) => {
+        calls.push(answers);
+      },
+    });
+    const result = await runCommand(
+      command,
+      {},
+      {
+        cwd: '.',
+        interactive: true,
+        ask: async (questions) => {
+          const fields = Array.isArray(questions) ? questions : [questions];
+          expect(fields.map((question) => question.name)).toEqual(['locale', 'value']);
+          return { locale: 'fr', value: 'Bonjour' };
+        },
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(calls).toEqual([{ locale: 'fr', value: 'Bonjour' }]);
+  });
+
   it('derives the long spelling without aliases or placeholders', () => {
     expect(flagName({ flags: '-l, --locale-value <value>' })).toBe('--locale-value');
   });
