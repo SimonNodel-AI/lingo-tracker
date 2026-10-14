@@ -1,41 +1,9 @@
-import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import type { TranslationOutcome, Translator } from '../machine-translation/translator';
-import { groupByFolder } from './folder-batch';
-import { type MutationSinkOptions, resolveMutationSink, upsertMutation } from './resource-mutation';
-import type { ResourceTreeEntry } from './resource-tree-types';
-import { snapshotTranslation, type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
-
-export interface TranslationBatchRow {
-  readonly key: string;
-  readonly source: string;
-  /** One snapshot for each requested target locale, taken before translation. */
-  readonly snapshots: Readonly<Record<string, TranslationSnapshot>>;
-}
-
-export type TranslationBatchOutcome = { readonly key: string; readonly locale: string } & (
-  | { readonly status: 'written'; readonly entry: ResourceTreeEntry | undefined }
-  | { readonly status: 'skipped'; readonly entry: ResourceTreeEntry | undefined }
-  | {
-      readonly status: 'failed';
-      readonly stage: 'provider' | 'write';
-      /** The original error, shared by callers that report it or rethrow it. */
-      readonly error: unknown;
-    }
-);
-
-/** Select eligible targets and snapshot them before translation. */
-export function selectTranslationRow(key: string, entry: ResourceTreeEntry, locales: readonly string[]) {
-  const targets = locales.filter((locale) => needsTranslation(entry.metadata[locale]));
-  const row: TranslationBatchRow = {
-    key,
-    source: entry.source,
-    snapshots: Object.fromEntries(
-      targets.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
-    ),
-  };
-  return { row, locales: targets };
-}
+import { groupByFolder } from '../resource/folder-batch';
+import { type MutationSink, upsertMutation } from '../resource/resource-mutation';
+import type { TranslationRunOutcome, TranslationRunRow } from './translation-run';
+import { writeBackTranslations } from './translation-write-back';
 
 function pairKey(key: string, locale: string): string {
   return `${key}\0${locale}`;
@@ -51,18 +19,12 @@ function pairKey(key: string, locale: string): string {
  */
 export async function translationBatch(
   collection: Collection,
-  rows: readonly TranslationBatchRow[],
+  rows: readonly TranslationRunRow[],
   locales: readonly string[],
   translator: Translator,
-  options: MutationSinkOptions = {},
-): Promise<TranslationBatchOutcome[]> {
-  const onMutation = 'onMutation' in options ? options.onMutation : resolveMutationSink(collection, options);
-  const failed = (
-    key: string,
-    locale: string,
-    stage: 'provider' | 'write',
-    error: unknown,
-  ): TranslationBatchOutcome => ({
+  onMutation: MutationSink | undefined,
+): Promise<TranslationRunOutcome[]> {
+  const failed = (key: string, locale: string, stage: 'provider' | 'write', error: unknown): TranslationRunOutcome => ({
     key,
     locale,
     status: 'failed',
@@ -81,8 +43,8 @@ export async function translationBatch(
 
   const values = new Map(translated.values.map((value) => [pairKey(value.key, value.locale), value]));
   const skips = new Map(translated.skipped.map((skip) => [pairKey(skip.key, skip.locale), skip]));
-  const providerSkips: TranslationBatchOutcome[] = [];
-  const outcomes: TranslationBatchOutcome[] = [];
+  const providerSkips: TranslationRunOutcome[] = [];
+  const outcomes: TranslationRunOutcome[] = [];
   for (const { folderPath, members } of groupByFolder(collection, rows, (row) => row.key)) {
     const pending = members.flatMap(({ key, entryKey, item }) =>
       locales.flatMap((locale) => {
@@ -92,7 +54,7 @@ export async function translationBatch(
     );
     try {
       const result = writeBackTranslations(collection, folderPath, pending, {
-        onMutation,
+        mutationSink: onMutation,
         saved: (folder, written) => {
           const writtenKeys = new Set(written.map(({ entryKey }) => entryKey));
           return members
@@ -104,7 +66,7 @@ export async function translationBatch(
       for (const { key, entryKey } of members) {
         const entry = result.folder.treeEntry(entryKey);
         for (const locale of locales) {
-          const outcome: TranslationBatchOutcome = {
+          const outcome: TranslationRunOutcome = {
             key,
             locale,
             entry,

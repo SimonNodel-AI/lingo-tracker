@@ -1,13 +1,8 @@
 import { type LocaleMetadata, needsTranslation, type TranslationStatus } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { calculateChecksum } from './checksum';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
-import {
-  type MutationSinkOptions,
-  type ResourceMutation,
-  resolveMutationSink,
-  saveReporting,
-} from './resource-mutation';
+import { calculateChecksum } from '../resource/checksum';
+import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from '../resource/resource-folder';
+import { type MutationSink, type ResourceMutation, saveReporting } from '../resource/resource-mutation';
 
 /** The entry as read before the provider call; what a write is compared against. */
 export interface TranslationSnapshot {
@@ -34,7 +29,8 @@ export interface PendingTranslation {
   readonly snapshot: TranslationSnapshot;
 }
 
-export interface TranslationWriteBackOptions extends MutationSinkOptions {
+export interface TranslationWriteBackOptions {
+  readonly mutationSink: MutationSink | undefined;
   /** Caller-supplied mutations after a successful save. */
   readonly saved: (folder: ResourceFolder, written: readonly PendingTranslation[]) => readonly ResourceMutation[];
 }
@@ -68,12 +64,12 @@ function isStale(current: ResourceFolderEntry | undefined, locale: string, snaps
  * already sent reindex through saveReporting.
  */
 export function writeBackTranslations(
-  collection: Pick<Collection, 'baseLocale' | 'translationsFolder' | 'onMutation'>,
+  collection: Pick<Collection, 'baseLocale' | 'translationsFolder'>,
   folderPath: string,
   pending: readonly PendingTranslation[],
   options: TranslationWriteBackOptions,
 ): TranslationWriteBack {
-  const onMutation = 'onMutation' in options ? options.onMutation : resolveMutationSink(collection, options);
+  const onMutation = options.mutationSink;
   const folder = openResourceFolder(folderPath, collection);
   const written: PendingTranslation[] = [];
   const skipped: PendingTranslation[] = [];

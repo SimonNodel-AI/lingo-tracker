@@ -4,13 +4,31 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, ResourceNotFoundError, TranslationError } from '../errors/lingo-tracker-error';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
-import * as batchModule from '../resource/translation-batch';
 import { translateExistingResource } from './translate-existing-resource';
+
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
+
+async function failWrite(filePath: string) {
+  const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+    '../file-io/json-file-operations',
+  );
+  const error = new Error('write failed');
+  const writer = vi.mocked(writeJsonFile);
+  writer.mockImplementation((options) => {
+    if (options.filePath === filePath) throw error;
+    return actual.writeJsonFile(options);
+  });
+  return { error, restore: () => writer.mockImplementation(actual.writeJsonFile) };
+}
 
 const collected: ResourceMutation[] = [];
 const onMutation = (mutation: ResourceMutation): void => {
@@ -320,57 +338,40 @@ describe('translateExistingResource', () => {
       expect(collected).toEqual([]);
     });
   });
-  it('rethrows the original provider failure from a one-row Translation Batch', async () => {
+  it('rethrows the original provider failure from a one-row Translation Run', async () => {
     const target = collection();
     seedSave(target);
     const error = new TranslationError('original provider failure', 'TIMEOUT', true);
-    const batch = vi
-      .spyOn(batchModule, 'translationBatch')
-      .mockResolvedValue([{ key: 'common.save', locale: 'es', status: 'failed', stage: 'provider', error }]);
-    try {
-      await expect(
-        translateExistingResource(target, 'common.save', {
-          onMutation,
-          provider: new InMemoryTranslationProvider(),
-        }),
-      ).rejects.toBe(error);
-      expect(batch).toHaveBeenCalledExactlyOnceWith(
-        target,
-        [expect.objectContaining({ key: 'common.save', source: 'Save' })],
-        ['es', 'de'],
-        expect.objectContaining({ translate: expect.any(Function) }),
-        { onMutation },
-      );
-      expect(collected).toEqual([]);
-    } finally {
-      batch.mockRestore();
-    }
+    const provider = new InMemoryTranslationProvider(({ targetLocale }) => {
+      throw targetLocale === 'es' ? error : new Error('later provider failure');
+    });
+    await expect(translateExistingResource(target, 'common.save', { onMutation, provider })).rejects.toBe(error);
+    expect(provider.calls).toEqual([
+      [{ text: 'Save', sourceLocale: 'en', targetLocale: 'es' }],
+      [{ text: 'Save', sourceLocale: 'en', targetLocale: 'de' }],
+    ]);
+    expect(collected).toEqual([]);
+    expect(read(RESOURCE_ENTRIES_FILENAME, 'common').save).toEqual({ source: 'Save', fr: 'Sauvegarder', es: 'Save' });
   });
 
-  it('rethrows the original write failure from a one-row Translation Batch', async () => {
+  it('rethrows the original write failure from a one-row Translation Run', async () => {
     const target = collection();
     seedSave(target);
-    const error = new TranslationError('original write failure', 'TIMEOUT', true);
-    const batch = vi
-      .spyOn(batchModule, 'translationBatch')
-      .mockResolvedValue([{ key: 'common.save', locale: 'es', status: 'failed', stage: 'write', error }]);
+    const metadataPath = join(dir(), 'common', TRACKER_META_FILENAME);
+    const provider = new InMemoryTranslationProvider(({ targetLocale, text }) => {
+      return `[${targetLocale}] ${text}`;
+    });
+    const { error, restore } = await failWrite(metadataPath);
     try {
-      await expect(
-        translateExistingResource(target, 'common.save', {
-          onMutation,
-          provider: new InMemoryTranslationProvider(),
-        }),
-      ).rejects.toBe(error);
-      expect(batch).toHaveBeenCalledExactlyOnceWith(
-        target,
-        [expect.objectContaining({ key: 'common.save', source: 'Save' })],
-        ['es', 'de'],
-        expect.objectContaining({ translate: expect.any(Function) }),
-        { onMutation },
-      );
-      expect(collected).toEqual([]);
+      await expect(translateExistingResource(target, 'common.save', { onMutation, provider })).rejects.toBe(error);
     } finally {
-      batch.mockRestore();
+      restore();
     }
+    expect(provider.calls).toEqual([
+      [{ text: 'Save', sourceLocale: 'en', targetLocale: 'es' }],
+      [{ text: 'Save', sourceLocale: 'en', targetLocale: 'de' }],
+    ]);
+    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
+    expect(read(RESOURCE_ENTRIES_FILENAME, 'common').save.es).toBe('[es] Save');
   });
 });

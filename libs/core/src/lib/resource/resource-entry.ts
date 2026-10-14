@@ -19,11 +19,9 @@ import {
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
-import {
-  assertAutoTranslationEnabled,
-  type OpenTranslatorOptions,
-  openPreparedTranslator,
-} from '../machine-translation/translator';
+import { assertAutoTranslationEnabled, type OpenTranslatorOptions } from '../machine-translation/translator';
+import { executeTranslationRun, selectTranslationRow } from '../translation/translation-run';
+import { snapshotTranslation, writeBackTranslations } from '../translation/translation-write-back';
 import {
   assertCollectionLocales,
   type ResourceTranslation,
@@ -49,9 +47,7 @@ import {
   upsertMutation,
 } from './resource-mutation';
 import type { ResourceTreeEntry } from './resource-tree-types';
-import { selectTranslationRow, translationBatch } from './translation-batch';
 import { assertTranslationStatus } from './translation-status-input';
-import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
 
 interface LocatedEntry {
   readonly resolvedKey: string;
@@ -361,18 +357,23 @@ export async function translateEntry(
   const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
   const { row, locales } = selectTranslationRow(resource.resolvedKey, entry, collection.targetLocales);
   if (locales.length === 0) return { translatedCount: 0, skippedLocales: [], entry, warnings: [] };
-  const translator = openPreparedTranslator(collection, config, options);
-  const outcomes = await translationBatch(collection, [row], locales, translator, { onMutation });
-  for (const outcome of outcomes) {
-    if (outcome.status === 'failed') throw outcome.error;
-  }
+  const { tally, warnings } = await executeTranslationRun({
+    ...options,
+    collection,
+    translationConfig: config,
+    rows: [row],
+    locales,
+    failurePolicy: 'throw-first',
+    mutationSink: onMutation,
+  });
+  const outcomes = tally.outcomes;
   const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;
   if (!freshEntry) throw new ResourceNotFoundError(resource.resolvedKey);
   return {
     translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
     skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
     entry: freshEntry,
-    warnings: [...translator.problems],
+    warnings,
   };
 }
 
@@ -561,7 +562,7 @@ async function seedEditedEntry(
     return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
   });
   const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
-    onMutation,
+    mutationSink: onMutation,
     saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
   });
   if (!writeBack.folder.has(entryKey)) {

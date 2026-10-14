@@ -14,6 +14,19 @@ vi.mock('../file-io/json-file-operations', async (importOriginal) => {
   return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
 });
 
+async function failWrite(filePath: string) {
+  const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+    '../file-io/json-file-operations',
+  );
+  const error = new Error('write failed');
+  const writer = vi.mocked(writeJsonFile);
+  writer.mockImplementation((options) => {
+    if (options.filePath === filePath) throw error;
+    return actual.writeJsonFile(options);
+  });
+  return { error, restore: () => writer.mockImplementation(actual.writeJsonFile) };
+}
+
 describe('translation write-back', () => {
   const dir = useTempDir('translation-write-back-');
   const collected: ResourceMutation[] = [];
@@ -49,7 +62,7 @@ describe('translation write-back', () => {
 
   function expectSkipped(pending: PendingTranslation): void {
     vi.mocked(writeJsonFile).mockClear();
-    const result = writeBackTranslations(collection(), folderPath(), [pending], { onMutation, saved });
+    const result = writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
     expect(result.written).toEqual([]);
     expect(result.skipped).toEqual([pending]);
     expect(writeJsonFile).not.toHaveBeenCalled();
@@ -68,7 +81,7 @@ describe('translation write-back', () => {
 
   it('writes matching snapshots as translated, normalizes ICU, and returns the fresh folder', () => {
     const pending = prepare();
-    const result = writeBackTranslations(collection(), folderPath(), [pending], { onMutation, saved });
+    const result = writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
     expect(result.written).toEqual([pending]);
     expect(result.skipped).toEqual([]);
     expect(result.folder.treeEntry('save')).toMatchObject({
@@ -83,7 +96,7 @@ describe('translation write-back', () => {
 
   it('writes seeded copies with explicit new status', () => {
     const pending = { ...prepare(), value: 'Save {name}', status: 'new' as const };
-    writeBackTranslations(collection(), folderPath(), [pending], { saved });
+    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved });
     expect(open().get('save')?.meta?.['fr']?.status).toBe('new');
   });
 
@@ -95,7 +108,9 @@ describe('translation write-back', () => {
       value: 'Enregistrer',
       snapshot: snapshotTranslation('Save', undefined),
     };
-    expect(writeBackTranslations(collection(), folderPath(), [pending], { saved }).written).toEqual([pending]);
+    expect(
+      writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved }).written,
+    ).toEqual([pending]);
     expect(open().get('save')?.meta?.['fr']?.status).toBe('translated');
   });
 
@@ -194,7 +209,7 @@ describe('translation write-back', () => {
     };
     vi.mocked(writeJsonFile).mockClear();
     const result = writeBackTranslations(collection(), folderPath(), [pending, other, es], {
-      onMutation,
+      mutationSink: onMutation,
       saved: () => [reindexMutation(dir())],
     });
     expect(result.written).toEqual([pending, other, es]);
@@ -207,7 +222,9 @@ describe('translation write-back', () => {
   it('does not save or report mutations for an empty pending list', () => {
     prepare();
     const saved = vi.fn(() => [reindexMutation(dir())]);
-    expect(writeBackTranslations(collection(), folderPath(), [], { onMutation, saved }).written).toEqual([]);
+    expect(writeBackTranslations(collection(), folderPath(), [], { mutationSink: onMutation, saved }).written).toEqual(
+      [],
+    );
     expect(writeJsonFile).not.toHaveBeenCalled();
     expect(saved).not.toHaveBeenCalled();
     expect(collected).toEqual([]);
@@ -221,31 +238,25 @@ describe('translation write-back', () => {
       expect(written).toEqual([pending]);
       return [reindexMutation(dir())];
     });
-    writeBackTranslations(collection(), folderPath(), [pending], { onMutation, saved });
+    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
     expect(saved).toHaveBeenCalledTimes(1);
     expect(collected).toEqual([reindexMutation(dir())]);
   });
 
   it('reports reindex and rethrows the original error after a partial save', async () => {
     const pending = prepare();
-    const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-      '../file-io/json-file-operations',
-    );
-    const failure = new Error('metadata write failed');
+    const metadataPath = join(folderPath(), TRACKER_META_FILENAME);
     const saved = vi.fn(() => [reindexMutation(dir())]);
-    vi.mocked(writeJsonFile).mockImplementation((options) => {
-      if (options.filePath.endsWith(TRACKER_META_FILENAME)) throw failure;
-      return actual.writeJsonFile(options);
-    });
+    const { error, restore } = await failWrite(metadataPath);
     try {
-      expect(() => writeBackTranslations(collection(), folderPath(), [pending], { onMutation, saved })).toThrow(
-        failure,
-      );
+      expect(() =>
+        writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved }),
+      ).toThrow(error);
       expect(collected).toEqual([reindexMutation(dir())]);
       expect(saved).not.toHaveBeenCalled();
       expect(readFileSync(join(folderPath(), RESOURCE_ENTRIES_FILENAME), 'utf8')).toContain('Enregistrer {name}');
     } finally {
-      vi.mocked(writeJsonFile).mockImplementation(actual.writeJsonFile);
+      restore();
     }
   });
 
@@ -253,14 +264,16 @@ describe('translation write-back', () => {
     const pending = prepare();
     seedResources(collection(), { 'common.cancel': { source: 'Cancel', translations: { fr: 'Annuler' } } });
     const sibling = open().get('cancel');
-    writeBackTranslations(collection(), folderPath(), [pending], { saved });
+    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved });
     expect(open().get('cancel')).toEqual(sibling);
   });
 
   it('propagates invalid JSON written after the snapshot without saving or reporting mutations', () => {
     const pending = prepare();
     writeFileSync(join(folderPath(), RESOURCE_ENTRIES_FILENAME), '{ invalid');
-    expect(() => writeBackTranslations(collection(), folderPath(), [pending], { onMutation, saved })).toThrow();
+    expect(() =>
+      writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved }),
+    ).toThrow();
     expect(writeJsonFile).not.toHaveBeenCalled();
     expect(collected).toEqual([]);
   });
