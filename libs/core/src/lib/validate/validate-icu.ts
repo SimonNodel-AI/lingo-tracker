@@ -1,9 +1,9 @@
 import {
-  describeBracedPlaceholder,
-  findBracedPlaceholders,
-  findIcuCompileError,
-  findUnportablePluralCases,
+  CONVERSION_SAFETY_RULES,
+  checkStoredValue,
+  describeStoredValueFinding,
   isIcuLocaleSupported,
+  type StoredValueRule,
 } from '@simoncodes-ca/domain';
 import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { IcuValidationDetail, IcuValidationOptions, IcuValidationResult } from './types';
@@ -15,22 +15,12 @@ export interface IcuPassOptions extends IcuValidationOptions {
 }
 
 /**
- * Compiles every stored value under the locale it is stored under.
+ * Adapts Stored Value Check findings to Validate Run failures and warnings.
  *
- * Status validation asks whether a human signed off on a translation. This
- * asks the separate question of whether the value ICU is handed actually
- * compiles — a value can be `verified` and still throw at runtime, because the
- * reviewer approved the wording, not the syntax.
- *
- * The per-locale part is what makes this worth doing. Plural categories belong
- * to the language, so the same value is valid under `en` and fatal under `ja`.
- * Compiling a whole collection against one compiler reports nothing at all.
- *
- * Every value is checked; the pass never stops at the first failure.
- *
- * The portability rule is a static parse rather than a compilation, so it runs
- * independently of `compileValues` — asking for it explicitly is honoured even
- * when compilation is switched off.
+ * Every value runs the conversion-safety rules. Compilation uses the value's own
+ * locale when enabled and supported; base values optionally run plural portability.
+ * The check owns rule order, suppression and severity. This pass keeps the first
+ * error for each value and every warning, and reports unsupported locales separately.
  *
  * @param resources - Resources already loaded from the collections under validation.
  * @param targetLocales - Target locales to compile values for.
@@ -69,25 +59,29 @@ export function validateIcuValues(
       const compileValue = checkableLocales.includes(locale);
       if (compileValue) valuesChecked++;
 
-      const first = findBracedPlaceholders(value)[0];
+      const rules: StoredValueRule[] = [...CONVERSION_SAFETY_RULES];
+      if (compileValue) rules.push('icu-compile');
+      if (options.requirePortablePlurals && locale === baseLocale) rules.push('portable-plurals');
+      const findings = checkStoredValue(value, { rules, locale });
+      const first = findings.find((finding) => finding.severity === 'error');
       if (first) {
         failures.push({
           key: resource.fullKey,
           locale,
           collection: resource.collection,
-          message: describeBracedPlaceholder(first),
+          message: describeStoredValueFinding(first),
         });
-        continue;
       }
-      if (!compileValue) continue;
-      const message = findIcuCompileError(value, locale);
-      if (message !== undefined) {
-        failures.push({ key: resource.fullKey, locale, collection: resource.collection, message });
+      for (const finding of findings) {
+        if (finding.severity === 'warning') {
+          warnings.push({
+            key: resource.fullKey,
+            locale,
+            collection: resource.collection,
+            message: describeStoredValueFinding(finding),
+          });
+        }
       }
-    }
-
-    if (options.requirePortablePlurals && baseLocale) {
-      collectPortabilityWarnings(resource, baseLocale, warnings);
     }
   }
 
@@ -112,45 +106,4 @@ function valueForLocale(
   if (translation !== undefined) return translation;
 
   return locale === baseLocale ? resource.source : undefined;
-}
-
-/**
- * Returns the value stored for the base locale.
- *
- * Always defined in practice, since `source` is required, but an entry may
- * override it with an explicit base-locale property.
- *
- * @internal
- */
-function baseValueOf(resource: CollectionSetResource, baseLocale: string): string | undefined {
-  return valueForLocale(resource, baseLocale, baseLocale);
-}
-
-/**
- * Appends a warning for each locale-dependent plural category in the base value.
- *
- * The rule applies to the base locale alone: that value is copied into every
- * translation slot, so an unsafe shape there propagates on every import.
- * Translations keep their own categories, which are correct for their locale.
- *
- * @internal
- */
-function collectPortabilityWarnings(
-  resource: CollectionSetResource,
-  baseLocale: string,
-  warnings: IcuValidationDetail[],
-): void {
-  const baseValue = baseValueOf(resource, baseLocale);
-  if (baseValue === undefined) return;
-
-  for (const unportable of findUnportablePluralCases(baseValue)) {
-    warnings.push({
-      key: resource.fullKey,
-      locale: baseLocale,
-      collection: resource.collection,
-      message:
-        `Plural case '${unportable.key}' on '${unportable.arg}' is locale-dependent; ` +
-        `use an exact '=N' match so the value survives being copied to other locales`,
-    });
-  }
 }
