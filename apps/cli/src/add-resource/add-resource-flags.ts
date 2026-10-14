@@ -1,6 +1,6 @@
+import { addResourceFlags, collectionFlag, defineFlags } from '../runner/flag-record';
 import { missingTextQuestions } from '../utils/prompt-utils';
 import type { AddResourceOptions } from './add-resource';
-import { defineFlags, collectionFlag, addResourceFlags } from '../runner/flag-record';
 
 export const ADD_RESOURCE_FLAGS = defineFlags<AddResourceOptions>()({
   collection: collectionFlag('Name of the collection'),

@@ -1,13 +1,12 @@
 import * as fs from 'node:fs';
-import type { ResourceMutation } from '../resource/resource-mutation';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
-  lstatSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -17,9 +16,10 @@ import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { OpenedCollection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { addResource } from '../resource/add-resource';
-import { openResourceFolder } from '../resource/resource-folder';
-import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
 import { executeMove } from '../resource/execute-move';
+import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
+import { openResourceFolder } from '../resource/resource-folder';
+import type { ResourceMutation } from '../resource/resource-mutation';
 
 vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
 

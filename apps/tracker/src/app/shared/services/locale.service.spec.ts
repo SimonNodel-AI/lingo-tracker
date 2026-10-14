@@ -1,9 +1,9 @@
-import { LOCAL_STORAGE } from '../storage/browser-storage';
-import type { StorageAdapter } from '../storage/keyed-storage';
 import { createEnvironmentInjector, EnvironmentInjector, PLATFORM_ID } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCAL_STORAGE } from '../storage/browser-storage';
+import type { StorageAdapter } from '../storage/keyed-storage';
 import { LocaleService } from './locale.service';
 
 describe('LocaleService', () => {

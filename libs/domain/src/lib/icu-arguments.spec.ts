@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { compareIcuArguments } from './icu-arguments';
 
 /** The arguments a value interpolates, read back as the `missing` side of a comparison against plain text. */
@@ -123,5 +123,27 @@ describe('compareIcuArguments', () => {
 
   it('reports nothing when the base value is unparseable', () => {
     expect(compareIcuArguments('{unbalanced', 'Ordner {name}')).toBeNull();
+  });
+});
+
+describe('round-1 argument pins', () => {
+  it('compares arguments with unknown lowercase formatter names', () => {
+    expect(compareIcuArguments('{pa,unknown}', 'x')).toEqual({ missing: ['pa'], unexpected: [] });
+  });
+  it('compares values with stray literal closing braces', () => {
+    expect(compareIcuArguments('{pa}', '}')).toEqual({ missing: ['pa'], unexpected: [] });
+  });
+  it('compares dotted interpolation names with themselves', () => {
+    expect(compareIcuArguments('{{ a.b }}', '{{ a.b }}')).toBeNull();
+  });
+  // I1: HEAD bug fixed. The case body behind an unspaced offset holds the argument `x`.
+  it('reads a case body behind an unspaced offset as a case body holding its argument', () => {
+    expect(compareIcuArguments('{p,plural,offset:2other{{x}} other{y}}', '{p}')).toEqual({
+      missing: ['x'],
+      unexpected: [],
+    });
+  });
+  it('reports a missing dotted interpolation argument', () => {
+    expect(compareIcuArguments('{{ a.b }}', 'x')).toEqual({ missing: ['a.b'], unexpected: [] });
   });
 });

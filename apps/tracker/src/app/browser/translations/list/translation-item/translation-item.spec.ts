@@ -1,8 +1,8 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import type { ComponentFixture } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
 import { MatDialog } from '@angular/material/dialog';
+import { By } from '@angular/platform-browser';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { buildResourceSummary } from '@simoncodes-ca/domain';
@@ -12,8 +12,8 @@ import { collectionSettings } from '../../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { BrowserStore } from '../../../store/browser.store';
 import { TranslationListStore } from '../store/translation-list.store';
-import { TranslationItem } from './translation-item';
 import { TranslationItemHeader } from './item-header';
+import { TranslationItem } from './translation-item';
 
 const createItem = createComponentFactory({
   component: TranslationItem,

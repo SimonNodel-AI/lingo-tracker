@@ -1,12 +1,12 @@
 import { resolve } from 'node:path';
 import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
+import { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
 import { CONFIG_FILENAME, DEFAULT_CONFIG } from '../../constants';
-import { initConfig } from './init-config';
 import { toCollectionEntry } from './collection-entry';
+import { initConfig } from './init-config';
 
-import { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME } from '@simoncodes-ca/domain';
 export { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME, DEFAULT_TYPE_DIST_FILE } from '@simoncodes-ca/domain';
 
 /** Plain project setup values, independent of flags or prompts. */

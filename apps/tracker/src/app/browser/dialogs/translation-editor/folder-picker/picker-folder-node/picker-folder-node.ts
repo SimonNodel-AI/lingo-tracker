@@ -1,7 +1,7 @@
-import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatIconModule } from '@angular/material/icon';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe } from '@jsverse/transloco';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../../i18n-types/tracker-resources';

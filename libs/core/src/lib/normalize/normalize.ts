@@ -1,16 +1,25 @@
+import { describeBracedPlaceholder, findBracedPlaceholders, findCollapsedCaseBodies } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import type { CollectionFolderProblem } from '../resource/collection-folders';
-import { sweepCollection } from '../resource/collection-sweep';
+import { fullKeyOf, sweepCollection } from '../resource/collection-sweep';
 import { pruneEmptyFolders } from '../resource/folder-pruning';
-import type { ResourceFolder } from '../resource/resource-folder';
+import { type ResourceFolder, translationLocales } from '../resource/resource-folder';
 
 export interface NormalizeOptions {
   /** Report what would change without writing anything. */
   readonly dryRun?: boolean;
 }
 
+export interface NormalizeFinding {
+  readonly key: string;
+  readonly locale: string;
+  readonly kind: 'collapsed-case-body' | 'braced-placeholder';
+  readonly detail: string;
+}
+
 export interface NormalizeResult {
+  readonly findings: readonly NormalizeFinding[];
   readonly entriesProcessed: number;
   readonly localesAdded: number;
   readonly valuesConverted: number;
@@ -24,7 +33,7 @@ export interface NormalizeResult {
 }
 
 type Counters = {
-  -readonly [K in Exclude<keyof NormalizeResult, 'dryRun' | 'foldersRemoved' | 'problems'>]: number;
+  -readonly [K in Exclude<keyof NormalizeResult, 'dryRun' | 'foldersRemoved' | 'problems' | 'findings'>]: number;
 };
 
 /**
@@ -56,12 +65,13 @@ export async function normalize(collection: Collection, options: NormalizeOption
   };
 
   const problems: CollectionFolderProblem[] = [];
+  const findings: NormalizeFinding[] = [];
 
-  for (const { folder, problem } of sweepCollection(collection)) {
+  for (const { folder, folderPath, problem } of sweepCollection(collection)) {
     if (problem) {
       problems.push(problem);
     } else {
-      normalizeFolder(folder, collection, dryRun, counters);
+      normalizeFolder(folder, folderPath, collection, dryRun, counters, findings);
     }
   }
 
@@ -70,16 +80,41 @@ export async function normalize(collection: Collection, options: NormalizeOption
     if (!problems.some((existing) => existing.absolutePath === problem.absolutePath)) problems.push(problem);
   }
   const foldersRemoved = pruning.removed.length;
-  return { ...counters, foldersRemoved, dryRun, problems };
+  return { ...counters, foldersRemoved, dryRun, problems, findings };
 }
 
-function normalizeFolder(folder: ResourceFolder, collection: Collection, dryRun: boolean, counters: Counters): void {
+function normalizeFolder(
+  folder: ResourceFolder,
+  folderPath: string,
+  collection: Collection,
+  dryRun: boolean,
+  counters: Counters,
+  findings: NormalizeFinding[],
+): void {
   if (folder.isEmpty()) {
     return;
   }
 
   let folderChanged = false;
   for (const key of folder.keys()) {
+    const entry = folder.get(key)?.entry;
+    if (entry) {
+      for (const prop of ['source', ...translationLocales(entry)]) {
+        const value = entry[prop];
+        if (typeof value !== 'string') continue;
+        const address = { key: fullKeyOf(folderPath, key), locale: prop === 'source' ? collection.baseLocale : prop };
+        for (const { selector, body } of findCollapsedCaseBodies(value)) {
+          findings.push({
+            ...address,
+            kind: 'collapsed-case-body',
+            detail: `case '${selector}' body {${body}} may have been the placeholder {{${body}}}; earlier versions dropped one brace pair here. If it was a placeholder, edit the value to restore it.`,
+          });
+        }
+        for (const found of findBracedPlaceholders(value)) {
+          findings.push({ ...address, kind: 'braced-placeholder', detail: describeBracedPlaceholder(found) });
+        }
+      }
+    }
     const report = folder.normalizeEntry(key, collection.targetLocales);
 
     counters.entriesProcessed++;

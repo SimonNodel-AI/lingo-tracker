@@ -1,6 +1,6 @@
 import { isTranslationStatus, type TranslationStatus } from '@simoncodes-ca/domain';
+import type { SortDirection, SortField } from '../translations/utils/sort-translations';
 import type { DensityMode } from '../types/density-mode';
-import type { SortField, SortDirection } from '../translations/utils/sort-translations';
 
 const strings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');

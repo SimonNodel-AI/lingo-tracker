@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './protected-terms-request';
-import { readProjectTermsView } from './project-terms-view';
 import { loadConfig } from './load-config';
+import { readProjectTermsView } from './project-terms-view';
+import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './protected-terms-request';
 import { updateProjectTerms } from './update-project-terms';
 
 const baseConfig: LingoTrackerConfig = {

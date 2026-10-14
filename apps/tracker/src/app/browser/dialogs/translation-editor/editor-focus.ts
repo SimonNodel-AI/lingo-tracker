@@ -24,7 +24,11 @@ export class EditorFocus {
   }
 
   focus(target: EditorFocusTarget): void {
-    const element = this.#registered.get(target)?.at(-1)?.element;
+    // The first invalid row takes over the first row's anchor, so opening the drawer still lands in it.
+    const element = (
+      this.#registered.get(target) ??
+      (target === 'drawer-first-control' ? this.#registered.get('invalid-locale-value') : undefined)
+    )?.at(-1)?.element;
     if (!element) return;
     element.focus();
     if (target === 'comment' && element instanceof HTMLTextAreaElement) {

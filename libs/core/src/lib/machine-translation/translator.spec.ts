@@ -167,6 +167,16 @@ describe('Translator.translate', () => {
     expect(outcome.values).toEqual([{ key: 'f', locale: 'fr', value: 'Fichier {fileA} est plus récent que {fileB}' }]);
   });
 
+  it('skips provider output that restores to a braced placeholder before conversion', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => `${text.replace('Hi ', 'Salut {{')}}}`);
+    const outcome = await openTranslator(collection(), { provider }).translate(
+      [{ key: 'greet', source: 'Hi {a}' }],
+      ['fr'],
+    );
+    expect(outcome).toEqual({ values: [], skipped: [{ key: 'greet', locale: 'fr', reason: 'placeholder-mismatch' }] });
+    expect(provider.calls).toHaveLength(1);
+  });
+
   it('skips a translation that lost a placeholder marker', async () => {
     const provider = new InMemoryTranslationProvider(() => 'Bonjour');
 

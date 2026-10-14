@@ -1,9 +1,9 @@
 import { readCollectionSet } from '../collection-set/collection-set';
-import type { CollectionFolderProblem } from '../resource/collection-folders';
 import type { Collection } from '../config/open-collection';
 import { GlossaryNoCollectionsError } from '../errors/lingo-tracker-error';
-import { resolveExtractor, type CandidateExtractor, type ExtractorMode } from './glossary-extractor';
-import { matchGlossary, type FlatEntry, type GlossaryTerm } from './glossary-matcher';
+import { describeFolderProblem } from '../resource/collection-folders';
+import { type CandidateExtractor, type ExtractorMode, resolveExtractor } from './glossary-extractor';
+import { type FlatEntry, type GlossaryTerm, matchGlossary } from './glossary-matcher';
 
 export interface BuildGlossaryOptions {
   /** A mode name, or a custom extraction strategy. Defaults to `ngram`. */
@@ -23,16 +23,9 @@ export interface Glossary {
   terms: GlossaryTerm[];
 }
 
-export interface GlossaryReadProblem {
-  kind: CollectionFolderProblem['kind'];
-  folderPath: string;
-  collectionName: string;
-  message: string;
-}
-
-/** The payload plus reader problems for an adapter to report outside the JSON. */
+/** The payload plus warnings for an adapter to report outside the JSON. */
 export interface BuildGlossaryResult extends Glossary {
-  readProblems: GlossaryReadProblem[];
+  readonly warnings: readonly string[];
 }
 
 /**
@@ -67,13 +60,6 @@ export function buildGlossary(
       locales: options.locales ? locales : resource.targetLocales,
     };
   });
-  const readProblems = set.readProblems.map((problem) => ({
-    kind: problem.kind,
-    folderPath: problem.folderPath,
-    collectionName: problem.collection,
-    message: problem.message,
-  }));
-
   const extractor =
     typeof options.extractor === 'function' ? options.extractor : resolveExtractor(options.extractor ?? 'ngram');
   const candidates = extractor(text);
@@ -84,6 +70,6 @@ export function buildGlossary(
     source: { chars: text.length, candidates: candidates.length },
     matchCount: terms.length,
     terms,
-    readProblems,
+    warnings: set.readProblems.map((problem) => describeFolderProblem(problem, { collectionName: problem.collection })),
   };
 }

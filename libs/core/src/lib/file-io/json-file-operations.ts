@@ -1,9 +1,9 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { ErrorMessages } from '../errors/error-messages';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
-import { ErrorMessages } from '../errors/error-messages';
 import { hasFsErrorCode } from './fs-error';
 
 export interface JsonFileReadOptions<T> {

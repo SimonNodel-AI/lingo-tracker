@@ -1,6 +1,6 @@
+import { collectionFlag, defineFlags, yesFlag } from '../runner/flag-record';
 import { missingTextQuestions } from '../utils/prompt-utils';
 import type { DeleteResourceOptions } from './delete-resource';
-import { defineFlags, collectionFlag, yesFlag } from '../runner/flag-record';
 
 export const DELETE_RESOURCE_FLAGS = defineFlags<DeleteResourceOptions>()({
   collection: collectionFlag('Name of the collection'),

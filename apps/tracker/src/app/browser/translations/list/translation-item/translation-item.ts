@@ -1,21 +1,21 @@
-import { Component, ChangeDetectionStrategy, input, output, computed, effect, inject, signal } from '@angular/core';
-import { MatIconModule } from '@angular/material/icon';
 import { CdkDrag, CdkDragPlaceholder } from '@angular/cdk/drag-drop';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
-import { BrowserStore } from '../../../store/browser.store';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal } from '@angular/core';
+import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe } from '@jsverse/transloco';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
-import { TranslationItemHeader } from './item-header';
-import { TranslationItemLocales } from './item-locales';
-import { rowView } from './row-view';
-import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
-import type { DragData } from '../../../types/drag-data';
-import { TranslationListStore } from '../store/translation-list.store';
 import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
+import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import {
   statusIconFor,
   statusLabelTokenFor,
 } from '../../../../shared/translation-status/translation-status-presentation';
+import { BrowserStore } from '../../../store/browser.store';
+import type { DragData } from '../../../types/drag-data';
+import { TranslationListStore } from '../store/translation-list.store';
+import { TranslationItemHeader } from './item-header';
+import { TranslationItemLocales } from './item-locales';
+import { rowView } from './row-view';
 
 /**
  * Number of locale rows rendered while a full-density item is collapsed.

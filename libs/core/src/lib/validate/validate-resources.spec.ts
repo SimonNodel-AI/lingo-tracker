@@ -1,8 +1,6 @@
 import { join } from 'node:path';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
-import type { Collection } from '../config/open-collection';
-import { readProjectTerms, type ProjectTerms } from '../config/project-terms';
 import {
   type SeedResource,
   seedResources,
@@ -10,6 +8,8 @@ import {
   useTempDir,
   writeFolderFiles,
 } from '../../testing/temp-dir.spec-helpers';
+import type { Collection } from '../config/open-collection';
+import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
 import { validateResources } from './validate-resources';
 
 describe('validateResources (real fs)', () => {

@@ -5,8 +5,8 @@ import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { NotificationService } from '../../../shared/notification';
-import { BrowserStore } from '../../store/browser.store';
 import { TranslationEditorLauncher } from '../../services/translation-editor-launcher';
+import { BrowserStore } from '../../store/browser.store';
 import { TranslationMainHeader } from './translation-main-header';
 
 describe('TranslationMainHeader', () => {

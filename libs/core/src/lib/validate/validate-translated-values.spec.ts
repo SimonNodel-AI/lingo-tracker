@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { validateTranslatedValues } from './validate-translated-values';
+import { describe, expect, it } from 'vitest';
 import type { CollectionSetResource } from '../collection-set/collection-set';
+import { validateTranslatedValues } from './validate-translated-values';
 
 const resource = (overrides: Partial<CollectionSetResource> = {}): CollectionSetResource => ({
   key: 'folderAriaLabelX',

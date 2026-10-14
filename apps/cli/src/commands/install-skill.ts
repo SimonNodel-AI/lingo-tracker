@@ -1,17 +1,17 @@
-import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
-import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
-import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
-import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
-import { NORMALIZE_FLAGS } from './normalize-flags';
-import { flagName } from '../runner/flag-record';
-import { BUNDLE_FLAGS } from './bundle-flags';
-import { INSTALL_SKILL_FLAGS } from './install-skill-flags';
 import { hasFsErrorCode } from '@simoncodes-ca/core';
 import fs from 'fs';
 import path from 'path';
+import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
 import { CommandOutput } from '../runner/command-output';
 import { type Ask, defineCommand } from '../runner/command-runner';
+import { flagName } from '../runner/flag-record';
 import { requiredText } from '../utils';
+import { BUNDLE_FLAGS } from './bundle-flags';
+import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
+import { INSTALL_SKILL_FLAGS } from './install-skill-flags';
+import { NORMALIZE_FLAGS } from './normalize-flags';
+import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
 
 export interface CollectionSpec {
   name: string;

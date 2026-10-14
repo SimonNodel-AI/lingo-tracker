@@ -260,3 +260,65 @@ export const icuishCompilationMessage = fc
     },
   )
   .map((parts) => parts.join(''));
+
+// Unicode whitespace around header tokens of otherwise valid messages. U+00A0, U+2000–U+200A
+// and U+FEFF are whitespace and name characters at once; U+2028/9 are whitespace only;
+// U+200E/F are pattern whitespace that JavaScript's \s does not match.
+const unicodeHeaderSpace = fc.constantFrom('', '', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '‎', '‏', '﻿', '\v', '\f');
+const unicodePad = fc.array(unicodeHeaderSpace, { maxLength: 2 }).map((parts) => parts.join(''));
+
+const unicodeSpacedArgument = fc
+  .tuple(identifier, fc.array(unicodePad, { minLength: 4, maxLength: 4 }), fc.option(supportedFormat), fc.boolean())
+  .map(([name, [a, b, c, d], type, transloco]) => {
+    if (transloco) return `{{${a}${name}${b}}}`;
+    return type === null ? `{${a}${name}${b}}` : `{${a}${name}${b},${c}${type}${d}}`;
+  });
+
+function unicodeSpacedGroup(body: fc.Arbitrary<string>): fc.Arbitrary<string> {
+  return fc
+    .tuple(
+      identifier,
+      fc.constantFrom('plural', 'select', 'selectordinal'),
+      fc.constantFrom('zero', 'one', 'two', 'few', 'many', 'other', '=2'),
+      fc.option(fc.nat({ max: 12 })),
+      fc.array(unicodePad, { minLength: 9, maxLength: 9 }),
+      body,
+      body,
+    )
+    .map(([name, type, category, offset, pads, first, other]) => {
+      const [p0, p1, p2, p3, p4, p5, p6, p7, p8] = pads;
+      const selector = type === 'select' ? 'chosen' : category;
+      const offsetText = type !== 'select' && offset !== null ? `offset:${p4}${offset}${p5}` : '';
+      return `{${p0}${name}${p1},${p2}${type}${p3},${p4}${offsetText}${selector}${p6}{${first}}${p7}other${p8}{${other}}${p0}}`;
+    });
+}
+
+const unicodeSpacedLeaf = fc.oneof(messageText, unicodeSpacedArgument);
+export const unicodeSpacedMessage = fc
+  .array(
+    fc.oneof(unicodeSpacedLeaf, unicodeSpacedGroup(fc.oneof(unicodeSpacedLeaf, unicodeSpacedGroup(unicodeSpacedLeaf)))),
+    { minLength: 1, maxLength: 4 },
+  )
+  .map((parts) => parts.join(' '));
+
+// Selectors the strict grammar accepts but an ASCII-only, space-after-offset rule rejects:
+// `offset:N` glued to the category or `=N`, and select keys outside ASCII. Each first case
+// body is only a Transloco-era `{{name}}`.
+export const gluedSelectorMessage = fc
+  .tuple(
+    fc.boolean(),
+    identifier,
+    fc.nat({ max: 12 }),
+    fc.constantFrom('', ' '),
+    fc.constantFrom('zero', 'one', 'two', 'few', 'many', '=0', '=2', '=12'),
+    fc.constantFrom('männlich', 'weiblich', '日本', 'é', 'Жена', 'chosen'),
+    fc.constantFrom('', ' '),
+    messageText,
+    messageText,
+  )
+  .map(([plural, name, offset, glue, category, key, pad, other, text]) => {
+    const cases = plural
+      ? `offset:${offset}${glue}${category}${pad}{{${name}}} other {${other}}`
+      : `${key}${pad}{{${name}}} other {${other}}`;
+    return `${text}{${plural ? 'count, plural' : 'gender, select'}, ${cases}}`;
+  });

@@ -1,19 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   clearAll,
   compactDisplayLocale,
   filterableLocales,
   filteredLocales,
   isShowingAllLocales,
+  type LocaleContext,
+  type LocaleSelection,
   localeFilterLabel,
   restoreLocaleSelection,
+  type SavedLocaleSelection,
   selectAll,
   selectLocales,
   setDensity,
   toggleLocale,
-  type LocaleContext,
-  type LocaleSelection,
-  type SavedLocaleSelection,
 } from './locale-selection';
 
 const context: LocaleContext = { availableLocales: ['en', 'es', 'de', 'fr'], baseLocale: 'en' };

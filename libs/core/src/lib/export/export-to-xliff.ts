@@ -1,7 +1,7 @@
-import type { ExportOptions, ExportResult, FilteredResource } from './types';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { jsToXliff12, type XliffData, type XliffResource } from 'xliff';
+import type { ExportOptions, ExportResult, FilteredResource } from './types';
 
 /**
  * Starts the `<note>` the exporter adds for a unit's protected terms (`Do not translate: iPhone, C++`).

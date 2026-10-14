@@ -29,8 +29,10 @@ Rejecting entire translation batches for these issues is disruptive and costly. 
 icu-auto-fixer.ts
 ├── extractICUPlaceholders()     - Parses ICU patterns from strings
 ├── hasICUPlaceholders()          - Quick check for ICU presence
-├── autoFixICUPlaceholders()      - Main auto-fix logic
 └── validateICUSyntax()           - Syntax validation
+
+placeholder-repair.ts (domain)
+└── repairPlaceholders()         - Engine selection, trusted base policy and repair
 
 apply-icu-auto-fix.ts
 ├── applyICUAutoFixToResource()   - Single resource auto-fix
@@ -158,20 +160,20 @@ These cases return `ICUAutoFixError` and preserve the original value:
 ### Basic Auto-Fix
 
 ```typescript
-import { autoFixICUPlaceholders } from '@lingo-tracker/core';
+import { repairPlaceholders } from '@simoncodes-ca/domain';
 
 const baseValue = 'Hello {name}, you have {count} items';
 const translatedValue = 'Hola {nombre}, tienes {cantidad} elementos';
 
-const result = autoFixICUPlaceholders(baseValue, translatedValue);
+const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-if (result.wasFixed) {
+if (result.outcome === 'fixed') {
   console.log('Fixed:', result.value);
   // "Hola {name}, tienes {count} elementos"
 
   console.log('Changes:', result.description);
   // "Replaced placeholders: {nombre} → {name}, {cantidad} → {count}"
-} else if (result.error) {
+} else if (result.outcome === 'failed') {
   console.error('Auto-fix failed:', result.error);
 }
 ```
@@ -374,10 +376,11 @@ hasICUPlaceholders(value: string): boolean
 extractICUPlaceholders(value: string): PlaceholderExtractionResult
 
 // Auto-fix placeholders in translation
-autoFixICUPlaceholders(
-  baseValue: string,
-  translationValue: string
-): ICUAutoFixResult
+repairPlaceholders(input: {
+  translation: string;
+  storedBase?: string;
+  importedBase?: string;
+}): PlaceholderRepair
 
 // Validate ICU syntax
 validateICUSyntax(value: string): boolean

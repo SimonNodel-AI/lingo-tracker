@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import type { NormalizeCollectionsResult } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
+import { type NormalizeOptions, normalizeCommand } from './normalize';
 import { NORMALIZE_FLAGS } from './normalize-flags';
-import { normalizeCommand, type NormalizeOptions } from './normalize';
 
 type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
 const zeroTotals = {
@@ -55,6 +55,32 @@ describe('normalizeCommand (real project)', () => {
     vi.restoreAllMocks();
     for (const path of restorePermissions.splice(0)) chmodSync(path, 0o755);
     project.cleanup();
+  });
+
+  it.each([
+    ['{{{a}}}', 'braced-placeholder'],
+    ['{p, plural, offset:2other{x}}', 'collapsed-case-body'],
+  ])('prints findings and includes them in JSON with exit 0: %s', async (value, kind) => {
+    project.write(entriesPath, { hello: { source: value } });
+    const before = project.read(entriesPath);
+    const dry = await project.run(normalizeCommand, { collection: 'main', dryRun: true });
+    const normal = await project.run(normalizeCommand, { collection: 'main' });
+    expect(normal.exitCode).toBe(0);
+    expect(dry.exitCode).toBe(0);
+    expect(dry.stderr).toBe(`${normal.stderr}⚠️  Dry run completed - no changes were made.\n`);
+    expect(normal.stderr).toContain('⚠️  hello (en): ');
+    expect(project.json(entriesPath)).toMatchObject({ hello: { source: value } });
+    const json = await project.run(normalizeCommand, { collection: 'main', json: true });
+    expect(json.exitCode).toBe(0);
+    expect(json.stderr).toBe('');
+    const report = payload(json.stdout);
+    expect(report).not.toHaveProperty('findings');
+    const findings = report.collections[0]?.findings ?? [];
+    expect(findings).toHaveLength(2);
+    expect(findings[0]).toMatchObject({ key: 'hello', locale: 'en', kind });
+    expect(findings[1]).toMatchObject({ key: 'hello', locale: 'fr', kind });
+    expect(normal.stderr).toBe(`⚠️  hello (en): ${findings[0]?.detail}\n`);
+    expect(before).toContain(value);
   });
 
   it('normalizes the named collection', async () => {

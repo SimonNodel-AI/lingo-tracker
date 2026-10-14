@@ -3,11 +3,11 @@ import { TestBed } from '@angular/core/testing';
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { firstValueFrom, throwError } from 'rxjs';
-import { BrowserApiService } from '../../services/browser-api.service';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { ApiError, provideTrackerHttpClient } from '../../../shared/api-error/api-error';
+import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../browser.store';
 
 const RESOURCES_URL = '/api/collections/my-collection/resources';

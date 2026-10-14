@@ -1,7 +1,7 @@
-import { CommandOutput } from '../runner/command-output';
 import type { RunOutcome } from '@simoncodes-ca/core';
-import { exitForRunOutcome } from '../runner/run-outcome';
+import { CommandOutput } from '../runner/command-output';
 import type { CommandResult } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter } from './console-formatter';
 
 /** Longest warnings or errors list printed in full when a run summary file holds the rest. */

@@ -1,7 +1,7 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import * as fs from 'node:fs';
 import { findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
-import { collectionResourceStatus, type CollectionSetResource } from '../collection-set/collection-set';
+import { type CollectionSetResource, collectionResourceStatus } from '../collection-set/collection-set';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { FilteredResource } from './types';
 
 /** Project Terms are attached only for export filtering and notes. */

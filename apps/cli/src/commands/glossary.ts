@@ -1,11 +1,11 @@
-import { flagName } from '../runner/flag-record';
-import { GLOSSARY_FLAGS } from './glossary-flags';
+import { buildGlossary, type Collection } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
-import { buildGlossary, type Collection, describeFolderProblem } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, type CommandStdin, defineCommand } from '../runner/command-runner';
+import { flagName } from '../runner/flag-record';
 import { ConsoleFormatter, parseNameSelection } from '../utils';
+import { GLOSSARY_FLAGS } from './glossary-flags';
 
 export interface GlossaryCommandOptions {
   /** Inline text snippet to extract from. */
@@ -86,14 +86,14 @@ function runGlossary(
     return { exitCode: 1 };
   }
 
-  const { readProblems, ...glossary } = buildGlossary(collections, block, {
+  const { warnings, ...glossary } = buildGlossary(collections, block, {
     extractor: options.extractor,
     locales: options.locales?.length ? options.locales : undefined,
     includeAll: options.includeAll,
   });
 
-  for (const problem of readProblems) {
-    ConsoleFormatter.warning(describeFolderProblem(problem, { collectionName: problem.collectionName }));
+  for (const warning of warnings) {
+    ConsoleFormatter.warning(warning);
   }
 
   if (glossary.locales.length === 0) {

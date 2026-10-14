@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type SeedResource, seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
-import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors';
+import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors/internal';
 import {
   type BundleProgressEvent,
   type BundleTypeOutcome,
-  type GenerateBundleParams,
   bundleTypeOutcomeDetail,
+  type GenerateBundleParams,
   generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';

@@ -1,12 +1,24 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import { join } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { ReadOnlyCollectionError } from '../errors';
-import { normalizeCollections } from './normalize-collections';
 import * as normalizeModule from './normalize';
+import { normalizeCollections } from './normalize-collections';
 
 describe('normalizeCollections', () => {
   const root = useTempDir('normalize-runs-');
+  it('carries collection findings separately from numeric totals', async () => {
+    writeFolderFiles(root(), 'common', { entries: { ok: { source: '{p, plural, offset:2other{x}}' } } });
+    const collection = testCollection(root(), { name: 'Main' });
+    const result = await normalizeCollections([collection]);
+    expect(result).not.toHaveProperty('findings');
+    expect(result.collections[0]?.findings[0]).toMatchObject({
+      key: 'common.ok',
+      locale: 'en',
+      kind: 'collapsed-case-body',
+    });
+    expect(Object.values(result.totals).every((value) => typeof value === 'number')).toBe(true);
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it('refuses a named read-only collection with the existing typed error', async () => {
@@ -53,6 +65,7 @@ describe('normalizeCollections', () => {
       foldersRemoved: 0,
     });
     expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual(['Skipping read-only collection: Lib']);
     expect(result.outcome).toBe('succeeded');
   });
 
@@ -107,6 +120,9 @@ describe('normalizeCollections', () => {
     writeFolderFiles(root(), 'broken', { entries: '{ invalid json' });
     const warned = await normalizeCollections([testCollection(root())]);
     expect(warned.collections[0]?.problems).toHaveLength(1);
+    expect(warned.warnings).toEqual([
+      `Collection 'main': Skipped unreadable folder 'broken': ${warned.collections[0]?.problems[0]?.message}`,
+    ]);
     expect(warned.errors).toEqual([]);
     expect(warned.outcome).toBe('succeeded');
   });

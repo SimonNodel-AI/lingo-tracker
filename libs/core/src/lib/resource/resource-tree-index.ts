@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { folderPathFromSegments, folderPathSegments, splitResolvedKey } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import type { CollectionFolderProblem } from './collection-folders';
+import { describeFolderProblem } from './collection-folders';
 import { extractSubtree } from './extract-subtree';
 import { loadResourceTree } from './load-resource-tree';
 import { readCollection } from './read-collection';
@@ -34,14 +34,14 @@ export class ResourceTreeIndex {
   }
 
   /** Fingerprint before loading, so a concurrent write forces another load on revalidation. */
-  load(onProblem?: (problem: CollectionFolderProblem) => void): void {
+  load(onWarning?: (warning: string) => void): void {
     this.refreshFingerprint();
     this.#tree = loadResourceTree({
       translationsFolder: this.collection.translationsFolder,
       baseLocale: this.collection.baseLocale,
       path: '',
       depth: Number.POSITIVE_INFINITY,
-      onProblem,
+      onProblem: (problem) => onWarning?.(describeFolderProblem(problem, { collectionName: this.collection.name })),
     });
   }
 
@@ -56,12 +56,12 @@ export class ResourceTreeIndex {
   /** Until loaded, searches use the reader without populating the index. */
   searchPage(
     request: SearchRequest,
-    onProblem?: (problem: CollectionFolderProblem) => void,
+    onWarning?: (warning: string) => void,
     collection: Collection = this.collection,
   ): SearchPage {
     if (this.#tree) return searchPage(treeResources(this.#tree), collection, request);
-    const { resources, problems } = readCollection(collection);
-    for (const problem of problems) onProblem?.(problem);
+    const { resources, warnings } = readCollection(collection);
+    for (const warning of warnings) onWarning?.(warning);
     return searchPage(resources, collection, request);
   }
 

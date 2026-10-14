@@ -2,9 +2,9 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME } from '../constants';
-import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { CoreOperationError } from '../lib/errors/lingo-tracker-error';
 import { openResourceFolder } from '../lib/resource/resource-folder';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
 
 describe('locale files', () => {

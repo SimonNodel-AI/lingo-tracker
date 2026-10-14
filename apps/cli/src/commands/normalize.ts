@@ -1,6 +1,4 @@
-import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 import {
-  describeFolderProblem,
   emptyNormalizeCollectionsResult,
   type NormalizeCollectionsResult,
   normalizeCollections,
@@ -10,6 +8,7 @@ import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
+import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 
 export interface NormalizeOptions {
   collection?: string;
@@ -66,6 +65,8 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
                 ConsoleFormatter.indent(`✅ Files created: ${item.filesCreated}`);
                 ConsoleFormatter.indent(`✅ Files updated: ${item.filesUpdated}`);
                 ConsoleFormatter.indent(`✅ Folders removed: ${item.foldersRemoved}`);
+                for (const { key, locale, detail } of item.findings)
+                  ConsoleFormatter.warning(`${key} (${locale}): ${detail}`);
               }
               break;
             }
@@ -83,18 +84,11 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         'failed',
       );
     }
-    const warnings = collections.flatMap((collection) =>
-      collection.readOnly && all
-        ? [`Skipping read-only collection: ${collection.name}`]
-        : (result.collections.find((item) => item.collectionName === collection.name)?.problems ?? []).map((problem) =>
-            describeFolderProblem(problem, { collectionName: collection.name }),
-          ),
-    );
     const errors = result.errors.map(
       ({ name, error }) =>
         `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`,
     );
-    return reportNormalize(result, collections.length, answers, warnings, errors, result.outcome);
+    return reportNormalize(result, collections.length, answers, result.warnings, errors, result.outcome);
   },
 });
 

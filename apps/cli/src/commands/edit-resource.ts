@@ -1,9 +1,9 @@
 import { type EditResourceChanges, editResource } from '@simoncodes-ca/core';
 import { entryChange } from '@simoncodes-ca/domain';
-import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
-import { flagName } from '../runner/flag-record';
 import { defineCommand } from '../runner/command-runner';
+import { flagName } from '../runner/flag-record';
 import { ConsoleFormatter, printRunReport, printTerminologyFindings } from '../utils';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 
 export interface EditResourceOptions {
   collection?: string;

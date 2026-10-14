@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KeyedStorage, MemoryStorageAdapter, json, raw, type StorageAdapter } from './keyed-storage';
+import { json, KeyedStorage, MemoryStorageAdapter, raw, type StorageAdapter } from './keyed-storage';
 
 describe('KeyedStorage', () => {
   it('isolates keys, round trips JSON and removes only its own value', () => {

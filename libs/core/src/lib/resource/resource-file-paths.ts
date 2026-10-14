@@ -1,6 +1,6 @@
 import { splitResolvedKey } from '@simoncodes-ca/domain';
-import { resolveCheckedResourceKey } from './resource-key';
 import { resolveFolderAddress } from './folder-address';
+import { resolveCheckedResourceKey } from './resource-key';
 
 export interface ResolvedResourcePaths {
   /** The fully resolved key (targetFolder.key) */

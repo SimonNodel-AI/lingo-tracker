@@ -53,6 +53,7 @@ interface HttpRule {
 type MappedCode = ErrorCode | ApiErrorCode;
 
 const HTTP_BY_CODE = {
+  BRACED_PLACEHOLDER: { kind: 'invalid', includeDetails: true },
   INVALID_COLLECTION: {
     kind: 'invalid',
     message: (error) => ('field' in error && error.field !== undefined ? `collection.${error.message}` : error.message),

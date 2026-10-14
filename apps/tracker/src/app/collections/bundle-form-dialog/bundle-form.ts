@@ -28,9 +28,9 @@ import {
 } from '@simoncodes-ca/domain';
 import { catchError, debounceTime, map, type Observable, of, Subscription, startWith, switchMap, tap } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
+import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
 

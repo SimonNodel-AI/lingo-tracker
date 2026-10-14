@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import {
@@ -7,9 +7,9 @@ import {
   STATUS_PRECEDENCE,
   type TranslationStatus,
 } from '@simoncodes-ca/domain';
-import { BrowserStore } from '../../../store/browser.store';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { STATUS_PRESENTATION } from '../../../../shared/translation-status/translation-status-presentation';
+import { BrowserStore } from '../../../store/browser.store';
 
 /** One toggle in the rail. `statuses` is what it selects, not what it is called. */
 interface StatusToggle {

@@ -1,8 +1,8 @@
-import { LOCAL_STORAGE } from '../storage/browser-storage';
-import type { StorageAdapter } from '../storage/keyed-storage';
 import { PLATFORM_ID } from '@angular/core';
 import { createServiceFactory, type SpectatorService } from '@ngneat/spectator/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { LOCAL_STORAGE } from '../storage/browser-storage';
+import type { StorageAdapter } from '../storage/keyed-storage';
 import { ThemeService } from './theme.service';
 
 describe('ThemeService', () => {

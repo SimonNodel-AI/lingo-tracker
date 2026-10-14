@@ -5,8 +5,8 @@ import {
   sortPreferredTermRules,
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
-import { formatRuleErrors } from '../errors/format-rule-errors';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
+import { formatRuleErrors } from '../errors/format-rule-errors';
 import {
   CoreOperationError,
   InvalidConfigError,

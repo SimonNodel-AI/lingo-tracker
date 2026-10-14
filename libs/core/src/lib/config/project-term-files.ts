@@ -1,8 +1,9 @@
 /** Internal single read path for Project Terms collection and project snapshots. */
-import { readProtectedTermsFile } from './protected-terms-file';
-import { readPreferredTerminologyFile } from './preferred-terminology-file';
-import type { TermFile, TermFileRead } from './term-file';
+
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
+import { readPreferredTerminologyFile } from './preferred-terminology-file';
+import { readProtectedTermsFile } from './protected-terms-file';
+import type { TermFile, TermFileRead } from './term-file';
 
 /** A term file that could not be used as configured. */
 export interface TermFileProblem {

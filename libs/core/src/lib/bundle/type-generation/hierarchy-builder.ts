@@ -1,6 +1,6 @@
-import { segmentToPropertyName, constantNameToTypeName } from './key-transformer';
 import { buildKeyTree, type KeyTree, type TokenCasing } from '@simoncodes-ca/domain';
-import { BundleHierarchicalConflictError } from '../../errors';
+import { BundleHierarchicalConflictError } from '../../errors/internal';
+import { constantNameToTypeName, segmentToPropertyName } from './key-transformer';
 
 export interface TypeHierarchyNode {
   children: Record<string, TypeHierarchyNode>;

@@ -1,8 +1,7 @@
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
 import type { BundleDefinition, CollectionBundleDefinition } from '@simoncodes-ca/domain';
+import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import type { Collection } from '../config/open-collection';
 import {
   type SeedResource,
   seedResources,
@@ -10,6 +9,7 @@ import {
   useTempDir,
   writeFolderFiles,
 } from '../../testing/temp-dir.spec-helpers';
+import type { Collection } from '../config/open-collection';
 import {
   type BundleCollection,
   resolveBundleCollections,

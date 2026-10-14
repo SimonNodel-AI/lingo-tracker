@@ -1,4 +1,3 @@
-import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -14,6 +13,7 @@ import {
   ReadOnlyCollectionError,
 } from '../lib/errors/lingo-tracker-error';
 import type { ResourceEntries } from '../lib/resource/resource-entry';
+import type { ResourceMutation } from '../lib/resource/resource-mutation';
 import type { TrackerMetadata } from '../lib/resource/tracker-metadata';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../testing/temp-dir.spec-helpers';
 import { removeLocaleFromCollection } from './remove-locale-from-collection';

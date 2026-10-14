@@ -1,11 +1,11 @@
-import { Component, ChangeDetectionStrategy, computed, input } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { countByStatus, type StatusCounts, type TranslationStatus } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectStatusBreakdown } from '../../../../shared/i18n/status-breakdown';
+import { HighlightPipe } from '../../../../shared/pipes/highlight.pipe';
 import {
   statusIconFor,
   statusLabelTokenFor,

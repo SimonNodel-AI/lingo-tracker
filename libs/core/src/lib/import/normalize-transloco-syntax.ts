@@ -1,5 +1,5 @@
-import type { ImportedResource } from './types';
 import { translocoToICU } from '@simoncodes-ca/domain';
+import type { ImportedResource } from './types';
 
 /**
  * Applies Transloco-to-ICU syntax normalization to every resource in the array.

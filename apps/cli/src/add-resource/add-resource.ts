@@ -1,5 +1,3 @@
-import { flagName } from '../runner/flag-record';
-import { ADD_RESOURCE_FLAGS } from './add-resource-flags';
 import type { AddResourceResult, Collection } from '@simoncodes-ca/core';
 import { addResource, ResourceAlreadyExistsError } from '@simoncodes-ca/core';
 import {
@@ -10,7 +8,9 @@ import {
 } from '@simoncodes-ca/domain';
 import { ADD_RESOURCE_COMMAND_NAME } from '../runner/cli-error-wording';
 import { type Ask, defineCommand } from '../runner/command-runner';
+import { flagName } from '../runner/flag-record';
 import { ConsoleFormatter, confirmOrCancel, printTerminologyFindings } from '../utils';
+import { ADD_RESOURCE_FLAGS } from './add-resource-flags';
 
 export interface AddResourceOptions {
   collection?: string;

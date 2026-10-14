@@ -48,8 +48,9 @@ describe('buildGlossary', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' })],
       problems: [],
+      warnings: [],
     });
-    const { readProblems, ...glossary } = buildGlossary([open('app')], 'Save');
+    const { warnings, ...glossary } = buildGlossary([open('app')], 'Save');
     expect(glossary).toEqual({
       baseLocale: 'en',
       locales: ['fr'],
@@ -67,7 +68,8 @@ describe('buildGlossary', () => {
         },
       ],
     });
-    expect(readProblems).toEqual([]);
+    expect(glossary).not.toHaveProperty('readProblems');
+    expect(warnings).toEqual([]);
   });
 
   it('uses a collection baseLocale and locales override instead of the global settings', () => {
@@ -81,6 +83,7 @@ describe('buildGlossary', () => {
         ),
       ],
       problems: [],
+      warnings: [],
     });
     const result = buildGlossary([open('frenchBase')], 'Enregistrer');
     expect(result.baseLocale).toBe('fr');
@@ -101,6 +104,7 @@ describe('buildGlossary', () => {
           : stored('save', 'Save', { fr: 'Enregistrer', es: 'Guardar' }, { fr: 'verified', es: 'verified' }),
       ],
       problems: [],
+      warnings: [],
     }));
     const result = buildGlossary([open('app'), open('spanish')], 'Save Settings');
     expect(result.locales).toEqual(['fr', 'es']);
@@ -112,6 +116,7 @@ describe('buildGlossary', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' })],
       problems: [],
+      warnings: [],
     });
     const result = buildGlossary([open('app')], 'Save', { locales: ['xx', 'fr', 'en'] });
     expect(result.locales).toEqual(['xx', 'fr']);
@@ -122,6 +127,7 @@ describe('buildGlossary', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { de: 'Speichern' }, { de: 'new' })],
       problems: [],
+      warnings: [],
     });
     const result = buildGlossary([open('app')], 'Save', { locales: ['de'], includeAll: true });
     expect(result.locales).toEqual(['de']);
@@ -142,22 +148,23 @@ describe('buildGlossary', () => {
     expect(readCollection).not.toHaveBeenCalled();
   });
 
-  it('returns unreadable folders as problems while keeping readable entries', () => {
+  it('returns unreadable folders as warnings while keeping readable entries', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' })],
       problems: [{ kind: 'unreadable', folderPath: 'bad', absolutePath: '/project/app/bad', message: 'bad JSON' }],
+      warnings: ["Collection 'app': Skipped unreadable folder 'bad': bad JSON"],
     });
     const result = buildGlossary([open('app')], 'Save');
     expect(result.matchCount).toBe(1);
-    expect(result.readProblems).toEqual([
-      { kind: 'unreadable', folderPath: 'bad', collectionName: 'app', message: 'bad JSON' },
-    ]);
+    expect(result.warnings).toEqual(["Collection 'app': Skipped unreadable folder 'bad': bad JSON"]);
+    expect(result).not.toHaveProperty('readProblems');
   });
 
   it('filters new and stale translations unless includeAll is set', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'stale' })],
       problems: [],
+      warnings: [],
     });
     expect(buildGlossary([open('app')], 'Save').matchCount).toBe(0);
     expect(buildGlossary([open('app')], 'Save', { includeAll: true }).matchCount).toBe(1);
@@ -166,7 +173,7 @@ describe('buildGlossary', () => {
   it('treats null metadata as no status', () => {
     const resource = stored('save', 'Save', { fr: 'Enregistrer' }, {});
     const withNull: StoredResource = { ...resource, entry: { ...resource.entry, metadata: JSON.parse('{"fr":null}') } };
-    vi.mocked(readCollection).mockReturnValue({ resources: [withNull], problems: [] });
+    vi.mocked(readCollection).mockReturnValue({ resources: [withNull], problems: [], warnings: [] });
     expect(buildGlossary([open('app')], 'Save', { includeAll: true }).matchCount).toBe(1);
   });
 
@@ -174,6 +181,7 @@ describe('buildGlossary', () => {
     vi.mocked(readCollection).mockReturnValue({
       resources: [stored('save', 'Save', { fr: 'Enregistrer' }, { fr: 'verified' })],
       problems: [],
+      warnings: [],
     });
     expect(buildGlossary([open('app')], 'irrelevant', { extractor: () => [{ term: 'save' }] }).matchCount).toBe(1);
     expect(() => buildGlossary([open('app')], 'Save', { extractor: 'ai' })).toThrow(GlossaryExtractorError);

@@ -1,20 +1,21 @@
 import {
-  validateListEdit,
   mergeListEdit,
   normalizeProtectedTerms,
+  validateListEdit,
   validatePreferredTermRules,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
   CollectionNotFoundError,
   CoreOperationError,
-  type LingoTrackerError,
-  InvalidProjectTermsEditError,
   InvalidCollectionError,
+  InvalidProjectTermsEditError,
+  type LingoTrackerError,
   PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import { patchCollectionEntry } from './collection-entry';
 import { guardedConfigWrite } from './config-file-operations';
+import type { CompanionFileWrite, ConfigWriteOutcome } from './config-write-transaction';
 import type { OpenedProject } from './open-collection';
 import {
   editPreferredTerminology,
@@ -23,6 +24,8 @@ import {
   type PreferredTerminologyEditResult,
   resolvePreferredTerminologyFilePath,
 } from './preferred-terminology-file';
+import { readStoredProjectProtectedTerms } from './project-term-files';
+import { readProjectTermsView } from './project-terms-view';
 import {
   assertWritableProtectedTermsPath,
   resolveCollectionProtectedTermsFilePath,
@@ -39,9 +42,6 @@ import {
   type ProtectedTermsView,
 } from './protected-terms-request';
 import { assertWritableTermFilePath } from './term-file';
-import { readProjectTermsView } from './project-terms-view';
-import { readStoredProjectProtectedTerms } from './project-term-files';
-import type { CompanionFileWrite, ConfigWriteOutcome } from './config-write-transaction';
 
 /** Replacements and incremental edits both write the explicitly selected scope. */
 export type ProtectedTermsChange =

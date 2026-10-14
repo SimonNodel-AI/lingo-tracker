@@ -2,9 +2,9 @@ import { Controller, Get, Put } from '@nestjs/common';
 import { type OpenedProject, readProjectTermsView, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
 import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
-import { RouteProject } from './route-project';
 import { updateConfigBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
+import { RouteProject } from './route-project';
 
 @Controller('config')
 export class ConfigController {

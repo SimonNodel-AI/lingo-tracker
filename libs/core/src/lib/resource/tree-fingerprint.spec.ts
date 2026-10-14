@@ -4,10 +4,11 @@
  * The whole point of the fingerprint is what `stat` reports, so these run
  * against the real filesystem rather than a mocked `fs`.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { computeTreeFingerprint, treeFingerprintsMatch } from './tree-fingerprint';
 
 describe('computeTreeFingerprint', () => {

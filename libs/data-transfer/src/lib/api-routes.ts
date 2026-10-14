@@ -36,6 +36,43 @@ export const API_ROUTES = [
   { method: 'GET', path: '/api/bundles/jobs/:jobId' },
 ] as const satisfies readonly ApiRoute[];
 
+type ManifestRoute = (typeof API_ROUTES)[number];
+
+/** A method and path pair declared in the shared manifest. */
+export type ApiRouteKey = {
+  [Route in ManifestRoute as `${Route['method']} ${Route['path']}`]: Route;
+} extends infer Routes
+  ? keyof Routes & string
+  : never;
+
+type PathParams<Path extends string> = Path extends `${string}:${infer Param}/${infer Rest}`
+  ? Param | PathParams<Rest>
+  : Path extends `${string}:${infer Param}`
+    ? Param
+    : never;
+
+export type ApiRouteParams<Route extends ApiRouteKey> = Record<PathParams<Route>, string>;
+
+/**
+ * Builds the manifest's full /api path. Each parameter is encoded once with
+ * encodeURIComponent; callers retain ownership of query strings and origin prefixes.
+ */
+export function apiPath<Route extends ApiRouteKey, Params extends ApiRouteParams<NoInfer<Route>>>(
+  route: Route,
+  ...args: keyof ApiRouteParams<Route> extends never
+    ? []
+    : [params: Params & Record<Exclude<keyof Params, keyof ApiRouteParams<Route>>, never>]
+): string;
+export function apiPath(route: ApiRouteKey, ...args: readonly Record<string, string>[]): string {
+  const entry = API_ROUTES.find((candidate) => `${candidate.method} ${candidate.path}` === route);
+  if (entry === undefined) throw new Error(`Unknown API route: ${route}`);
+  return entry.path.replace(/:([^/]+)/g, (_, name: string) => {
+    const value = args[0]?.[name];
+    if (value === undefined) throw new Error(`Missing API route parameter: ${name}`);
+    return encodeURIComponent(value);
+  });
+}
+
 /**
  * Ignores query strings and trailing slashes, but preserves empty interior segments.
  * Encoded segments remain encoded. At the first differing segment, static wins

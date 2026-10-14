@@ -1,6 +1,8 @@
 // The public surface of @simoncodes-ca/domain: browser-safe rules shared by core, the API, the CLI and the Tracker.
 // Only names with a consumer outside this library are listed; everything else is a module-level detail.
 
+// ICU/Transloco: conversion, classification, placeholder repair and ICU checks
+export { type BracedPlaceholder, describeBracedPlaceholder, findBracedPlaceholders } from './lib/braced-placeholders';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,
@@ -20,10 +22,19 @@ export {
   validateBundleDefinition,
   validateBundleKey,
 } from './lib/bundle-definition';
+export {
+  checkTranslatedValue,
+  describeValueViolation,
+  type TranslatedValueViolation,
+  type ValueCheckOptions,
+} from './lib/check-translated-value';
+export { type CollapsedCaseBody, findCollapsedCaseBodies } from './lib/collapsed-case-bodies';
 // Collection settings: shared inheritance and base-locale default
 export { DEFAULT_BASE_LOCALE, findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
 // Tags
 export { effectiveTags } from './lib/effective-tags';
+// Presence-aware optional entry details
+export { type EntryChange, entryChange } from './lib/entry-change';
 // Utilities
 export { escapeRegExp } from './lib/escape-regexp';
 // Folder paths
@@ -38,11 +49,8 @@ export {
   parentFolderPath,
   rebaseFolderPath,
 } from './lib/folder-path';
-// ICU/Transloco: conversion, classification, placeholder repair and ICU checks
 export { type ArgumentMismatch, compareIcuArguments } from './lib/icu-arguments';
 export {
-  autoFixICUPlaceholders,
-  autoFixTranslocoPlaceholders,
   hasICUPlaceholders,
   hasQuotedInterpolationDelimiter,
   hasTranslocoPlaceholders,
@@ -51,7 +59,7 @@ export {
 } from './lib/icu-auto-fixer';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
 export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
-export { icuToTransloco } from './lib/icu-to-transloco';
+export { hasUnbundlableBranchBody, icuToTransloco } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission
 export { canImportLocale, importableLocales } from './lib/import-rules';
 export {
@@ -72,6 +80,7 @@ export {
   JS_IDENTIFIER_PATTERN,
   validateJavaScriptIdentifier,
 } from './lib/js-identifier';
+export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';
 export {
   assertStringArray,
   type ListEdit,
@@ -86,6 +95,7 @@ export { isUnderNodeModules } from './lib/node-modules';
 export { normalizeTag, normalizeTags } from './lib/normalize-tags';
 // Terminology: protected terms, preferred terminology and similarity
 export { normalizedLevenshtein } from './lib/normalized-levenshtein';
+export { type PlaceholderRepair, repairPlaceholders } from './lib/placeholder-repair';
 export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';
 export {
   applyPreferredTerm,
@@ -98,6 +108,14 @@ export {
   sortPreferredTermRules,
   validatePreferredTermRules,
 } from './lib/preferred-terminology';
+// Project setup defaults: shared by core and CLI flag metadata without Node dependencies.
+export {
+  CONFIG_FILENAME,
+  DEFAULT_BUNDLE_DIST,
+  DEFAULT_BUNDLE_NAME,
+  DEFAULT_CONFIG,
+  DEFAULT_TYPE_DIST_FILE,
+} from './lib/project-defaults';
 export {
   effectiveProtectedTerms,
   findProtectedTerms,
@@ -132,6 +150,8 @@ export {
   recordTranslation,
 } from './lib/staleness';
 export type { TokenCasing } from './lib/token-casing';
+// Locale seeding input
+export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';
 export {
   DEFAULT_MISSING_METADATA_STATUS,
   isNeedsWorkStatus,
@@ -149,7 +169,6 @@ export {
   statusCountsOver,
   worstStatus,
 } from './lib/translation-status-summary';
-export { hasUnbundlableBranchBody } from './lib/transloco-brace-scan';
 export { translocoToICU } from './lib/transloco-to-icu';
 // Validation: import keys, locales, values and key-set conflicts
 export {
@@ -160,27 +179,3 @@ export {
   validateImportKey,
   validateLocale,
 } from './lib/validation-utils';
-
-export {
-  checkTranslatedValue,
-  describeValueViolation,
-  type TranslatedValueViolation,
-  type ValueCheckOptions,
-} from './lib/check-translated-value';
-
-// Locale seeding input
-export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';
-
-export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';
-
-// Project setup defaults: shared by core and CLI flag metadata without Node dependencies.
-export {
-  CONFIG_FILENAME,
-  DEFAULT_CONFIG,
-  DEFAULT_BUNDLE_DIST,
-  DEFAULT_BUNDLE_NAME,
-  DEFAULT_TYPE_DIST_FILE,
-} from './lib/project-defaults';
-
-// Presence-aware optional entry details
-export { entryChange, type EntryChange } from './lib/entry-change';

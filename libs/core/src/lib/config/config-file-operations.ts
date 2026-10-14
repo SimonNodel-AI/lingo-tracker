@@ -7,13 +7,13 @@ import { ErrorMessages } from '../errors/error-messages';
 import { ConfigChangedError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
 import { hasFsErrorCode } from '../file-io/fs-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
-import type { OpenedProject } from './open-collection';
-import { configContentHash, configReadVersion, loadConfig } from './load-config';
 import {
   type CompanionFileWrite,
   type ConfigWriteOutcome,
   runConfigWriteTransaction,
 } from './config-write-transaction';
+import { configContentHash, configReadVersion, loadConfig } from './load-config';
+import type { OpenedProject } from './open-collection';
 
 export interface ConfigFileOperations {
   /** Read the configuration file */

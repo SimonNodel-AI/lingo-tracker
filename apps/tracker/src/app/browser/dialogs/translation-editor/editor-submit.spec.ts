@@ -2,8 +2,8 @@ import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { feedbackText } from '../../feedback';
 import { ApiError, type ApiErrorKind } from '../../../shared/api-error/api-error';
+import { feedbackText } from '../../feedback';
 import { type EditorRefusal, type EditorWrites, refusalDecision, submitEditor, submitGate } from './editor-submit';
 import type { ResourceEntryDraft } from './resource-entry-draft';
 

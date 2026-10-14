@@ -1,10 +1,10 @@
 import { needsTranslation } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
+import type { TranslationOutcome, Translator } from '../machine-translation/translator';
 import { groupByFolder } from './folder-batch';
-import type { ResourceTreeEntry } from './resource-tree-types';
 import { type MutationSinkOptions, resolveMutationSink, upsertMutation } from './resource-mutation';
+import type { ResourceTreeEntry } from './resource-tree-types';
 import { snapshotTranslation, type TranslationSnapshot, writeBackTranslations } from './translation-write-back';
-import type { Translator, TranslationOutcome } from '../machine-translation/translator';
 
 export interface TranslationBatchRow {
   readonly key: string;

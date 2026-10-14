@@ -1,7 +1,7 @@
-import { flagName } from '../runner/flag-record';
 import { DEFAULT_CONFIG, type ExportFormat, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
-import { type ExplicitEmptyList, selectionNames, selectionPrompt, type Selection } from '../utils';
+import { flagName } from '../runner/flag-record';
+import { type ExplicitEmptyList, type Selection, selectionNames, selectionPrompt } from '../utils';
 import {
   EXPORT_OPTION_TABLE,
   type ExportAnswers,

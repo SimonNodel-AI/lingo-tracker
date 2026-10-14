@@ -1,5 +1,5 @@
-import type { ApiErrorCode } from '../errors/api-error-codes';
 import { LingoTrackerError } from '@simoncodes-ca/core';
+import type { ApiErrorCode } from '../errors/api-error-codes';
 
 /** An unknown, evicted, or differently owned job is unavailable to this caller. */
 export class JobNotFoundError extends LingoTrackerError {

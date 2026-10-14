@@ -1,7 +1,7 @@
 import {
+  type CollectionSetResource,
   collectionResourceStatus,
   readCollectionSet,
-  type CollectionSetResource,
 } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
 import type { ProjectTerms } from '../config/project-terms';
@@ -16,8 +16,8 @@ import type {
   ValidationOptions,
 } from './types';
 import { validateIcuValues } from './validate-icu';
-import { validateTranslatedValues } from './validate-translated-values';
 import { validateTerminology } from './validate-terminology';
+import { validateTranslatedValues } from './validate-translated-values';
 
 /**
  * Validates translation resources collection by collection.
@@ -122,11 +122,15 @@ export function validateResources(
 
     // ICU compilation is a separate question from translation status: it asks
     // whether the stored value renders at all, not whether anyone approved it.
-    if (options.icu) {
-      icuResults.push(
-        validateIcuValues(resources, targetLocales, { ...options.icu, baseLocale: collection.baseLocale }),
-      );
-    }
+    // Braced placeholders are checked even when locale-dependent compilation is off.
+    icuResults.push(
+      validateIcuValues(resources, targetLocales, {
+        compileValues: false,
+        requirePortablePlurals: false,
+        ...options.icu,
+        baseLocale: collection.baseLocale,
+      }),
+    );
 
     const terms = termsByCollection.get(collection);
     if (!terms) throw new Error(`Project Terms were not supplied for collection '${collection.name}'`);
@@ -146,7 +150,8 @@ export function validateResources(
     }
   }
 
-  const icu = options.icu ? mergeIcuResults(icuResults) : undefined;
+  const icu =
+    options.icu || icuResults.some((result) => result.failures.length > 0) ? mergeIcuResults(icuResults) : undefined;
   const placeholders = options.placeholders ? mergePlaceholderResults(placeholderResults) : undefined;
 
   const protectedTerms =

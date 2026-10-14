@@ -1,5 +1,5 @@
 import { parse, type Token } from '@messageformat/parser';
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { translocoToICU } from './transloco-to-icu';
 
 describe('translocoToICU', () => {
@@ -337,6 +337,29 @@ describe('translocoToICU sub-message boundaries', () => {
 
   it('converts a placeholder that follows branch text', () => {
     expect(translocoToICU('=1 {Delete {{itemName}}}')).toBe('=1 {Delete {itemName}}');
+  });
+});
+
+describe('translocoToICU glued and non-ASCII selectors', () => {
+  // I1: HEAD bug fixed. These selectors pass the strict grammar, so `{{x}}` is a case body.
+  for (const value of [
+    '{p, plural, offset:2other{{x}}}',
+    '{p, plural, offset:1one {{x}} other {y}}',
+    '{p, plural, offset:2=2{{x}} other {y}}',
+    '{g, select, männlich {{x}} other {y}}',
+    '{g, select, 日本 {{x}} other {y}}',
+  ]) {
+    it(`leaves ${value} unchanged`, () => {
+      expect(translocoToICU(value)).toBe(value);
+    });
+  }
+
+  it('still converts the interpolation behind a malformed multi-digit offset', () => {
+    expect(translocoToICU('{p, plural, offset:12 {{x}} other{y}}')).toBe('{p, plural, offset:12 {x} other{y}}');
+  });
+
+  it('still converts the interpolation behind a dotted select key', () => {
+    expect(translocoToICU('{g, select, a.b {{x}} other {y}}')).toBe('{g, select, a.b {x} other {y}}');
   });
 });
 

@@ -1,10 +1,11 @@
+import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
 import { Command } from 'commander';
-import { flagValues, registerFlags } from '../runner/flag-record';
-import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
+import { flagValues, registerFlags } from '../runner/flag-record';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { editResourceCommand } from './edit-resource';
+import { EDIT_RESOURCE_FLAGS } from './edit-resource-flags';
 
 describe('editResourceCommand (real project)', () => {
   let project: CommandProject;
@@ -16,6 +17,28 @@ describe('editResourceCommand (real project)', () => {
   });
   afterEach(() => project.cleanup());
 
+  it('prints the braced-placeholder diagnostic and preserves the entry', async () => {
+    const before = entries();
+    const result = await project.run(editResourceCommand, { key, baseValue: '{{{a}}}' });
+    expect(result.exitCode).toBe(1);
+    const found = findBracedPlaceholders('{{{a}}}')[0];
+    expect(found).toBeDefined();
+    if (!found) throw new Error('Missing finding');
+    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid:\n  ${describeBracedPlaceholder(found)}\n`);
+    expect(entries()).toEqual(before);
+  });
+  it('prints every braced placeholder finding and preserves the entry', async () => {
+    const before = entries();
+    const value = '{{{a}}} and {{{b}}}';
+    const result = await project.run(editResourceCommand, { key, baseValue: value });
+    const found = findBracedPlaceholders(value);
+    expect(found).toHaveLength(2);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      `❌ Value for locale "en" is not valid:\n${found.map((finding) => `  ${describeBracedPlaceholder(finding)}\n`).join('')}`,
+    );
+    expect(entries()).toEqual(before);
+  });
   it('updates the base value and reports success', async () => {
     const result = await project.run(editResourceCommand, { key, baseValue: 'OK Updated' });
     expect(result.exitCode).toBe(0);

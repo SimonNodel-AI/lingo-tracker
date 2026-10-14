@@ -1,7 +1,7 @@
 import type { BundleGenerateJobDto } from '@simoncodes-ca/data-transfer';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../shared/api-error/api-error';
-import { mapJobToRun, readPersistedRuns, toBundleErrorMessage, type BundleRunState } from './bundle-runs';
+import { type BundleRunState, mapJobToRun, readPersistedRuns, toBundleErrorMessage } from './bundle-runs';
 
 const finishedAt = '2026-09-15T10:00:02.000Z';
 const job: BundleGenerateJobDto = {

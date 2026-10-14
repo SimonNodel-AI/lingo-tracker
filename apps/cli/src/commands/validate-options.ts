@@ -1,5 +1,5 @@
-import type { ValidateCommandOptions } from './validate';
 import { defineFlags, flagName } from '../runner/flag-record';
+import type { ValidateCommandOptions } from './validate';
 
 const portablePluralsFlag = {
   flags: '--require-portable-plurals',
@@ -36,6 +36,7 @@ export const VALIDATE_FLAGS = defineFlags<ValidateCommandOptions>()({
     defaultValue: false,
   },
 });
+
 import { validateHelpText } from '../runner/help-text';
 
 export const VALIDATE_REGISTRATION = {

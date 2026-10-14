@@ -1,6 +1,6 @@
-import { createCli } from '../program';
 import { editCollectionTags, InvalidCollectionError, loadConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCli } from '../program';
 import { editCollectionCommand } from './edit-collection';
 
 vi.mock('@simoncodes-ca/core', async (importOriginal) => {

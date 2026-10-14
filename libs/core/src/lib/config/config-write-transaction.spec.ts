@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { addCollection } from '../../collections-manager/add-collection';
@@ -10,10 +10,10 @@ import { seedResources, testCollection, useTempDir } from '../../testing/temp-di
 import { ConfigChangedError, CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import { guardedConfigWrite } from './config-file-operations';
+import { runConfigWriteTransaction } from './config-write-transaction';
 import { loadConfig } from './load-config';
 import { openCollection } from './open-collection';
 import { updateProjectTerms } from './update-project-terms';
-import { runConfigWriteTransaction } from './config-write-transaction';
 
 describe('Config write transaction with real files', () => {
   const tempDir = useTempDir('config-transaction-');

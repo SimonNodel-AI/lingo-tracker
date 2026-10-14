@@ -1,4 +1,5 @@
 import { computed, type Signal } from '@angular/core';
+import type { AbstractControl } from '@angular/forms';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { TokenTranslator } from '../../../shared/translate-token';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
@@ -124,6 +125,20 @@ export class EditorPresentation {
   readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
 
   /**
+   * The braced-placeholder error's params as markup, `undefined` without the error.
+   * Braces are HTML entities for the same reason as `icuPlaceholderMarkup`. The
+   * name is user text, so it is escaped.
+   */
+  bracedPlaceholderParams(control: AbstractControl): { placeholder: string; example: string } | undefined {
+    const error: { name: string } | null = control.getError('bracedPlaceholder');
+    if (!error) {
+      return undefined;
+    }
+    const placeholder = `&#123;&#123;${escapeHtml(error.name)}&#125;&#125;`;
+    return { placeholder: `<code>${placeholder}</code>`, example: `<code>'&#123;'${placeholder}'&#125;'</code>` };
+  }
+
+  /**
    * Renders a locale as a name the reader recognises ("French (Canada)") with
    * the raw code as the fallback, rather than shouting `FR-CA` at them.
    */
@@ -163,4 +178,8 @@ export class EditorPresentation {
     private readonly data: { readonly baseLocale: string },
     private readonly options: EditorPresentationOptions,
   ) {}
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"'{}]/g, (char) => `&#${char.charCodeAt(0)};`);
 }

@@ -1,14 +1,8 @@
-import {
-  type Collection,
-  describeFolderProblem,
-  normalizeSearchRequest,
-  readCollection,
-  searchResources,
-} from '@simoncodes-ca/core';
-import { FIND_SIMILAR_FLAGS, FIND_SIMILAR_BLANK_VALUE_ERROR, DEFAULT_MAX_RESULTS } from './find-similar-flags';
+import { type Collection, normalizeSearchRequest, readCollection, searchResources } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { DEFAULT_MAX_RESULTS, FIND_SIMILAR_BLANK_VALUE_ERROR, FIND_SIMILAR_FLAGS } from './find-similar-flags';
 
 export interface FindSimilarOptions {
   collection?: string;
@@ -34,9 +28,9 @@ export const findSimilarCommand = defineCommand<FindSimilarOptions>()({
 
 /** Prints the collection's base values that Resource Search's similar-value rule matches, best first. */
 function reportSimilar(collection: Collection, query: string, limit: number): void {
-  const { resources, problems } = readCollection(collection);
-  for (const problem of problems) {
-    ConsoleFormatter.warning(describeFolderProblem(problem));
+  const { resources, warnings } = readCollection(collection);
+  for (const warning of warnings) {
+    ConsoleFormatter.warning(warning);
   }
 
   const matches = searchResources(resources, collection, query, { mode: 'similar-value', limit });

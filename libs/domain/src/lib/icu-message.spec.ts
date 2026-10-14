@@ -1,11 +1,26 @@
 import { parse, type Token } from '@messageformat/parser';
 import { describe, expect, it } from 'vitest';
+import { compareIcuArguments } from './icu-arguments';
+import { extractICUPlaceholders } from './icu-auto-fixer';
+import { classifyICUContent } from './icu-classifier';
 import {
-  convertTranslocoPlaceholders,
-  expandPlaceholderOnlyBranchBodies,
-  hasUnbundlableBranchBody,
-  maskTranslocoPlaceholders,
-} from './transloco-brace-scan';
+  hasQuotedInterpolationDelimiter,
+  type IcuError,
+  type IcuParseOptions,
+  icuQuotedRuns,
+  isSubMessageKeyword,
+  measureIcuWork,
+  parseIcuMessage,
+  SUB_MESSAGE_KEYWORDS,
+  spliceIcu,
+  visitIcuNodes,
+} from './icu-message';
+import { hasUnbundlableBranchBody, icuToTransloco } from './icu-to-transloco';
+import { applyPreferredTerm, extractVisibleTextRanges, findPreferredTermFindings } from './preferred-terminology';
+import { translocoToICU } from './transloco-to-icu';
+
+/** Work units the readers may spend per input character in the parse cost specs. */
+const WORK_PER_CHARACTER = 60;
 
 interface ConversionFixture {
   /** Sentence fragment used to name the generated test cases. */
@@ -261,9 +276,11 @@ const EXPANSION_FIXTURES: readonly ExpansionFixture[] = [
     collapsesToInput: false,
   },
   {
+    // The expander helper wrapped it because its pattern admitted dotted names; a dotted
+    // name is no ICU argument, so the public function leaves the malformed value as stored.
     description: 'a dotted placeholder as the whole branch body',
     input: '{nameExists, select, hasName {{item.name}} other {this item}}',
-    expected: '{nameExists, select, hasName {{{item.name}}} other {this item}}',
+    expected: '{nameExists, select, hasName {{item.name}} other {this item}}',
   },
   {
     description: 'a branch body that opens with a placeholder and continues with text',
@@ -313,7 +330,8 @@ const EXPANSION_FIXTURES: readonly ExpansionFixture[] = [
   {
     description: 'a simple ICU argument',
     input: 'Hello {name}',
-    expected: 'Hello {name}',
+    // public icuToTransloco converts top-level simple ICU arguments.
+    expected: 'Hello {{ name }}',
   },
   {
     description: 'a plural group with no placeholders',
@@ -347,7 +365,8 @@ const EXPANSION_FIXTURES: readonly ExpansionFixture[] = [
   {
     description: 'an unbalanced value the branch-body pattern still matches',
     input: '{c, plural, one {{name}}',
-    expected: '{c, plural, one {{{name}}}',
+    // public icuToTransloco leaves invalid ICU unchanged; the helper-level expansion was unreachable
+    expected: '{c, plural, one {{name}}',
   },
 ];
 
@@ -538,16 +557,16 @@ function argumentNames(tokens: Token[]): string[] {
   return names;
 }
 
-describe('convertTranslocoPlaceholders', () => {
+describe('translocoToICU', () => {
   describe('conversion', () => {
     for (const fixture of FIXTURES) {
       it(`converts ${fixture.description}`, () => {
-        expect(convertTranslocoPlaceholders(fixture.input)).toBe(fixture.expected);
+        expect(translocoToICU(fixture.input)).toBe(fixture.expected);
       });
     }
 
     it('returns an empty string unchanged', () => {
-      expect(convertTranslocoPlaceholders('')).toBe('');
+      expect(translocoToICU('')).toBe('');
     });
   });
 
@@ -561,7 +580,7 @@ describe('convertTranslocoPlaceholders', () => {
 
     for (const fixture of CONSUMER_FIXTURES) {
       it(`converts ${fixture.description} to its expected form`, () => {
-        expect(convertTranslocoPlaceholders(fixture.input)).toBe(fixture.expected);
+        expect(translocoToICU(fixture.input)).toBe(fixture.expected);
       });
     }
   });
@@ -569,9 +588,9 @@ describe('convertTranslocoPlaceholders', () => {
   describe('idempotency', () => {
     for (const fixture of FIXTURES) {
       it(`converting ${fixture.description} twice matches converting it once`, () => {
-        const once = convertTranslocoPlaceholders(fixture.input);
+        const once = translocoToICU(fixture.input);
 
-        expect(convertTranslocoPlaceholders(once)).toBe(once);
+        expect(translocoToICU(once)).toBe(once);
       });
     }
   });
@@ -589,7 +608,7 @@ describe('convertTranslocoPlaceholders', () => {
 
     for (const fixture of PURE_ICU_FIXTURES) {
       it(`leaves the ICU structure of ${fixture.description} unchanged`, () => {
-        const converted = convertTranslocoPlaceholders(fixture.input);
+        const converted = translocoToICU(fixture.input);
 
         expect(stripContext(parse(converted))).toEqual(stripContext(parse(fixture.input)));
       });
@@ -597,41 +616,13 @@ describe('convertTranslocoPlaceholders', () => {
 
     for (const fixture of FIXTURES.filter((candidate) => candidate.survivingArguments !== undefined)) {
       it(`keeps the placeholders of ${fixture.description} as ICU arguments`, () => {
-        const tokens = parseICU(convertTranslocoPlaceholders(fixture.input));
+        const tokens = parseICU(translocoToICU(fixture.input));
 
         expect(tokens).not.toBeNull();
         expect(tokens === null ? [] : argumentNames(tokens)).toEqual(fixture.survivingArguments);
       });
     }
   });
-});
-
-describe('maskTranslocoPlaceholders', () => {
-  it('blanks the placeholder braces without changing length', () => {
-    expect(maskTranslocoPlaceholders('Hello {{ name }}!')).toBe('Hello {  name  }!');
-    expect(maskTranslocoPlaceholders('{{name}}')).toBe('{ name }');
-  });
-
-  it('returns a value without placeholders unchanged', () => {
-    expect(maskTranslocoPlaceholders('')).toBe('');
-    expect(maskTranslocoPlaceholders('{count, plural, one {# item} other {# items}}')).toBe(
-      '{count, plural, one {# item} other {# items}}',
-    );
-  });
-
-  for (const fixture of [...FIXTURES, ...CONSUMER_FIXTURES]) {
-    it(`keeps length and parses like the converted value: ${fixture.description}`, () => {
-      const masked = maskTranslocoPlaceholders(fixture.input);
-      expect(masked).toHaveLength(fixture.input.length);
-
-      const converted = parseICU(convertTranslocoPlaceholders(fixture.input));
-      const maskedTokens = parseICU(masked);
-      expect(maskedTokens === null).toBe(converted === null);
-      if (converted !== null && maskedTokens !== null) {
-        expect(stripContext(maskedTokens)).toEqual(stripContext(converted));
-      }
-    });
-  }
 });
 
 describe('hasUnbundlableBranchBody', () => {
@@ -656,50 +647,50 @@ describe('hasUnbundlableBranchBody', () => {
   });
 
   it('flags none of the consumer values once converted', () => {
-    const flagged = CONSUMER_FIXTURES.filter((fixture) =>
-      hasUnbundlableBranchBody(convertTranslocoPlaceholders(fixture.input)),
-    ).map((fixture) => fixture.description);
+    const flagged = CONSUMER_FIXTURES.filter((fixture) => hasUnbundlableBranchBody(translocoToICU(fixture.input))).map(
+      (fixture) => fixture.description,
+    );
 
     expect(flagged).toEqual([]);
   });
 
   for (const fixture of DETECTOR_FIXTURES) {
     it(`is stable under repeated conversion of ${fixture.description}`, () => {
-      const converted = convertTranslocoPlaceholders(convertTranslocoPlaceholders(fixture.value));
+      const converted = translocoToICU(translocoToICU(fixture.value));
 
       expect(hasUnbundlableBranchBody(converted)).toBe(fixture.flagged);
     });
   }
 });
 
-describe('expandPlaceholderOnlyBranchBodies', () => {
+describe('icuToTransloco', () => {
   const EXPANDED_FIXTURES = EXPANSION_FIXTURES.filter((fixture) => fixture.expected !== fixture.input);
   const UNCHANGED_FIXTURES = EXPANSION_FIXTURES.filter((fixture) => fixture.expected === fixture.input);
 
   describe('expansion', () => {
     for (const fixture of EXPANSION_FIXTURES) {
       it(`emits ${fixture.description} in its bundled form`, () => {
-        expect(expandPlaceholderOnlyBranchBodies(fixture.input)).toBe(fixture.expected);
+        expect(icuToTransloco(fixture.input)).toBe(fixture.expected);
       });
     }
 
     it('returns an empty string unchanged', () => {
-      expect(expandPlaceholderOnlyBranchBodies('')).toBe('');
+      expect(icuToTransloco('')).toBe('');
     });
 
     it('leaves a quoted brace literal unchanged at the expander boundary', () => {
       // Only the expander leaves the quotes standing. Through `icuToTransloco` they are
       // stripped before the expander runs, so that path emits `{name}` for the same input.
-      expect(expandPlaceholderOnlyBranchBodies("'{'name'}'")).toBe("'{'name'}'");
+      expect(icuToTransloco("'{'name'}'")).toBe("'{'name'}'");
     });
   });
 
   describe('idempotency', () => {
     for (const fixture of EXPANSION_FIXTURES) {
       it(`expanding ${fixture.description} twice matches expanding it once`, () => {
-        const once = expandPlaceholderOnlyBranchBodies(fixture.input);
+        const once = icuToTransloco(fixture.input);
 
-        expect(expandPlaceholderOnlyBranchBodies(once)).toBe(once);
+        expect(icuToTransloco(once)).toBe(once);
       });
     }
   });
@@ -715,21 +706,24 @@ describe('expandPlaceholderOnlyBranchBodies', () => {
       expect(covered).toContain('a placeholder-only branch body behind an offset clause');
     });
 
-    for (const fixture of EXPANDED_FIXTURES.filter((candidate) => candidate.collapsesToInput !== false)) {
+    for (const fixture of EXPANSION_FIXTURES.filter(
+      (candidate) =>
+        candidate.collapsesToInput !== false && candidate.description !== 'a double brace at the top level',
+    )) {
       it(`collapses ${fixture.description} back to its stored form`, () => {
-        expect(convertTranslocoPlaceholders(fixture.expected)).toBe(fixture.input);
+        expect(translocoToICU(fixture.expected)).toBe(fixture.input);
       });
     }
 
     it('collapses a padded branch body back to the stored form with the padding trimmed', () => {
-      expect(convertTranslocoPlaceholders('{nameExists, select, hasName {{{ name }}} other {this item}}')).toBe(
+      expect(translocoToICU('{nameExists, select, hasName {{{ name }}} other {this item}}')).toBe(
         '{nameExists, select, hasName {{name}} other {this item}}',
       );
     });
 
     for (const fixture of PURE_ICU_EXPANDED) {
       it(`keeps the arguments of ${fixture.description} across the round trip`, () => {
-        const tokens = parseICU(convertTranslocoPlaceholders(fixture.expected));
+        const tokens = parseICU(translocoToICU(fixture.expected));
 
         expect(tokens).not.toBeNull();
         expect(tokens === null ? [] : argumentNames(tokens)).toEqual(argumentNames(parse(fixture.input)));
@@ -738,7 +732,7 @@ describe('expandPlaceholderOnlyBranchBodies', () => {
 
     for (const fixture of UNCHANGED_FIXTURES.filter((candidate) => isPureICU(candidate.input))) {
       it(`leaves the ICU structure of ${fixture.description} unchanged`, () => {
-        const expanded = expandPlaceholderOnlyBranchBodies(fixture.input);
+        const expanded = icuToTransloco(fixture.input);
 
         expect(stripContext(parse(expanded))).toEqual(stripContext(parse(fixture.input)));
       });
@@ -750,11 +744,382 @@ describe('context-aware apostrophes', () => {
   it('converts interpolation after # or | only when it is outside an ICU quote', () => {
     for (const marker of ['#', '|']) {
       const body = `'${marker}' {{ x }}`;
-      expect(convertTranslocoPlaceholders(body)).toBe(`'${marker}' {x}`);
-      expect(convertTranslocoPlaceholders(`{s, select, other {${body}}}`)).toBe(`{s, select, other {'${marker}' {x}}}`);
-      expect(convertTranslocoPlaceholders(`{n, plural, other {${body}}}`)).toBe(`{n, plural, other {'${marker}' {x}}}`);
+      expect(translocoToICU(body)).toBe(`'${marker}' {x}`);
+      expect(translocoToICU(`{s, select, other {${body}}}`)).toBe(`{s, select, other {'${marker}' {x}}}`);
+      expect(translocoToICU(`{n, plural, other {${body}}}`)).toBe(`{n, plural, other {'${marker}' {x}}}`);
     }
-    expect(convertTranslocoPlaceholders("'|'{{ x }}'")).toBe("'|'{{ x }}'");
-    expect(convertTranslocoPlaceholders("'#'{{ x }}'")).toBe("'#'{x}'");
+    expect(translocoToICU("'|'{{ x }}'")).toBe("'|'{{ x }}'");
+    expect(translocoToICU("'#'{{ x }}'")).toBe("'#'{x}'");
   });
+});
+
+describe('parseIcuMessage', () => {
+  it('distinguishes case wrappers from interpolations', () => {
+    const message = parseIcuMessage('{n, plural, =1 {{{x}}} other {{name}}}', {
+      interpolation: true,
+    });
+    expect(message.ok).toBe(true);
+    const argumentsFound: string[] = [];
+    visitIcuNodes(message.nodes, (node) => {
+      if (node.kind === 'argument') argumentsFound.push(node.syntax);
+    });
+    expect(argumentsFound).toEqual(['transloco', 'icu']);
+  });
+  it('rejects interpolation in stored ICU', () => {
+    expect(parseIcuMessage('{{name}}').ok).toBe(false);
+  });
+  it('keeps interpolations after malformed opening braces', () => {
+    const message = parseIcuMessage('{ broken {{name}}', {
+      interpolation: true,
+    });
+    expect(message.ok).toBe(false);
+    const interpolations: string[] = [];
+    visitIcuNodes(message.nodes, (node) => {
+      if (node.kind === 'argument' && node.syntax === 'transloco') interpolations.push(node.name);
+    });
+    expect(interpolations).toEqual(['name']);
+  });
+  it('retains maximal raw literal runs', () => {
+    const source = "don't '' '{x}' #";
+    expect(parseIcuMessage(source).nodes).toEqual([
+      {
+        kind: 'literal',
+        range: { start: 0, end: source.length },
+        inPlural: false,
+      },
+    ]);
+  });
+  it('inherits plural context through a select', () => {
+    const message = parseIcuMessage('{n, plural, other {{s, select, other {#}}}}');
+    const pounds: boolean[] = [];
+    visitIcuNodes(message.nodes, (node, inPlural) => {
+      if (node.kind === 'pound') pounds.push(inPlural);
+    });
+    expect(pounds).toEqual([true]);
+  });
+  it('records exact name and style ranges', () => {
+    const source = '{ price , number, currency}';
+    const node = parseIcuMessage(source).nodes[0];
+    expect(node?.kind).toBe('argument');
+    if (node?.kind === 'argument') {
+      expect(source.slice(node.nameRange.start, node.nameRange.end)).toBe('price');
+      expect(source.slice(node.style?.range.start, node.style?.range.end)).toBe(' currency');
+    }
+  });
+  it('splices non-overlapping edits from right to left', () => {
+    expect(
+      spliceIcu('abcdef', [
+        { range: { start: 1, end: 3 }, text: 'X' },
+        { range: { start: 4, end: 6 }, text: 'YZ' },
+      ]),
+    ).toBe('aXdYZ');
+  });
+  it('reports closed ICU quote ranges', () => {
+    expect(icuQuotedRuns("'' '{x}' don't")).toEqual([{ start: 3, end: 8 }]);
+  });
+});
+
+describe('SUB_MESSAGE_KEYWORDS', () => {
+  it('holds every keyword that opens a sub-message', () => {
+    expect(SUB_MESSAGE_KEYWORDS).toEqual(['plural', 'select', 'selectordinal']);
+  });
+});
+
+describe('isSubMessageKeyword', () => {
+  for (const keyword of SUB_MESSAGE_KEYWORDS) {
+    it(`accepts ${keyword}`, () => {
+      expect(isSubMessageKeyword(keyword)).toBe(true);
+    });
+  }
+
+  for (const keyword of ['number', 'date', 'time', 'simple', '', 'Plural', 'selectordinals']) {
+    it(`rejects ${keyword || 'an empty string'}`, () => {
+      expect(isSubMessageKeyword(keyword)).toBe(false);
+    });
+  }
+});
+
+it('recovers a malformed brace frame as one error node holding its content', () => {
+  const message = parseIcuMessage('{some text} }');
+  expect(message.nodes).toEqual([
+    {
+      kind: 'error',
+      range: { start: 0, end: 11 },
+      message: "Unquoted '{' does not start an argument at position 0",
+      cause: 'frame',
+      frame: {
+        closed: true,
+        innerBrace: false,
+        blank: false,
+        ownComma: false,
+        quoted: false,
+        wrapsInterpolation: false,
+      },
+      nodes: [{ kind: 'literal', range: { start: 1, end: 10 }, inPlural: false }],
+    },
+    { kind: 'literal', range: { start: 11, end: 12 }, inPlural: false },
+    {
+      kind: 'error',
+      range: { start: 12, end: 13 },
+      message: 'Unmatched closing brace at position 12',
+      cause: 'stray-close',
+      nodes: [],
+    },
+  ]);
+});
+it('reads a stray brace as text in lenient mode', () => {
+  const message = parseIcuMessage('a } {} b', { lenient: true });
+  expect(message.ok).toBe(true);
+  expect(message.nodes).toEqual([{ kind: 'literal', range: { start: 0, end: 8 }, inPlural: false }]);
+});
+it('represents implicit EOF closures without losing parsed nodes', () => {
+  const message = parseIcuMessage('{n, plural, other {hello {{x}}', { interpolation: true });
+  expect(message.ok).toBe(false);
+  expect(message.nodes.some((node) => node.kind === 'error' && node.range.start === message.source.length)).toBe(true);
+  const names: string[] = [];
+  visitIcuNodes(message.nodes, (node) => {
+    if (node.kind === 'argument') names.push(node.name);
+  });
+  expect(names).toEqual(['x']);
+});
+it('returns an error instead of throwing beyond the engine call stack', () => {
+  const source = `${'{n, plural, other {'.repeat(10000)}x${'}}'.repeat(10000)}`;
+  expect(() => parseIcuMessage(source)).not.toThrow();
+  expect(parseIcuMessage(source).source).toBe(source);
+});
+
+describe('error causes and frame facts', () => {
+  const FRAME = {
+    closed: true,
+    innerBrace: false,
+    blank: false,
+    ownComma: false,
+    quoted: false,
+    wrapsInterpolation: false,
+  };
+  /** The first error node of `source`, depth first. */
+  const firstError = (source: string, options: IcuParseOptions = {}): IcuError | undefined => {
+    let found: IcuError | undefined;
+    visitIcuNodes(parseIcuMessage(source, options).nodes, (node) => {
+      if (!found && node.kind === 'error') found = node;
+      return !found;
+    });
+    return found;
+  };
+
+  for (const [source, options, frame] of [
+    ['{a b}', {}, FRAME],
+    ['{a, foo}', {}, { ...FRAME, ownComma: true }],
+    ['{ }', {}, { ...FRAME, blank: true }],
+    ['{}', {}, { ...FRAME, blank: true }],
+    ["{a '{' x}", {}, { ...FRAME, innerBrace: true, quoted: true }],
+    ['{{{a}}}', { interpolation: true }, { ...FRAME, innerBrace: true, wrapsInterpolation: true }],
+    ['{ {{a}} }', { interpolation: true }, { ...FRAME, innerBrace: true }],
+    ['{n, plural, other {{', {}, { ...FRAME, closed: false, blank: true }],
+  ] as const) {
+    it(`reads ${JSON.stringify(source)} as a frame with its facts`, () => {
+      const error = firstError(source, options);
+      expect(error?.cause).toBe('frame');
+      expect(error?.frame).toEqual(frame);
+    });
+  }
+
+  it('marks a strict closing brace with no open construct as stray-close', () => {
+    const error = firstError('x}y');
+    expect(error?.cause).toBe('stray-close');
+    expect(error?.frame).toBeUndefined();
+  });
+
+  it("marks a '#…{…' quoted run outside plural content as quote-escape", () => {
+    expect(firstError("'#{'")?.cause).toBe('quote-escape');
+  });
+
+  it('marks the end of an unclosed value as unclosed', () => {
+    const nodes = parseIcuMessage('{a').nodes;
+    const last = nodes[nodes.length - 1];
+    expect(last?.kind === 'error' ? last.cause : undefined).toBe('unclosed');
+  });
+
+  it('marks lenient group recovery tokens as stray-text', () => {
+    expect(firstError('{n, plural, other {x} {', { lenient: true })?.cause).toBe('stray-text');
+  });
+
+  it('marks nesting beyond the call stack as capacity', () => {
+    const error = firstError(`${'{n, plural, other {'.repeat(10000)}x${'}}'.repeat(10000)}`);
+    expect(error?.cause).toBe('capacity');
+    expect(error?.frame).toBeUndefined();
+  });
+
+  it('records brace facts on arguments and groups', () => {
+    const [argument, , group] = parseIcuMessage('{a} {n, plural, other {x}}').nodes;
+    expect(argument).toMatchObject({ kind: 'argument', closed: true, innerBrace: false });
+    expect(group).toMatchObject({ kind: 'group', closed: true, innerBrace: true });
+    expect(parseIcuMessage('{{a}}', { interpolation: true }).nodes[0]).toMatchObject({
+      closed: true,
+      innerBrace: true,
+    });
+    expect(parseIcuMessage('{n, plural, other {x}').nodes[0]).toMatchObject({ kind: 'group', closed: false });
+  });
+});
+
+describe('round-1 ruling pins', () => {
+  it('resumes interpolation conversion after an empty select selector', () => {
+    expect(translocoToICU('{gender, select, male {He} female {She} {{name}}}')).toBe(
+      '{gender, select, male {He} female {She} {name}}',
+    );
+  });
+  it('resumes interpolation conversion after a repeated strict offset', () => {
+    expect(translocoToICU('{count, plural, offset:1 offset:2 other {{pa}}}')).toBe(
+      '{count, plural, offset:1 offset:2 other {pa}}',
+    );
+  });
+  it('resumes interpolation conversion after an invalid plural selector', () => {
+    expect(translocoToICU('{count, plural, zero x other {{pa}}}')).toBe('{count, plural, zero x other {pa}}');
+  });
+  it('resumes interpolation conversion after an empty selector following a case', () => {
+    expect(translocoToICU('{s, select, other {}{{ a }}')).toBe('{s, select, other {}{a}');
+  });
+  it('visits interpolations inside argument styles', () => {
+    expect(translocoToICU('{n, number, {{x}}}')).toBe('{n, number, {x}}');
+  });
+  it('preserves a non-ASCII group name and its ICU-only branch argument', () => {
+    expect(translocoToICU('{né, plural, other {{x}}}')).toBe('{né, plural, other {{x}}}');
+  });
+  it('expands a non-ASCII simple branch argument', () => {
+    expect(icuToTransloco('{n, plural, other {{né}}}')).toBe('{n, plural, other {{{né}}}}');
+  });
+  it('does not report a quoted brace alone in a case body', () => {
+    expect(hasUnbundlableBranchBody("{s, select, other {'#{'}}")).toBe(false);
+  });
+  it('reports a dotted name alone in a case body, which no bundled form carries', () => {
+    expect(hasUnbundlableBranchBody('{n, plural, other {{a.b}}}')).toBe(true);
+  });
+  it('reports a truncated single-brace case body as unbundlable', () => {
+    expect(hasUnbundlableBranchBody('{n, plural, other {{')).toBe(true);
+  });
+  it('reports the outermost unclosed construct before EOF-caused inner checks', () => {
+    expect(extractICUPlaceholders('{c, plural, one {{name}}').error).toBe(
+      'Unclosed placeholder starting at position 0',
+    );
+  });
+});
+
+describe('visible-text fixture oracles replacing mask assertions', () => {
+  const fixtures = [...FIXTURES, ...EXPANSION_FIXTURES];
+  for (const fixture of fixtures) {
+    it(`preserves visible text across conversion: ${fixture.description}`, () => {
+      const visible = (value: string): string =>
+        extractVisibleTextRanges(value)
+          .map((range) => value.slice(range.start, range.end))
+          .join('');
+      expect(visible(fixture.input)).toBe(visible(fixture.expected));
+    });
+  }
+  // Markup is subtracted from the visible ranges on top of the ICU literals, so markup rows
+  // are left to the preferred-terminology spec.
+  for (const fixture of fixtures.filter((fixture) => isPureICU(fixture.expected) && !fixture.expected.includes('<'))) {
+    it(`matches library literal ranges: ${fixture.description}`, () => {
+      const ranges: { start: number; end: number }[] = [];
+      const walk = (tokens: readonly Token[]): void => {
+        for (const token of tokens) {
+          if (token.type === 'content' && token.ctx)
+            ranges.push({ start: token.ctx.offset, end: token.ctx.offset + token.ctx.text.length });
+          else if (token.type === 'plural' || token.type === 'select' || token.type === 'selectordinal')
+            for (const branch of token.cases) walk(branch.tokens);
+        }
+      };
+      walk(parse(fixture.expected));
+      expect(extractVisibleTextRanges(fixture.expected)).toEqual(ranges);
+    });
+  }
+});
+
+// Super-linear inputs found in review: recovery inside groups, names next to characters that
+// are both whitespace and name characters, quoted runs after many malformed frames.
+const ADVERSARIAL: Record<string, (n: number) => string> = {
+  'an identifier inside a group': (n) => `{n,plural,${'a'.repeat(n)}}`,
+  'words inside a group': (n) => `{n,plural,${'a '.repeat(n / 2)}}`,
+  'an exact selector without a body': (n) => `{n,plural,=${'1'.repeat(n)}}`,
+  'apostrophes inside a group': (n) => `{n,plural,${"'".repeat(n)}}`,
+  'commas inside a group': (n) => `{n,plural,${','.repeat(n)}}`,
+  'empty braces inside a group': (n) => `{n,select,${'{}'.repeat(n / 2)}}`,
+  'quoted braces inside a group': (n) => `{n,plural,${"'{".repeat(n / 2)}}`,
+  'no-break spaces in an argument head': (n) => `{${' '.repeat(n)}{`,
+  'no-break spaces in an argument type': (n) => `{a,${' '.repeat(n)}x{`,
+  'no-break spaces before a selector': (n) => `{n,select,${' '.repeat(n)}x}`,
+  'apostrophe pairs after a quote opener': (n) => `'{${"''".repeat(n / 2)}`,
+  'stray closing braces': (n) => '}'.repeat(n),
+  'malformed frames before quoted runs': (n) => '{a b}'.repeat(n / 10) + "'{x}' ".repeat(n / 10),
+  'quoted interpolations': (n) => "'{{a}}'".repeat(n / 7),
+  'many interpolations': (n) => '{{a}}'.repeat(n / 5),
+  'many case bodies': (n) => `{n,plural,${'one {{x}} '.repeat(n / 10)}other {y}}`,
+  'tags between letters': (n) => 'a<b></b>'.repeat(n / 8),
+  'terms between arguments': (n) => 'a{x}'.repeat(n / 4),
+  'plural text for a # term': (n) => `{n, plural, other {${'a '.repeat(n / 2)}}}`,
+  'no-break spaces before a malformed case body': (n) => `{n,select,${'\u00a0'.repeat(n)}.{{x}} other{y}}`,
+  'unclosed comment openers': (n) => '<!--'.repeat(n / 4),
+  'nested argument styles': (n) => `${'{x,number,'.repeat(n / 11)}a${'}'.repeat(n / 11)}`,
+};
+
+/** The readers, in two groups; each group is bounded by the work constant on its own. */
+const READER_GROUPS: Record<string, (value: string) => void> = {
+  'the parser, converters and checks': (value) => {
+    for (const options of [{}, { interpolation: true }, { lenient: true }, { interpolation: true, lenient: true }]) {
+      parseIcuMessage(value, options);
+    }
+    translocoToICU(value);
+    icuToTransloco(value);
+    hasUnbundlableBranchBody(value);
+    hasQuotedInterpolationDelimiter(value);
+    extractICUPlaceholders(value);
+    compareIcuArguments(value, value);
+    classifyICUContent(value);
+  },
+  'the preferred-terminology readers': (value) => {
+    extractVisibleTextRanges(value);
+    findPreferredTermFindings(value, [{ discouraged: 'a', preferred: 'b' }]);
+    applyPreferredTerm(value, { discouraged: 'a', preferred: 'b' });
+    applyPreferredTerm(value, { discouraged: 'a', preferred: 'C#' });
+  },
+};
+
+function runEveryReader(value: string): void {
+  for (const readers of Object.values(READER_GROUPS)) readers(value);
+}
+
+describe('parse cost', () => {
+  // Every scan records its work through countIcuWork, so a super-linear path fails here
+  // deterministically, whatever the machine's load.
+  for (const [description, make] of Object.entries(ADVERSARIAL)) {
+    for (const [group, readers] of Object.entries(READER_GROUPS)) {
+      it(`stays within a linear work bound for ${description} in ${group}`, () => {
+        for (const length of [8000, 32000]) {
+          const value = make(length);
+          expect(measureIcuWork(() => readers(value))).toBeLessThanOrEqual(WORK_PER_CHARACTER * value.length);
+        }
+      });
+    }
+  }
+});
+
+// Opt-in wall-clock benchmark, for regexes the work counter cannot see: ICU_BENCH=1.
+describe.skipIf(!process.env['ICU_BENCH'])('parse cost benchmark', () => {
+  const time = (value: string): number => {
+    runEveryReader(value);
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      runEveryReader(value);
+      best = Math.min(best, performance.now() - start);
+    }
+    return best;
+  };
+  for (const [description, make] of Object.entries(ADVERSARIAL)) {
+    it(`grows linearly in time with ${description}`, () => {
+      const small = time(make(8000));
+      const large = time(make(32000));
+      expect(large).toBeLessThan(1000);
+      expect(large / Math.max(small, 2)).toBeLessThan(8);
+    });
+  }
 });

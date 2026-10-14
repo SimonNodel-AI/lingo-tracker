@@ -7,6 +7,7 @@ describe('core public surface', () => {
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(core).sort()).toEqual([
       'AutoTranslationDisabledError',
+      'BracedPlaceholderError',
       'BundleNotFoundError',
       'CONFIG_FILENAME',
       'CollectionNotFoundError',
@@ -45,7 +46,6 @@ describe('core public surface', () => {
       'deleteCollection',
       'deleteFolder',
       'deleteResource',
-      'describeFolderProblem',
       'detectImportFormat',
       'displayTermPath',
       'editCollectionTags',

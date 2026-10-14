@@ -11,7 +11,7 @@ import {
   BundleNotFoundError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
-} from '../errors';
+} from '../errors/internal';
 import {
   type BundleSelection,
   type ResolvedBundleCollections,
@@ -19,9 +19,9 @@ import {
   selectBundleEntries,
   selectionValues,
 } from './bundle-selection';
+import { buildBundleHierarchy } from './hierarchy-builder';
 import { type BundleSettings, type BundleSettingsOverrides, resolveBundleSettings } from './resolve-bundle-settings';
 import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
-import { buildBundleHierarchy } from './hierarchy-builder';
 import { legacyTypeDistWarning } from './type-generation/generate-types';
 
 interface BundleRunOptions extends BundleSettingsOverrides {

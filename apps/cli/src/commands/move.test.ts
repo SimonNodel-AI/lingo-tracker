@@ -1,8 +1,8 @@
 import {
   CollectionNotFoundError,
+  executeMove,
   type LingoTrackerConfig,
   loadConfig,
-  executeMove,
   ReadOnlyCollectionError,
 } from '@simoncodes-ca/core';
 import prompts from 'prompts';

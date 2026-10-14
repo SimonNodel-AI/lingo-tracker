@@ -1,9 +1,9 @@
-import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
-import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
 import { displayTermPath, type OpenedProject, planProjectTermsUpdate } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
+import { PREFERRED_TERMINOLOGY_FLAGS } from './preferred-terminology-flags';
+import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
 
 export interface PreferredTerminologyOptions {
   list?: boolean;

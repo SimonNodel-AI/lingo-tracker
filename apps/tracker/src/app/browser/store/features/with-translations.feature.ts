@@ -1,8 +1,8 @@
-import type { SortField, SortDirection } from '../../translations/utils/sort-translations';
 import { computed, type Signal } from '@angular/core';
 import { signalStoreFeature, type, withComputed } from '@ngrx/signals';
 import type { ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
+import type { SortDirection, SortField } from '../../translations/utils/sort-translations';
 import { resourceStatusScope, translationListRows } from '../../translations/utils/translation-list-view';
 
 /** The list as the user sees it: the List Scope's rows, filtered by status, sorted, and counted. */

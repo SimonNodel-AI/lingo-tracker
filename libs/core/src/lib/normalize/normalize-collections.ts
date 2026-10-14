@@ -1,7 +1,8 @@
 import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors';
+import { describeFolderProblem } from '../resource/collection-folders';
 import type { RunOutcome } from '../run-outcome';
-import { normalize, type NormalizeOptions, type NormalizeResult } from './normalize';
+import { type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
 
 const NUMERIC_FIELDS = [
   'entriesProcessed',
@@ -13,7 +14,10 @@ const NUMERIC_FIELDS = [
   'foldersRemoved',
 ] as const;
 
-export type CollectionNormalizeResult = Pick<NormalizeResult, (typeof NUMERIC_FIELDS)[number] | 'problems'> & {
+export type CollectionNormalizeResult = Pick<
+  NormalizeResult,
+  (typeof NUMERIC_FIELDS)[number] | 'problems' | 'findings'
+> & {
   collectionName: string;
 };
 
@@ -33,6 +37,7 @@ export interface NormalizeCollectionsResult {
   readonly outcome: RunOutcome;
   readonly collections: CollectionNormalizeResult[];
   readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
+  readonly warnings: readonly string[];
   readonly errors: readonly { name: string; error: unknown }[];
 }
 
@@ -49,6 +54,7 @@ export function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
       collectionsProcessed: 0,
     },
     errors: [],
+    warnings: [],
   };
 }
 
@@ -63,10 +69,12 @@ export async function normalizeCollections(
   }
 
   const results: CollectionNormalizeResult[] = [];
+  const warnings: string[] = [];
   const errors: { name: string; error: unknown }[] = [];
   for (const collection of collections) {
     const { name } = collection;
     if (collection.readOnly) {
+      warnings.push(`Skipping read-only collection: ${name}`);
       options.onEvent?.({ kind: 'skip', name });
       continue;
     }
@@ -81,6 +89,7 @@ export async function normalizeCollections(
       options.onEvent?.({ kind: 'error', name, error });
       continue;
     }
+    warnings.push(...item.problems.map((problem) => describeFolderProblem(problem, { collectionName: name })));
     results.push(item);
     options.onEvent?.({ kind: 'result', result: item });
   }
@@ -89,5 +98,11 @@ export async function normalizeCollections(
   for (const result of results) {
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }
-  return { outcome: errors.length > 0 ? 'failed' : 'succeeded', collections: results, totals, errors };
+  return {
+    outcome: errors.length > 0 ? 'failed' : 'succeeded',
+    collections: results,
+    totals,
+    errors,
+    warnings,
+  };
 }

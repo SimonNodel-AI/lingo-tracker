@@ -1,5 +1,5 @@
+import { collectionFlag, defineFlags } from '../runner/flag-record';
 import type { GlossaryCommandOptions } from './glossary';
-import { defineFlags, collectionFlag } from '../runner/flag-record';
 
 export const GLOSSARY_FLAGS = defineFlags<GlossaryCommandOptions>()({
   text: { flags: '--text <text>', description: 'Inline text block to extract terms from' },

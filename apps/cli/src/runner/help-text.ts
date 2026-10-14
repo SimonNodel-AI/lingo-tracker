@@ -1,7 +1,7 @@
-import { flagName } from './flag-record';
 import { IMPORT_OPTION_TABLE } from '../commands/import-option-table';
-import { VALIDATE_FLAGS } from '../commands/validate-options';
 import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
+import { VALIDATE_FLAGS } from '../commands/validate-options';
+import { flagName } from './flag-record';
 
 export const importHelpText = () => `
 Examples:

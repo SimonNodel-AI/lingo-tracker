@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
 import * as ts from 'typescript';
+import { describe, expect, it } from 'vitest';
 import * as core from '../../index';
 import * as errors from './index';
+import * as internalErrors from './internal';
 import { LingoTrackerError } from './lingo-tracker-error';
 
 // Discover modules independently of the barrel, including future error files.
@@ -14,7 +15,7 @@ const sources = import.meta.glob<string>(['../../**/*.ts', '!../../**/*.spec.ts'
   eager: true,
 });
 const errorNames = new Set(
-  Object.entries(errors)
+  Object.entries(internalErrors)
     .filter(
       ([, value]) =>
         typeof value === 'function' && (value === LingoTrackerError || value.prototype instanceof LingoTrackerError),
@@ -57,7 +58,52 @@ function findErrorClasses(source: string): string[] {
 }
 
 describe('core error exports', () => {
-  it('re-exports every error subclass from the errors barrel', () => {
+  it('keeps public exports in internal and accounts for every internal-only error subclass', () => {
+    // These errors serve core operations; callers outside core use their operation results.
+    // Adding an internal-only subclass requires a deliberate entry here or a public export.
+    const internalOnly = [
+      'BaseLocaleImmutableError',
+      'BundleAlreadyExistsError',
+      'BundleHierarchicalConflictError',
+      'CannotTranslateBaseLocaleError',
+      'CollectionAlreadyExistsError',
+      'CollectionBaseLocaleMismatchError',
+      'CollectionRenameBundleConflictError',
+      'CollectionRequiredByBundleError',
+      'ConfigChangedError',
+      'CoreOperationError',
+      'FolderMoveIntoDescendantError',
+      'FolderNotFoundError',
+      'GlossaryNoCollectionsError',
+      'InvalidBundleDefinitionError',
+      'InvalidBundleLocalesError',
+      'InvalidCollectionFolderError',
+      'InvalidFolderPathError',
+      'InvalidImportLocaleError',
+      'InvalidLocaleError',
+      'InvalidNameError',
+      'InvalidResourceKeyError',
+      'InvalidTranslationStatusError',
+      'LocaleAlreadyExistsError',
+      'LocaleNotFoundError',
+      'NoTranslationTargetLocalesError',
+      'ParentDirectoryMissingError',
+      'ResourceNotFoundError',
+      'TranslationLocaleNotConfiguredError',
+    ];
+    for (const [name, value] of Object.entries(errors)) {
+      expect(internalErrors).toHaveProperty(name, value);
+    }
+    const internalSubclasses = Object.entries(internalErrors).filter(
+      ([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError,
+    );
+    const publicNames = new Set(Object.keys(errors));
+    expect(
+      internalSubclasses
+        .filter(([name]) => !publicNames.has(name))
+        .map(([name]) => name)
+        .sort(),
+    ).toEqual(internalOnly);
     const subclasses = Object.values(modules).flatMap((module) =>
       Object.entries(module).filter(
         ([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError,
@@ -65,7 +111,8 @@ describe('core error exports', () => {
     );
     expect(subclasses.length).toBeGreaterThan(0);
     for (const [name, value] of subclasses) {
-      expect(errors).toHaveProperty(name, value);
+      expect(publicNames.has(name) || internalOnly.includes(name)).toBe(true);
+      expect(internalErrors).toHaveProperty(name, value);
     }
   });
 

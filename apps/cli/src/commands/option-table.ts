@@ -1,6 +1,6 @@
 import type prompts from 'prompts';
-import type { OptionSpec } from '../runner/options';
 import type { FlagRecord, SelectionRecord } from '../runner/flag-record';
+import type { OptionSpec } from '../runner/options';
 
 interface RegistrationFields<Options, Answers>
   extends Omit<OptionSpec<unknown>, 'helpDefault' | 'parse' | 'defaultValue'> {

@@ -1,12 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { BundleDefinition } from '@simoncodes-ca/domain';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
-import { InvalidBundleDefinitionError, InvalidNameError, ConfigChangedError } from '../errors/lingo-tracker-error';
 import { loadConfig } from '../config/load-config';
+import { ConfigChangedError, InvalidBundleDefinitionError, InvalidNameError } from '../errors/lingo-tracker-error';
 import { addBundleDefinition, deleteBundleDefinition, updateBundleDefinition } from './bundle-definition-operations';
 
 const baseConfig = (overrides: Partial<LingoTrackerConfig> = {}): LingoTrackerConfig => ({

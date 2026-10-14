@@ -321,7 +321,7 @@ Explained in context: [`core-library.md`](core-library.md#config-and-collection-
 
 ### Collection Reader
 
-The read side of the [Resource Folder](#resource-folder): the one walk over a [collection's](#collection) `translationsFolder`. In code, `readCollection(collection)` in `libs/core/src/lib/resource/read-collection.ts` opens every folder with the collection's [base locale](#base-locale) and returns `{ resources, problems }`. Each `StoredResource` has an address (`fullKey`, `folderPath`, `entryKey`), the `entry` as `ResourceFolder.treeEntry()` reads it, and `effectiveTags` ([Tags](#tags)). The rules are the same for every caller. Hidden folders are skipped, with everything below them; this rule, and the rules for a missing or unlistable folder, are the collection-folder policy that the [Collection Sweep](#collection-sweep) shares. An entry without metadata is read with `metadata: {}`, so it counts as `new`. A folder whose file is not valid JSON, or that cannot be listed, is left out and returned as a problem, and the caller reports it. `CollectionFolderProblem.kind` is `unreadable` for listing or parsing failures and `not-removed` for pruning removal failures. `describeFolderProblem(problem, { collectionName? })` supplies the shared diagnostic wording. Core returns problems or sends them to an adapter callback; it never prints them to the console. The [Collection Set](#collection-set) (for export, validate, and glossary), the [Bundle Selection](#bundle-selection) (bundle, dry-run plan and type file), the resource tree, [Resource Search](#resource-search) on the disk (the API before indexing, the CLI `find-similar`) and the CLI `glossary` all read through it.
+The read side of the [Resource Folder](#resource-folder): the one walk over a [collection's](#collection) `translationsFolder`. In code, `readCollection(collection)` in `libs/core/src/lib/resource/read-collection.ts` opens every folder with the collection's [base locale](#base-locale) and returns `{ resources, problems, warnings }`. Each `StoredResource` has an address (`fullKey`, `folderPath`, `entryKey`), the `entry` as `ResourceFolder.treeEntry()` reads it, and `effectiveTags` ([Tags](#tags)). The rules are the same for every caller. Hidden folders are skipped, with everything below them; this rule, and the rules for a missing or unlistable folder, are the collection-folder policy that the [Collection Sweep](#collection-sweep) shares. An entry without metadata is read with `metadata: {}`, so it counts as `new`. A folder whose file is not valid JSON, or that cannot be listed, is left out and returned as a problem, and the caller reports it. `CollectionFolderProblem.kind` is `unreadable` for listing or parsing failures and `not-removed` for pruning removal failures. `describeFolderProblem` stays internal to core; collection read and glossary results carry ready-worded `warnings`, and `ResourceTreeIndex` sends warning strings to its callbacks, including the collection name when known. The normalize run also returns warnings for folder problems and read-only skips in collection order; adapters only print or log them, and core never prints to the console. The [Collection Set](#collection-set) (for export, validate, and glossary), the [Bundle Selection](#bundle-selection) (bundle, dry-run plan and type file), the resource tree, [Resource Search](#resource-search) on the disk (the API before indexing, the CLI `find-similar`) and the CLI `glossary` all read through it.
 
 Explained in context: [`core-library.md`](core-library.md#collection-reader)
 
@@ -686,11 +686,17 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 
 ## I
 
+### ICU Message
+
+The one parse of a translation value in `libs/domain/src/lib/icu-message.ts`. `parseIcuMessage(source, { interpolation, lenient })` returns a range-annotated tree (literal, pound, argument with `icu` or `transloco` syntax, plural/select/selectordinal group with cases, error) and never throws; malformed spans become error nodes that keep their brace-delimited content, so conversion stays total. `lenient` accepts what the MessageFormat runtime parser accepts; argument comparison, plural portability and preferred-terminology ranges read values that way. [Transloco](#transloco) to [ICU Format](#icu-format) conversion, bundle export, syntax validation, placeholder extraction, classification, argument comparison and plural portability are thin functions over this tree, so they share one parse instead of each scanning braces and quotes. A few lexical tests remain on top of it: `hasBareSelectorBefore` in the bundle expander, the Transloco-matcher test in `hasUnbundlableBranchBody`, and the classifier's plain-brace-frame check. Interpolation mode deliberately keeps the position test stored values were converted under, so `offset:2other{{x}}`-style behaviour is preserved on purpose. `@messageformat/core` compiles per locale separately. Explained in context: `domain-and-data-model.md`, `bundle-generation.md`.
+
 ### ICU Format
 
 The [ICU MessageFormat](https://unicode-org.github.io/icu/userguide/format_parse/messages/) standard for representing locale-sensitive strings. LingoTracker stores translation values in ICU format internally. Simple placeholders use single braces: `Hello {name}`. Complex constructs use keyword-based syntax: `{count, plural, one {# item} other {# items}}`. The Resource Folder converts Transloco `{{ name }}` placeholders to ICU when it writes a base value, translation, or copied entry. Legacy values are converted only when their entry is written; opening or saving a folder does not normalize other entries. The conversion is idempotent, so an already-ICU value keeps its bytes and checksum. Import also converts before ICU validation and auto-fix.
 
 During [bundle](#bundle) generation, simple `{varName}` placeholders are converted to Transloco's `{{ varName }}` syntax. Complex ICU constructs are passed through as-is because Transloco's messageformat pipe handles them natively.
+
+The [ICU Message](#icu-message) module owns parsing and range-based conversion of translation values.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md)
 
@@ -698,7 +704,7 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ### Import Run
 
-One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and repairs placeholders, validates, and merges per [folder](#resource-folder). The session and CLI prompts share domain's `DEFAULT_IMPORT_STRATEGY` and import locale rule; the prompts use `importableLocales` for choices. The session and migration confirmations read defaults from the domain [Import Strategy Policy](#import-strategy-policy). `apps/cli/src/commands/import-cmd-flags.ts` leaves import strategy and update switches unset, and `apps/cli/src/commands/import-cmd.ts` passes omitted comment, tag, and create-missing switches as undefined, so `libs/core/src/lib/import/import-session.ts` applies the selected strategy's defaults. The CLI resolves an omitted `--preserve-status` to false before calling core. `apps/cli/src/commands/import-option-table.ts` supplies this value, the default strategy, and the base-validation default to command resolution and help labels. Base-value validation stays on unless the user gives `--no-validate-base`. An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
+One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. It applies strategy defaults, reads the collection's [Project Terms](#project-terms), resolves Transloco references (migration only), normalizes and applies [Placeholder Repair](#placeholder-repair), validates, and merges per [folder](#resource-folder). The session and CLI prompts share domain's `DEFAULT_IMPORT_STRATEGY` and import locale rule; the prompts use `importableLocales` for choices. The session and migration confirmations read defaults from the domain [Import Strategy Policy](#import-strategy-policy). `apps/cli/src/commands/import-cmd-flags.ts` leaves import strategy and update switches unset, and `apps/cli/src/commands/import-cmd.ts` passes omitted comment, tag, and create-missing switches as undefined, so `libs/core/src/lib/import/import-session.ts` applies the selected strategy's defaults. The CLI resolves an omitted `--preserve-status` to false before calling core. `apps/cli/src/commands/import-option-table.ts` supplies this value, the default strategy, and the base-validation default to command resolution and help labels. Base-value validation stays on unless the user gives `--no-validate-base`. An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
@@ -869,6 +875,14 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 ---
 
 ## P
+
+### Placeholder Repair
+
+The domain policy for choosing a repair engine and a trusted base value during an [Import Run](#import-run). `repairPlaceholders({ translation, storedBase, importedBase })` in `libs/domain/src/lib/placeholder-repair.ts` uses Transloco when the stored base has Transloco placeholders. That engine trusts only the stored base: an imported base can contain unresolved references such as `{{greeting}}`. Otherwise, ICU uses the stored base, falling back to the imported base only when the stored base is absent. The `PlaceholderRepair` result distinguishes skipped, matched, fixed, and failed outcomes. Core maps those outcomes to import records and progress messages.
+
+Explained in context: [`core-library.md`](core-library.md#import-pipeline)
+
+---
 
 ### Preferred Terminology
 
@@ -1164,6 +1178,14 @@ Explained in context: [`api.md`](api.md#component-diagram), [`frontend.md`](fron
 
 ---
 
+### Route Manifest
+
+The shared HTTP method and path list (`API_ROUTES` in `libs/data-transfer/src/lib/api-routes.ts`). The API contract spec checks that Nest mounts exactly these routes. Tracker API services build their URLs with `apiPath('POST /api/collections/:collectionName/resources/move', { collectionName })`: the compiler checks the route and its required parameters, and the builder percent-encodes each parameter with `encodeURIComponent`. Services retain query-string handling; static translation assets are outside the manifest.
+
+Explained in context: [`api.md`](api.md), [`frontend.md`](frontend.md)
+
+---
+
 ### Route Project
 
 The API parameter seam for project-scoped bundle, config and collection-creation routes. `@RouteProject()` supplies an `OpenedProject` through `RouteProjectPipe` in `apps/api/src/app/config/route-project.ts`, with `CollectionIndex.sink` attached for write requests; GET handles have no sink. It reads config on first use of `sourceConfig` and retains that snapshot for the request. Invalid bodies and no-op config updates keep their existing responses without a config read. Collections opened through `openProjectCollection` inherit the sink; collection creation reports its reindex through the project sink. Config read errors retain ConfigService's HTTP mappings.
@@ -1454,7 +1476,7 @@ Explained in context: [`frontend.md`](frontend.md#tree-navigation)
 
 ### Typed Errors
 
-The errors core raises on purpose. Each subclass of `LingoTrackerError` (`libs/core/src/lib/errors/lingo-tracker-error.ts`) declares a `kind` for adapter mapping, a stable `code` (for example `RESOURCE_NOT_FOUND`), and any typed payload fields (for example `key`).
+The errors core raises on purpose. `lingo-tracker-error.ts` declares domain errors with `defineError`, deriving constructor arguments, a stable `code` (for example `RESOURCE_NOT_FOUND`), `kind`, message and readonly payload fields. `ERROR_CATALOGUE` collects exported constructors by their static code, including handwritten classes with custom behaviour, and supplies `ERROR_CODES`. `TranslationError` has a separate catalogue of known provider codes. Named classes retain their instance types and `instanceof` identity. Core owns kinds and details; the API owns HTTP mapping and the CLI owns wording.
 
 Core converts domain key and target-folder errors once at the [Resolved Key](#resolved-key) seam. Locale validation uses `assertValidLocale` and raises `InvalidLocaleError` with the unchanged domain message. Both errors have kind `invalid` and map to HTTP 400. Delete and relocation report the typed key error's message in their results.
 

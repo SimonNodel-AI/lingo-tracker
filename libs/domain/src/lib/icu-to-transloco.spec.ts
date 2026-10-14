@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
 import MessageFormat from '@messageformat/core';
-import { extractICUPlaceholders, hasICUPlaceholders, scanIcuQuotes, validateICUSyntax } from './icu-auto-fixer';
+import { describe, expect, it } from 'vitest';
+import { extractICUPlaceholders, hasICUPlaceholders, validateICUSyntax } from './icu-auto-fixer';
+import { icuQuotedRuns } from './icu-message';
 import { icuToTransloco } from './icu-to-transloco';
 
 function renderBothPasses(message: string, params: Record<string, string | number>): string {
@@ -152,6 +153,17 @@ describe('icuToTransloco', () => {
     });
   });
 
+  describe('branch bodies behind glued and non-ASCII selectors', () => {
+    // I2: every case of a valid message is wrapped, whatever its selector spelling.
+    it('wraps a body behind an unspaced offset', () => {
+      expect(icuToTransloco('{p, plural, offset:2other{{x}}}')).toBe('{p, plural, offset:2other{{{x}}}}');
+    });
+
+    it('wraps a body behind a non-ASCII select key', () => {
+      expect(icuToTransloco('{g, select, männlich {{x}} other {y}}')).toBe('{g, select, männlich {{{x}}} other {y}}');
+    });
+  });
+
   describe('mixed simple and complex placeholders', () => {
     it('converts simple placeholder while preserving an adjacent plural', () => {
       const input = 'Hello {name}: {count, plural, one {# item} other {# items}}';
@@ -287,7 +299,8 @@ describe('MessageFormat quote contexts', () => {
       ["{n, selectordinal, one {'#' x} other {# y}}", true],
       ["{s, select, chosen {'#' x} other {y}}", true],
     ] as const) {
-      expect(scanIcuQuotes(icu).quoted[icu.indexOf(icu.includes('#') ? '#' : '|')]).toBe(quotedHash);
+      const position = icu.indexOf(icu.includes('#') ? '#' : '|');
+      expect(icuQuotedRuns(icu).some((run) => position >= run.start && position < run.end)).toBe(quotedHash);
     }
   });
 });

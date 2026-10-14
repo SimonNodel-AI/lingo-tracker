@@ -1,14 +1,14 @@
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Command } from 'commander';
-import { BUNDLE_REGISTRATION, BUNDLE_FLAGS } from './bundle-flags';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { CommandCancelledError } from '../runner/command-runner';
 import { flagValues, registerFlags } from '../runner/flag-record';
 import { registerCommand } from '../runner/register-command';
-import { CommandCancelledError } from '../runner/command-runner';
-import { createCommandProject, type CommandProject } from '../testing/command-project';
-import { bundleCommand, type BundleOptions } from './bundle';
+import { type CommandProject, createCommandProject } from '../testing/command-project';
+import { type BundleOptions, bundleCommand } from './bundle';
+import { BUNDLE_FLAGS, BUNDLE_REGISTRATION } from './bundle-flags';
 
 type Bundles = NonNullable<LingoTrackerConfig['bundles']>;
 const mainBundle = { bundleName: '{locale}', dist: 'out', collections: 'All' as const };

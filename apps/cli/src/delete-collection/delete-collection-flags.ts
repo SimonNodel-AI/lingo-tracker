@@ -1,5 +1,5 @@
-import type { DeleteCollectionOptions } from './delete-collection';
 import { defineFlags, yesFlag } from '../runner/flag-record';
+import type { DeleteCollectionOptions } from './delete-collection';
 export const DELETE_COLLECTION_FLAGS = defineFlags<DeleteCollectionOptions>()({
   collectionName: { flags: '--collection-name <name>', description: 'Name of the collection to delete' },
   yes: yesFlag,

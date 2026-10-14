@@ -1,6 +1,6 @@
+import { collectionFlag, defineFlags } from '../runner/flag-record';
 import { missingTextQuestions } from '../utils/prompt-utils';
 import type { MoveResourceOptions } from './move';
-import { defineFlags, collectionFlag } from '../runner/flag-record';
 
 export const MOVE_FLAGS = defineFlags<MoveResourceOptions>()({
   collection: collectionFlag('Name of the collection'),

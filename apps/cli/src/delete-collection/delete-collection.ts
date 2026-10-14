@@ -1,9 +1,9 @@
-import { DELETE_COLLECTION_FLAGS } from './delete-collection-flags';
 import { CONFIG_FILENAME, deleteCollection } from '@simoncodes-ca/core';
 import * as path from 'path';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { confirmOrCancel } from '../utils';
+import { DELETE_COLLECTION_FLAGS } from './delete-collection-flags';
 
 export interface DeleteCollectionOptions {
   collectionName?: string;

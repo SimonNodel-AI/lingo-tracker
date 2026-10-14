@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   honouredImportSourceStatus,
   IMPORT_STRATEGIES,
-  isImportStrategy,
-  importStrategyPolicy,
   type ImportStrategy,
   type ImportStrategyPolicy,
+  importStrategyPolicy,
+  isImportStrategy,
   type ResolveImportStatusParams,
   resolveImportStatus,
 } from './import-strategy-policy';

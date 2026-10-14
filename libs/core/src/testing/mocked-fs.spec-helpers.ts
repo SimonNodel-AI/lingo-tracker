@@ -4,7 +4,7 @@
  * Spec-only (imports vitest): `*.spec-helpers.ts` files are excluded from the library build.
  */
 import * as fs from 'fs';
-import { vi, type MockedFunction } from 'vitest';
+import { type MockedFunction, vi } from 'vitest';
 
 /** The two `readdirSync` forms core calls: `readdirSync(dir)` and `readdirSync(dir, { withFileTypes: true })`. */
 export type ReaddirSync = (path: fs.PathLike, options?: { withFileTypes?: boolean }) => string[] | fs.Dirent[];

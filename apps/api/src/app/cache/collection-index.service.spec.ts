@@ -7,10 +7,10 @@ import {
   addResource,
   addResources,
   type Collection,
+  executeMove,
   type FolderChild,
   type LingoTrackerConfig,
   loadConfig,
-  executeMove,
   openCollection,
   openProjectCollection,
   openResourceFolder,
@@ -110,6 +110,11 @@ describe('CollectionIndex', () => {
         const diagnostic = warn.mock.calls[0]?.[0];
         expect(diagnostic).toEqual(expect.stringContaining("Collection 'main': Skipped unreadable folder 'broken': "));
         expect(diagnostic).toEqual(expect.stringContaining('resource_entries.json'));
+        const warnings: string[] = [];
+        new ResourceTreeIndex(target).searchPage({ kind: 'search', query: 'OK', mode: 'text', limit: 10 }, (warning) =>
+          warnings.push(warning),
+        );
+        expect(warnings).toEqual([diagnostic]);
 
         warn.mockClear();
         expect(readyTree(target)).toBeDefined();

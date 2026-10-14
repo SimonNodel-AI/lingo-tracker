@@ -1,11 +1,11 @@
-import { BUNDLE_FLAGS } from './bundle-flags';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
-import type { TokenCasing } from '@simoncodes-ca/domain';
 import { generateBundles } from '@simoncodes-ca/core';
-import { printBundleEvent, printBundleSummary } from './bundle-report';
-import { exitForRunOutcome } from '../runner/run-outcome';
+import type { TokenCasing } from '@simoncodes-ca/domain';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
+import { exitForRunOutcome } from '../runner/run-outcome';
 import { ConsoleFormatter, type Selection, selectionNames } from '../utils';
+import { BUNDLE_FLAGS } from './bundle-flags';
+import { printBundleEvent, printBundleSummary } from './bundle-report';
 
 export interface BundleOptions {
   name?: string[];

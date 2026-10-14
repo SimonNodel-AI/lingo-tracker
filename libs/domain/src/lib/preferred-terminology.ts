@@ -1,6 +1,5 @@
-import { parse, type Token } from '@messageformat/parser';
 import { escapeRegExp } from './escape-regexp';
-import { maskTranslocoPlaceholders } from './transloco-brace-scan';
+import { countIcuWork, type IcuNode, icuQuotedRuns, parseIcuMessage, spliceIcu, visitIcuNodes } from './icu-message';
 
 /**
  * Preferred terminology: a curated list of discouraged source-language terms, each
@@ -281,14 +280,8 @@ function buildPreferredTermRegex(term: string): RegExp {
   return new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegExp(term)}(?![\\p{L}\\p{N}_])`, 'giu');
 }
 
-/**
- * HTML/XML tags (attributes included) and comments. A tag name starts with a letter in
- * any script, `_` or `:`, so `a < b` and `5 <3` stay text. Quoted attribute values are
- * scanned through their closing quote, so a `>` inside one does not end the tag. No part
- * of a tag, quoted values included, may contain `<`, so an unclosed tag or quote never
- * swallows the markup after it.
- */
-const TAG_PATTERN = /<!--[\s\S]*?-->|<\/?[\p{L}_:][^<>"']*(?:(?:"[^"<]*"|'[^'<]*')[^<>"']*)*>/gu;
+/** A tag name starts with a letter in any script, `_` or `:`. */
+const TAG_NAME_START = /^[\p{L}_:]$/u;
 
 /**
  * Returns the spans of `value` a reader sees, as offsets into the raw value, sorted and
@@ -314,40 +307,22 @@ const TAG_PATTERN = /<!--[\s\S]*?-->|<\/?[\p{L}_:][^<>"']*(?:(?:"[^"<]*"|'[^'<]*
  * ```
  */
 export function extractVisibleTextRanges(value: string): PreferredTermRange[] {
-  let candidates: PreferredTermRange[];
-  try {
-    candidates = [];
-    collectContentRanges(parse(maskTranslocoPlaceholders(value)), candidates);
-  } catch {
-    candidates = braceFreeRanges(value);
-  }
-
+  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+  const candidates = message.ok ? literalRanges(message.nodes, () => true) : braceFreeRanges(value);
   return subtractRanges(candidates, tagRanges(value));
 }
 
-/** Adds the raw span of every literal content token, descending into branch bodies. */
-function collectContentRanges(tokens: readonly Token[], out: PreferredTermRange[]): void {
-  for (const token of tokens) {
-    switch (token.type) {
-      case 'content':
-        if (token.ctx) {
-          out.push({ start: token.ctx.offset, end: token.ctx.offset + token.ctx.text.length });
-        }
-        break;
-
-      // Argument names, formats and their style params, and `#` are never visible text.
-      case 'argument':
-      case 'function':
-      case 'octothorpe':
-        break;
-
-      default:
-        for (const branch of token.cases) {
-          collectContentRanges(branch.tokens, out);
-        }
-        break;
-    }
-  }
+/**
+ * The raw span of every literal node `keep` accepts, descending into branch bodies.
+ * Argument names, formats and their style params, and `#` are never visible text.
+ */
+function literalRanges(nodes: readonly IcuNode[], keep: (inPlural: boolean) => boolean): PreferredTermRange[] {
+  const ranges: PreferredTermRange[] = [];
+  visitIcuNodes(nodes, (node, inPlural) => {
+    if (node.kind === 'literal' && keep(inPlural)) ranges.push({ ...node.range });
+    return node.kind !== 'argument';
+  });
+  return ranges;
 }
 
 /** Fallback for unparseable values: everything outside `{…}` spans. */
@@ -355,6 +330,7 @@ function braceFreeRanges(value: string): PreferredTermRange[] {
   const ranges: PreferredTermRange[] = [];
   let depth = 0;
   let start = 0;
+  countIcuWork(value.length);
   for (let i = 0; i < value.length; i++) {
     const char = value[i];
     if (char === '{') {
@@ -383,43 +359,117 @@ function braceFreeRanges(value: string): PreferredTermRange[] {
   return ranges;
 }
 
-function tagRanges(value: string): PreferredTermRange[] {
-  return [...value.matchAll(TAG_PATTERN)].map((match) => ({
-    start: match.index,
-    end: match.index + match[0].length,
-  }));
+/**
+ * HTML/XML tags (attributes included) and comments, as
+ * `/<!--[\s\S]*?-->|<\/?[\p{L}_:][^<>"']*(?:(?:"[^"<]*"|'[^'<]*')[^<>"']*)*>/gu` finds
+ * them, in one pass. A tag name starts with a letter in any script, `_` or `:`, so `a < b`
+ * and `5 <3` stay text. Quoted attribute values are scanned through their closing quote,
+ * so a `>` inside one does not end the tag. No part of a tag, quoted values included, may
+ * contain `<`, so an unclosed tag or quote never swallows the markup after it. A comment
+ * runs to the first `-->` after its `<!--`; without one, `<!--` is text.
+ *
+ * @internal
+ */
+export function tagRanges(value: string): PreferredTermRange[] {
+  const ranges: PreferredTermRange[] = [];
+  // The first `-->` at or after `closeSearchedFrom`, or -1 when there is none.
+  let closeSearchedFrom = -1;
+  let close = -1;
+  let position = 0;
+  while (position < value.length) {
+    countIcuWork();
+    if (value[position] !== '<') {
+      position++;
+      continue;
+    }
+    if (value.startsWith('<!--', position)) {
+      const from = position + 4;
+      if (closeSearchedFrom < 0 || (close >= 0 && close < from)) {
+        close = value.indexOf('-->', from);
+        countIcuWork((close < 0 ? value.length : close + 3) - from);
+        closeSearchedFrom = from;
+      }
+      if (close >= 0) {
+        ranges.push({ start: position, end: close + 3 });
+        position = close + 3;
+        continue;
+      }
+    }
+    const end = tagEnd(value, position);
+    if (end === undefined) {
+      position++;
+    } else {
+      ranges.push({ start: position, end });
+      position = end;
+    }
+  }
+  return ranges;
 }
 
-/** Removes every masked span from the candidates, merging adjacent results. */
+/** The end of the tag that starts at the `<` at `start`, or undefined. Scans no further than the next `<`. */
+function tagEnd(value: string, start: number): number | undefined {
+  let i = value[start + 1] === '/' ? start + 2 : start + 1;
+  const first = value.codePointAt(i);
+  if (first === undefined) return undefined;
+  const name = String.fromCodePoint(first);
+  if (!TAG_NAME_START.test(name)) return undefined;
+  i += name.length;
+  while (i < value.length) {
+    countIcuWork();
+    const char = value[i];
+    if (char === '>') return i + 1;
+    if (char === '<') return undefined;
+    if (char === '"' || char === "'") {
+      let close = i + 1;
+      while (close < value.length && value[close] !== char && value[close] !== '<') {
+        countIcuWork();
+        close++;
+      }
+      if (value[close] !== char) return undefined;
+      i = close;
+    }
+    i++;
+  }
+  return undefined;
+}
+
+/**
+ * Removes every masked span from the candidates, merging adjacent results. One sweep:
+ * the candidates do not overlap, and the masks are ascending and do not overlap.
+ */
 function subtractRanges(
   candidates: readonly PreferredTermRange[],
   masks: readonly PreferredTermRange[],
 ): PreferredTermRange[] {
   const result: PreferredTermRange[] = [];
+  const keep = (piece: PreferredTermRange): void => {
+    const last = result[result.length - 1];
+    if (last && last.end >= piece.start) {
+      last.end = Math.max(last.end, piece.end);
+    } else {
+      result.push({ ...piece });
+    }
+  };
+  countIcuWork(candidates.length);
   const sorted = [...candidates].sort((a, b) => a.start - b.start);
 
+  let first = 0;
   for (const candidate of sorted) {
-    let pieces: PreferredTermRange[] = [candidate];
-    for (const mask of masks) {
-      pieces = pieces.flatMap((piece) => {
-        if (mask.end <= piece.start || mask.start >= piece.end) {
-          return [piece];
-        }
-        const kept: PreferredTermRange[] = [];
-        if (mask.start > piece.start) kept.push({ start: piece.start, end: mask.start });
-        if (mask.end < piece.end) kept.push({ start: mask.end, end: piece.end });
-        return kept;
-      });
+    countIcuWork();
+    // A mask that ends before this candidate ends before every later one too.
+    while (first < masks.length && (masks[first]?.end ?? 0) <= candidate.start) {
+      countIcuWork();
+      first++;
     }
-
-    for (const piece of pieces) {
-      const last = result[result.length - 1];
-      if (last && last.end >= piece.start) {
-        last.end = Math.max(last.end, piece.end);
-      } else if (piece.end > piece.start) {
-        result.push({ ...piece });
-      }
+    let start = candidate.start;
+    for (let next = first; next < masks.length; next++) {
+      const mask = masks[next];
+      if (!mask || mask.start >= candidate.end) break;
+      countIcuWork();
+      if (mask.start > start) keep({ start, end: mask.start });
+      start = Math.max(start, mask.end);
     }
+    if (start < candidate.end) keep({ start, end: candidate.end });
   }
 
   return result;
@@ -456,10 +506,18 @@ export function findPreferredTermFindings(value: string, rules: readonly Preferr
     }
 
     const ranges: PreferredTermRange[] = [];
+    // Matches ascend, so a visible range that ends before one match ends before the rest.
+    let next = 0;
     for (const match of value.matchAll(buildPreferredTermRegex(term))) {
+      countIcuWork(match[0].length);
       const start = match.index;
       const end = start + match[0].length;
-      if (visible.some((range) => range.start <= start && end <= range.end)) {
+      while (next < visible.length && (visible[next]?.end ?? 0) <= start) {
+        countIcuWork();
+        next++;
+      }
+      const range = visible[next];
+      if (range && range.start <= start && end <= range.end) {
         ranges.push({ start, end });
       }
     }
@@ -498,56 +556,46 @@ export function applyPreferredTerm(value: string, rule: PreferredTermRule): stri
     return value;
   }
 
+  // A finding lies inside one plural content range or outside all of them, since both
+  // come from the same parse. One ascending sweep pairs them.
+  const ranges = finding.ranges;
   const pluralContent = rule.preferred.includes('#') ? pluralContentRanges(value) : [];
-  const edits: Array<PreferredTermRange & { text: string }> = [];
+  const edits: { range: PreferredTermRange; text: string }[] = [];
+  let next = 0;
   for (const content of pluralContent) {
-    const inside = finding.ranges.filter((range) => content.start <= range.start && range.end <= content.end);
-    if (inside.length > 0) {
-      edits.push({ ...content, text: requoteWithReplacements(value, content, inside, rule.preferred) });
+    countIcuWork();
+    for (; next < ranges.length && (ranges[next]?.start ?? 0) < content.start; next++) {
+      countIcuWork();
+      edits.push({ range: ranges[next], text: rule.preferred });
+    }
+    const first = next;
+    for (; next < ranges.length && (ranges[next]?.end ?? 0) <= content.end; next++) countIcuWork();
+    if (next > first) {
+      edits.push({
+        range: content,
+        text: requoteWithReplacements(value, content, ranges.slice(first, next), rule.preferred),
+      });
     }
   }
-  for (const range of finding.ranges) {
-    if (!edits.some((edit) => edit.start <= range.start && range.end <= edit.end)) {
-      edits.push({ ...range, text: rule.preferred });
-    }
+  for (; next < ranges.length; next++) {
+    countIcuWork();
+    edits.push({ range: ranges[next], text: rule.preferred });
   }
-
-  let result = value;
-  for (const edit of edits.sort((a, b) => b.start - a.start)) {
-    result = result.slice(0, edit.start) + edit.text + result.slice(edit.end);
-  }
-  return result;
+  return spliceIcu(value, edits);
 }
 
 /**
  * Raw spans of the literal content tokens where `#` is the count placeholder: plural and
- * selectordinal branch text, and the text of any select nested in one. Mirrors
- * `@messageformat/parser` in its default, non-strict mode. Empty when `value` does not
+ * selectordinal branch text, and the text of any select nested in one, read in the
+ * lenient mode that matches the MessageFormat runtime. Empty when `value` does not
  * parse as ICU.
  */
 function pluralContentRanges(value: string): PreferredTermRange[] {
-  const ranges: PreferredTermRange[] = [];
-  const walk = (tokens: readonly Token[], inPlural: boolean): void => {
-    for (const token of tokens) {
-      if (token.type === 'content') {
-        if (inPlural && token.ctx) {
-          ranges.push({ start: token.ctx.offset, end: token.ctx.offset + token.ctx.text.length });
-        }
-      } else if (token.type === 'plural' || token.type === 'selectordinal' || token.type === 'select') {
-        const branchInPlural = inPlural || token.type !== 'select';
-        for (const branch of token.cases) {
-          walk(branch.tokens, branchInPlural);
-        }
-      }
-    }
-  };
-
-  try {
-    walk(parse(maskTranslocoPlaceholders(value)), false);
-  } catch {
-    return [];
-  }
-  return ranges;
+  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+  if (!message.ok) return [];
+  const ranges = literalRanges(message.nodes, (inPlural) => inPlural);
+  countIcuWork(ranges.length);
+  return ranges.sort((a, b) => a.start - b.start);
 }
 
 /**
@@ -562,17 +610,17 @@ function requoteWithReplacements(
 ): string {
   const { literal, rawToLiteral } = decodeIcuLiteral(value.slice(content.start, content.end));
 
-  let replaced = literal;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    const start = rawToLiteral[matches[i].start - content.start];
-    const end = rawToLiteral[matches[i].end - content.start];
-    replaced = replaced.slice(0, start) + preferred + replaced.slice(end);
+  const pieces: string[] = [];
+  let position = 0;
+  for (const match of matches) {
+    countIcuWork();
+    const start = rawToLiteral[match.start - content.start];
+    pieces.push(literal.slice(position, start), preferred);
+    position = rawToLiteral[match.end - content.start];
   }
-  return encodePluralIcuLiteral(replaced);
+  pieces.push(literal.slice(position));
+  return encodePluralIcuLiteral(pieces.join(''));
 }
-
-/** `'{…}'`, `'}…'` or `'#…'` up to a closing apostrophe not followed by another; as in `@messageformat/parser`. */
-const ICU_QUOTED_PATTERN = /'[{}#](?:[^']|'')*'(?!')/uy;
 
 /**
  * Decodes the raw text of one content token (no bare `{`, `}` or `#`) to its literal,
@@ -580,6 +628,8 @@ const ICU_QUOTED_PATTERN = /'[{}#](?:[^']|'')*'(?!')/uy;
  * as its contents.
  */
 function decodeIcuLiteral(raw: string): { literal: string; rawToLiteral: number[] } {
+  const quotes = new Map(icuQuotedRuns(raw).map((range) => [range.start, range.end]));
+  countIcuWork(raw.length);
   let literal = '';
   const rawToLiteral: number[] = [];
   let i = 0;
@@ -591,10 +641,9 @@ function decodeIcuLiteral(raw: string): { literal: string; rawToLiteral: number[
       continue;
     }
 
-    ICU_QUOTED_PATTERN.lastIndex = i;
-    const quoted = ICU_QUOTED_PATTERN.exec(raw);
-    if (quoted) {
-      const end = i + quoted[0].length - 1;
+    const quoteEnd = quotes.get(i);
+    if (quoteEnd !== undefined) {
+      const end = quoteEnd - 1;
       rawToLiteral.push(literal.length);
       for (i++; i < end; i++) {
         rawToLiteral.push(literal.length);
@@ -626,6 +675,7 @@ function decodeIcuLiteral(raw: string): { literal: string; rawToLiteral: number[
 function encodePluralIcuLiteral(literal: string): string {
   const isSyntax = (char: string | undefined): boolean => char === '{' || char === '}' || char === '#';
 
+  countIcuWork(literal.length);
   let out = '';
   let i = 0;
   while (i < literal.length) {

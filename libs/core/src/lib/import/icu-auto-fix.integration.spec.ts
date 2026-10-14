@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { autoFixICUPlaceholders } from '@simoncodes-ca/domain';
+import { repairPlaceholders } from '@simoncodes-ca/domain';
+import { assert, describe, expect, it } from 'vitest';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
 import type { ImportedResource } from './types';
 
@@ -9,9 +9,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Hello {name}, you have {count} items';
       const translatedValue = 'Hola {nombre}, tienes {cantidad} elementos';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('Hola {name}, tienes {count} elementos');
       expect(result.originalPlaceholders).toEqual(['{nombre}', '{cantidad}']);
       expect(result.fixedPlaceholders).toEqual(['{name}', '{count}']);
@@ -21,9 +21,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = '{count, plural, one {# item} other {# items}}';
       const translatedValue = '{nombre, plural, one {# élément} other {# éléments}}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('{count, plural, one {# élément} other {# éléments}}');
     });
 
@@ -31,9 +31,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = '{gender, select, male {he} female {she} other {they}}';
       const translatedValue = '{geschlecht, select, male {er} female {sie} other {sie}}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('{gender, select, male {er} female {sie} other {sie}}');
     });
 
@@ -42,9 +42,9 @@ describe('ICU Auto-Fix Integration', () => {
       const translatedValue =
         'Hola {nombre}, tienes {cantidad, plural, one {# mensaje} other {# mensajes}} de {remitente}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('Hola {name}, tienes {count, plural, one {# mensaje} other {# mensajes}} de {sender}');
     });
   });
@@ -54,10 +54,10 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'You have {count} items in your cart';
       const translatedValue = 'Tienes items en tu carrito'; // Missing {count}
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
       // Should insert the missing placeholder
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toContain('{count}');
     });
 
@@ -65,9 +65,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Hello {name}';
       const translatedValue = 'Hola {name} {extra}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(false);
+      assert(result.outcome === 'failed');
       expect(result.error).toContain('extra placeholders');
     });
 
@@ -75,9 +75,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Hello {name}';
       const translatedValue = 'Hola {nombre'; // Unclosed brace
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(false);
+      assert(result.outcome === 'failed');
       expect(result.error).toContain('Failed to parse');
     });
   });
@@ -153,9 +153,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = '{count, plural, one {You have {count} item} other {You have {count} items}}';
       const translatedValue = '{numero, plural, one {Tienes {numero} elemento} other {Tienes {numero} elementos}}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('{count, plural, one {Tienes {count} elemento} other {Tienes {count} elementos}}');
     });
 
@@ -163,9 +163,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Price: {price, number, currency}';
       const translatedValue = 'Precio: {precio, number, currency}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('Precio: {price, number, currency}');
     });
 
@@ -173,9 +173,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Date: {today, date, short} at {now, time, medium}';
       const translatedValue = 'Fecha: {hoy, date, short} a las {ahora, time, medium}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('Fecha: {today, date, short} a las {now, time, medium}');
     });
 
@@ -183,9 +183,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = 'Hello   {name}  ,  you have  {count}  items  .';
       const translatedValue = 'Hola   {nombre}  ,  tienes  {cantidad}  elementos  .';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('Hola   {name}  ,  tienes  {count}  elementos  .');
     });
 
@@ -193,9 +193,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = "This is '{not a placeholder}' and {real}";
       const translatedValue = "Esto es '{no es un marcador}' y {verdadero}";
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe("Esto es '{no es un marcador}' y {real}");
     });
 
@@ -203,9 +203,9 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = '{firstName}{lastName}';
       const translatedValue = '{nombre}{apellido}';
 
-      const result = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
 
-      expect(result.wasFixed).toBe(true);
+      assert(result.outcome === 'fixed');
       expect(result.value).toBe('{firstName}{lastName}');
     });
 
@@ -213,13 +213,15 @@ describe('ICU Auto-Fix Integration', () => {
       const baseValue = '{name} is here';
       const translatedValue = '{nombre} está aquí';
 
-      const result1 = autoFixICUPlaceholders(baseValue, translatedValue);
+      const result1 = repairPlaceholders({ storedBase: baseValue, translation: translatedValue });
+      assert(result1.outcome === 'fixed');
       expect(result1.value).toBe('{name} está aquí');
 
       const baseValue2 = 'Hello {name}';
       const translatedValue2 = 'Hola {nombre}';
 
-      const result2 = autoFixICUPlaceholders(baseValue2, translatedValue2);
+      const result2 = repairPlaceholders({ storedBase: baseValue2, translation: translatedValue2 });
+      assert(result2.outcome === 'fixed');
       expect(result2.value).toBe('Hola {name}');
     });
   });

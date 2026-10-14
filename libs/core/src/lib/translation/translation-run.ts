@@ -5,20 +5,20 @@ import {
   NoTranslationTargetLocalesError,
   TranslationLocaleNotConfiguredError,
 } from '../errors/lingo-tracker-error';
-import { readCollection } from '../resource/read-collection';
-import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../resource/resource-mutation';
-import type { RunOutcome } from '../run-outcome';
-import {
-  type TranslationBatchOutcome,
-  type TranslationBatchRow,
-  selectTranslationRow,
-  translationBatch,
-} from '../resource/translation-batch';
 import {
   assertAutoTranslationEnabled,
   type OpenTranslatorOptions,
   openPreparedTranslator,
 } from '../machine-translation/translator';
+import { readCollection } from '../resource/read-collection';
+import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../resource/resource-mutation';
+import {
+  selectTranslationRow,
+  type TranslationBatchOutcome,
+  type TranslationBatchRow,
+  translationBatch,
+} from '../resource/translation-batch';
+import type { RunOutcome } from '../run-outcome';
 
 export interface TranslateLocaleCounts {
   /**

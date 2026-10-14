@@ -1,6 +1,6 @@
-import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { existsSync, readFileSync } from 'node:fs';
 import * as xliff from 'xliff';
+import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { PROTECTED_TERMS_NOTE_PREFIX } from '../export/export-to-xliff';
 import type { ImportedResource, ImportParseOptions } from './types';
 

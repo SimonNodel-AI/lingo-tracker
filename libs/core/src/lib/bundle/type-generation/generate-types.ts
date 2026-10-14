@@ -6,10 +6,10 @@ import {
   type TokenCasing,
   validateJavaScriptIdentifier,
 } from '@simoncodes-ca/domain';
-import { BundleHierarchicalConflictError } from '../../errors';
-import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
-import { generateFileHeader } from './file-header';
+import { BundleHierarchicalConflictError } from '../../errors/internal';
 import { resolveBundleSettings } from '../resolve-bundle-settings';
+import { generateFileHeader } from './file-header';
+import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
 
 export interface GenerateTypesResult {
   bundleKey: string;

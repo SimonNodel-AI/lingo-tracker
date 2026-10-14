@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { restore, snapshot, type ViewPreferences, type PreferenceReaders } from './view-preferences';
+import { type PreferenceReaders, restore, snapshot, type ViewPreferences } from './view-preferences';
 
 const ctx = { availableLocales: ['en', 'fr'], baseLocale: 'en' };
 const state: ViewPreferences = {

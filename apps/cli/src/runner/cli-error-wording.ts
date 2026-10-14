@@ -1,23 +1,24 @@
-import { flagName } from './flag-record';
-import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
-import { BUNDLE_FLAGS } from '../commands/bundle-flags';
-import { GLOSSARY_FLAGS } from '../commands/glossary-flags';
-import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
-import { PROTECTED_TERMS_FLAGS } from '../commands/protected-terms-flags';
-import { EDIT_COLLECTION_FLAGS } from '../commands/edit-collection-flags';
 import {
+  BracedPlaceholderError,
   CONFIG_FILENAME,
   type CollectionTagEditProblem,
   type ErrorCode,
-  LingoTrackerError,
-  isProtectedTermsEditProblem,
   isPreferredTerminologyEditProblem,
+  isProtectedTermsEditProblem,
+  LingoTrackerError,
   type PreferredTerminologyEditProblem,
   PreferredTerminologyValidationError,
   type ProtectedTermsEditProblem,
 } from '@simoncodes-ca/core';
+import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
+import { BUNDLE_FLAGS } from '../commands/bundle-flags';
+import { EDIT_COLLECTION_FLAGS } from '../commands/edit-collection-flags';
+import { GLOSSARY_FLAGS } from '../commands/glossary-flags';
+import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
+import { PROTECTED_TERMS_FLAGS } from '../commands/protected-terms-flags';
 import { ConsoleFormatter } from '../utils/console-formatter';
 import { CommandOutput } from './command-output';
+import { flagName } from './flag-record';
 
 /** Shared with the command definition so renaming the command retains its advice. */
 export const ADD_RESOURCE_COMMAND_NAME = 'Add resource';
@@ -101,6 +102,11 @@ function preferredValidation(error: LingoTrackerError): CliErrorWording {
   };
 }
 
+function bracedPlaceholderWording(error: LingoTrackerError): CliErrorWording {
+  if (!(error instanceof BracedPlaceholderError)) return original(error);
+  return { message: `Value for locale "${error.locale}" is not valid:`, details: error.details };
+}
+
 /** Explicit even for unchanged messages: a new core/provider code requires a CLI decision. */
 const CLI_BY_CODE = {
   AUTO_TRANSLATION_DISABLED: (error) => ({
@@ -163,6 +169,7 @@ const CLI_BY_CODE = {
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
     message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
+  BRACED_PLACEHOLDER: bracedPlaceholderWording,
   RESOURCE_ALREADY_EXISTS: (error, commandName) =>
     commandName === ADD_RESOURCE_COMMAND_NAME
       ? {

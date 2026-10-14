@@ -1,17 +1,17 @@
-import { Component, ChangeDetectionStrategy, inject, input, computed, output, viewChild } from '@angular/core';
-import { ScrollingModule, CdkVirtualScrollViewport } from '@angular/cdk/scrolling';
 import { CdkDropList } from '@angular/cdk/drag-drop';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { CdkVirtualScrollViewport, ScrollingModule } from '@angular/cdk/scrolling';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, viewChild } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatIconModule } from '@angular/material/icon';
-import { BrowserStore } from '../../store/browser.store';
-import { TranslationItem } from './translation-item/translation-item';
-import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TranslocoPipe } from '@jsverse/transloco';
+import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
+import { BrowserStore } from '../../store/browser.store';
 import type { DragData } from '../../types/drag-data';
 import { TranslationListStore } from './store/translation-list.store';
+import { TranslationItem } from './translation-item/translation-item';
 
 @Component({
   selector: 'app-translation-list',

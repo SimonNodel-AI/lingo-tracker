@@ -1,5 +1,5 @@
-import type { InstallSkillOptions } from './install-skill';
 import { defineFlags, tokenCasingFlag } from '../runner/flag-record';
+import type { InstallSkillOptions } from './install-skill';
 
 export const INSTALL_SKILL_FLAGS = defineFlags<InstallSkillOptions>()({
   collection: {

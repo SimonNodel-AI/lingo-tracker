@@ -1,13 +1,13 @@
-import { describe, expect, it, vi } from 'vitest';
 import type {
-  ErrorCode,
   CollectionTagEditProblem,
-  ProtectedTermsEditProblem,
+  ErrorCode,
   PreferredTerminologyEditProblem,
+  ProtectedTermsEditProblem,
 } from '@simoncodes-ca/core';
-import * as core from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import { describe, expect, it, vi } from 'vitest';
 import { ERROR_CODES, PROVIDER_ERROR_CODES } from '../../../../libs/core/src/lib/errors/error-codes';
-import { ADD_RESOURCE_COMMAND_NAME, cliErrorWording, printCliError, type CliErrorWording } from './cli-error-wording';
+import * as core from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import { ADD_RESOURCE_COMMAND_NAME, type CliErrorWording, cliErrorWording, printCliError } from './cli-error-wording';
 import { defineCommand, runCommand } from './command-runner';
 
 interface Case {
@@ -25,6 +25,10 @@ const cases = {
   AUTO_TRANSLATION_DISABLED: changed(new core.AutoTranslationDisabledError('main'), {
     message:
       'Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
+  }),
+  BRACED_PLACEHOLDER: changed(new core.BracedPlaceholderError('en', ['first', 'second']), {
+    message: 'Value for locale "en" is not valid:',
+    details: ['first', 'second'],
   }),
   BASE_LOCALE_IMMUTABLE: unchanged(new core.BaseLocaleImmutableError('en')),
   BUNDLE_ALREADY_EXISTS: unchanged(new core.BundleAlreadyExistsError('main')),

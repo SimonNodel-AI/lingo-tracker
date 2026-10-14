@@ -1,4 +1,4 @@
-import { Directive, effect, ElementRef, inject, input } from '@angular/core';
+import { Directive, ElementRef, effect, inject, input } from '@angular/core';
 import { EditorFocus } from './editor-focus';
 import type { EditorFocusTarget } from './editor-panels';
 
