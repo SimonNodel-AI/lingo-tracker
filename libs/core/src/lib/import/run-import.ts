@@ -1,7 +1,7 @@
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Collection } from '../config/open-collection';
-import { ImportSourceError } from '../errors';
+import { ImportSourceError } from '../errors/internal';
 import type { RunOutcome } from '../run-outcome';
 import { detectImportFormat } from './import-common';
 import { importResources } from './import-resources';

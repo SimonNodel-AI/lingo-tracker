@@ -1,5 +1,5 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
-import { MultipleBundleConstantNameError } from '../errors';
+import { MultipleBundleConstantNameError } from '../errors/internal';
 import type { RunOutcome } from '../run-outcome';
 import {
   type GenerateBundleParams,

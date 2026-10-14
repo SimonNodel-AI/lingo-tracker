@@ -1,5 +1,7 @@
 // The public surface of @simoncodes-ca/core: the Node-side operations the API and CLI call.
-// Only names with an outside consumer, plus the types those names' signatures need, are listed.
+// Runtime names need a non-test consumer, a documented public contract, or a listed helper used by app specs.
+// index.spec.ts checks consumers in apps/*/src and other libraries and records each exception with its reason.
+// Types needed by callers and operation signatures remain public; sub-barrels own their named export lists.
 // Domain rules and types (TranslationStatus, TokenCasing, ImportStrategy, BundleDefinition, ...) come from @simoncodes-ca/domain.
 
 export type {
@@ -63,10 +65,8 @@ export type {
 export {
   type Collection,
   displayTermPath,
-  initConfig,
   type LoadPreferredTerminologyResult,
   loadConfig,
-  loadPreferredTerminology,
   openCollection,
   openProjectCollection,
   type ProjectTermsConfigView,
@@ -81,12 +81,7 @@ export {
 } from './lib/config';
 export { assertCollectionFields } from './lib/config/collection-entry';
 export type { InitProjectAnswers, InitProjectResult } from './lib/config/init-project';
-export {
-  DEFAULT_BUNDLE_DIST,
-  DEFAULT_BUNDLE_NAME,
-  DEFAULT_TYPE_DIST_FILE,
-  initProject,
-} from './lib/config/init-project';
+export { initProject } from './lib/config/init-project';
 export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
   ProjectTermsUpdate,
@@ -133,7 +128,7 @@ export type {
   NormalizeResult,
 } from './lib/normalize';
 // Operations: normalize, translate, validate
-export { emptyNormalizeCollectionsResult, normalize, normalizeCollections } from './lib/normalize';
+export { emptyNormalizeCollectionsResult, normalizeCollections } from './lib/normalize';
 export type {
   AddResourceOptions,
   AddResourceParams,
@@ -150,7 +145,6 @@ export type {
   ResourceTranslation,
 } from './lib/resource';
 // Operations: resources
-// ResourceFolder: one folder's entries and metadata, loaded and saved as a unit
 // Collection Reader: every entry of a collection, read through ResourceFolder
 // Read models: the resource tree, Resource Search and fingerprints behind the API's CollectionIndex and CLI find-similar
 export {
@@ -188,7 +182,6 @@ export {
   type SearchRequest,
   type SearchResult,
   type StoredResource,
-  saveReporting,
   searchResources,
   type TreeFingerprint,
 } from './lib/resource';
@@ -217,11 +210,7 @@ export type {
   TranslationRunExecutionOptions,
   TranslationRunOptions,
 } from './lib/translation';
-export {
-  assertAutoTranslationEnabled,
-  prepareTranslationRun,
-  translateExistingResource,
-} from './lib/translation';
+export { prepareTranslationRun, translateExistingResource } from './lib/translation';
 export type {
   ResourceValidationResult,
   ValidateRunOptions,
