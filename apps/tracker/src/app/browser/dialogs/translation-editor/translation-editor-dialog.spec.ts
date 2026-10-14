@@ -88,7 +88,6 @@ describe('TranslationEditorDialog', () => {
 
   const dialogData = createMockData('create');
 
-  /** Lets the deferred focus task the dialog queues after a confirmation run. */
   describe('Tag input', () => {
     it('should reset the typed-text signal on Enter even when the text is blank', () => {
       spectator.detectChanges();
@@ -295,7 +294,7 @@ describe('TranslationEditorDialog', () => {
       expect(apiSpies.createResource).not.toHaveBeenCalled();
     });
 
-    it('should not submit invalid form on Ctrl+Enter', () => {
+    it('should not submit invalid form on Ctrl+Enter', async () => {
       component.session.form.controls.key.setValue('');
       component.session.form.controls.baseValue.setValue('');
 
@@ -304,9 +303,12 @@ describe('TranslationEditorDialog', () => {
         ctrlKey: true,
       });
 
-      component.onCtrlEnter(event);
+      await component.onCtrlEnter(event);
+      spectator.detectChanges();
 
       expect(dialogRef.close).not.toHaveBeenCalled();
+      await flushFocus();
+      expect(document.activeElement).toBe(spectator.query('#translation-editor-key'));
     });
   });
 
@@ -339,14 +341,12 @@ describe('TranslationEditorDialog', () => {
       component.session.form.controls.comment.setValue('');
 
       await component.session.onSubmit();
-      // Focus is deferred a task past afterClosed() so the confirmation's focus
-      // trap cannot restore focus to the Save button on top of it. The dialog's
-      // focus effect runs with change detection, as it does in the app.
+      // Editor Focus waits for render and the closing confirmation's queued focus restoration.
       spectator.detectChanges();
-      await flushFocus();
 
       const commentField = spectator.query('#translation-editor-comment');
       expect(commentField).toBeTruthy();
+      await flushFocus();
       expect(document.activeElement).toBe(commentField);
     });
 
@@ -360,10 +360,10 @@ describe('TranslationEditorDialog', () => {
 
       await component.session.onSubmit();
       spectator.detectChanges();
-      await flushFocus();
 
       const commentField = spectator.query('#translation-editor-comment');
       expect(commentField).toBeTruthy();
+      await flushFocus();
       expect(document.activeElement).toBe(commentField);
     });
 
@@ -377,9 +377,9 @@ describe('TranslationEditorDialog', () => {
 
       await component.session.onSubmit();
       spectator.detectChanges();
-      await flushFocus();
 
       const commentField = spectator.query<HTMLTextAreaElement>('#translation-editor-comment');
+      await flushFocus();
       expect(commentField?.selectionStart).toBe(0);
       expect(commentField?.selectionEnd).toBe(3);
     });
@@ -457,13 +457,32 @@ describe('TranslationEditorDialog', () => {
 
       await component.session.onSubmit();
       spectator.detectChanges();
-      await flushFocus();
 
       const row = spectator.query<HTMLTextAreaElement>('[data-testid="locales-drawer"] textarea');
       expect(component.session.panels.isLocalesDrawerOpen()).toBe(true);
       expect(spectator.query('#translation-editor-locale-error-0')?.querySelector('code')?.textContent).toBe('{{who}}');
+      await flushFocus();
       expect(document.activeElement).toBe(row);
       expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('should focus a later invalid locale after Ctrl+Enter instead of the first drawer control', async () => {
+      component.session.form.controls.key.setValue('test_key');
+      component.session.form.controls.baseValue.setValue('Test Value');
+      component.session.getLocaleFormGroup(1).controls.value.setValue('Hallo {{{who}}}');
+      component.session.panels.openFolderPopover();
+      spectator.detectChanges();
+
+      await component.onCtrlEnter(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true }));
+      spectator.detectChanges();
+
+      const rows = spectator.queryAll<HTMLTextAreaElement>('[data-testid="locales-drawer"] textarea');
+      expect(rows).toHaveLength(2);
+      expect(component.session.panels.isFolderPopoverOpen()).toBe(false);
+      expect(component.session.panels.isLocalesDrawerOpen()).toBe(true);
+      await flushFocus();
+      expect(document.activeElement).toBe(rows[1]);
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
     });
 
     it('should edit the same FormArray the save path reads', () => {
@@ -884,12 +903,47 @@ describe('TranslationEditorDialog', () => {
   });
 
   describe('Focus handling', () => {
-    beforeEach(() => {
-      vi.useFakeTimers();
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('should close covering panels and focus the invalid base value after a failed save', async () => {
+      component.session.form.controls.key.setValue('valid');
+      component.session.form.controls.baseValue.setValue('');
+      component.session.panels.openLocalesDrawer();
+      component.session.panels.openFolderPopover();
+      spectator.detectChanges();
+      vi.advanceTimersByTime(0);
+
+      await component.session.onSubmit();
+      spectator.detectChanges();
+      vi.advanceTimersByTime(0);
+
+      expect(component.session.panels.isFolderPopoverOpen()).toBe(false);
+      expect(component.session.panels.isLocalesDrawerOpen()).toBe(false);
+      expect(document.activeElement).toBe(spectator.query('#translation-editor-base-value'));
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
+    it('should keep comment focus after the closing confirmation restores focus to Save in a later task', async () => {
+      mockDialog.open.mockReturnValue({ afterClosed: vi.fn().mockReturnValue(of(false)) });
+      component.session.form.patchValue({ key: 'test_key', baseValue: 'Test Value', comment: '' });
+      spectator.detectChanges();
+      vi.advanceTimersByTime(0);
+      const save = spectator.query<HTMLButtonElement>('[data-testid="submit"]');
+      if (save === null) throw new Error('Missing Save button');
+      const restored = vi.fn();
+
+      await component.session.onSubmit();
+      setTimeout(() => {
+        save.focus();
+        restored(document.activeElement);
+      });
+      spectator.detectChanges();
+      vi.advanceTimersByTime(0);
+
+      expect(restored).toHaveBeenCalledExactlyOnceWith(save);
+      expect(document.activeElement).toBe(spectator.query('#translation-editor-comment'));
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
     });
 
     it('should move focus into the drawer and hand it back on Done', () => {
@@ -1091,8 +1145,8 @@ describe('TranslationEditorDialog', () => {
       type('Expenditure');
 
       spectator.click('[data-testid="preferred-term-use"]');
-      vi.advanceTimersByTime(0);
 
+      vi.advanceTimersByTime(0);
       expect(document.activeElement).toBe(baseTextarea());
     });
 

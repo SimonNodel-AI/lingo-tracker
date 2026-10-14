@@ -1,8 +1,8 @@
-import { Component, effect, inject, signal } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { EditorFocus } from './editor-focus';
+import { EditorFocus, type EditorFocusTarget } from './editor-focus';
 import { EditorFocusAnchorDirective } from './editor-focus-anchor';
-import { type EditorFocusTarget, EditorPanels } from './editor-panels';
+import { EditorPanels } from './editor-panels';
 
 @Component({
   imports: [EditorFocusAnchorDirective],
@@ -17,19 +17,15 @@ class Host {
   readonly newerVisible = signal(false);
   readonly target = signal<EditorFocusTarget | null>('folder-filter');
   readonly focus = inject(EditorFocus);
-  readonly panels = new EditorPanels({ canOpenFolderPopover: () => true, canOpenLocalesDrawer: () => true });
-
-  constructor() {
-    effect((onCleanup) => {
-      const request = this.panels.focusRequest();
-      if (request === null) return;
-      const timer = setTimeout(() => this.focus.focus(request.target));
-      onCleanup(() => clearTimeout(timer));
-    });
-  }
+  readonly panels = new EditorPanels({
+    editorFocus: this.focus,
+    canOpenFolderPopover: () => true,
+    canOpenLocalesDrawer: () => true,
+  });
 }
 
 describe('EditorFocusAnchorDirective', () => {
+  beforeEach(() => vi.useFakeTimers());
   afterEach(() => {
     TestBed.resetTestingModule();
     vi.useRealTimers();
@@ -38,62 +34,78 @@ describe('EditorFocusAnchorDirective', () => {
   it('registers the element and unregisters it when its conditional view is destroyed', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const element = (fixture.nativeElement as HTMLElement).querySelector('input');
     expect(element).toBeDefined();
     if (element === null) return;
     const focus = vi.spyOn(element, 'focus');
-    fixture.componentInstance.focus.focus('folder-filter');
+    fixture.componentInstance.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).toHaveBeenCalledTimes(1);
     fixture.componentInstance.visible.set(false);
     fixture.detectChanges();
-    fixture.componentInstance.focus.focus('folder-filter');
+    vi.advanceTimersByTime(0);
+    fixture.componentInstance.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).toHaveBeenCalledTimes(1);
   });
 
   it('moves its registration when the target changes and removes it for a null target', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const element = (fixture.nativeElement as HTMLElement).querySelector('input');
     if (element === null) throw new Error('Missing focus anchor');
     const focus = vi.spyOn(element, 'focus');
     fixture.componentInstance.target.set('key');
     fixture.detectChanges();
-    fixture.componentInstance.focus.focus('folder-filter');
+    vi.advanceTimersByTime(0);
+    fixture.componentInstance.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).not.toHaveBeenCalled();
-    fixture.componentInstance.focus.focus('key');
+    fixture.componentInstance.focus.request('key');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).toHaveBeenCalledTimes(1);
     fixture.componentInstance.target.set(null);
     fixture.detectChanges();
-    fixture.componentInstance.focus.focus('key');
+    vi.advanceTimersByTime(0);
+    fixture.componentInstance.focus.request('key');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).toHaveBeenCalledTimes(1);
   });
 
   it('lands a deferred focus request on an element rendered after the request', () => {
-    vi.useFakeTimers();
     const fixture = TestBed.createComponent(Host);
     const host = fixture.componentInstance;
     host.visible.set(false);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     host.panels.openFolderPopover();
     host.visible.set(true);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const element = (fixture.nativeElement as HTMLElement).querySelector('input');
     if (element === null) throw new Error('Missing focus anchor');
-    const focus = vi.spyOn(element, 'focus');
-    expect(focus).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(0);
-    expect(focus).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(element);
   });
 
   it('unregisters the element when the host is destroyed', () => {
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const element = (fixture.nativeElement as HTMLElement).querySelector('input');
     if (element === null) throw new Error('Missing focus anchor');
     const focus = vi.spyOn(element, 'focus');
     const registry = fixture.componentInstance.focus;
     fixture.destroy();
-    registry.focus('folder-filter');
+    registry.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focus).not.toHaveBeenCalled();
   });
 
@@ -101,6 +113,7 @@ describe('EditorFocusAnchorDirective', () => {
     const fixture = TestBed.createComponent(Host);
     const host = fixture.componentInstance;
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const root = fixture.nativeElement as HTMLElement;
     const older = root.querySelector<HTMLInputElement>('[data-testid="older"]');
     if (older === null) throw new Error('Missing older focus anchor');
@@ -108,28 +121,52 @@ describe('EditorFocusAnchorDirective', () => {
 
     host.newerVisible.set(true);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const newer = root.querySelector<HTMLInputElement>('[data-testid="newer"]');
     if (newer === null) throw new Error('Missing newer focus anchor');
     const focusNewer = vi.spyOn(newer, 'focus');
-    host.focus.focus('folder-filter');
+    host.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focusNewer).toHaveBeenCalledOnce();
     expect(focusOlder).not.toHaveBeenCalled();
 
     host.newerVisible.set(false);
     fixture.detectChanges();
-    host.focus.focus('folder-filter');
+    vi.advanceTimersByTime(0);
+    host.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focusOlder).toHaveBeenCalledOnce();
     expect(focusNewer).toHaveBeenCalledOnce();
 
     host.newerVisible.set(true);
     fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     const replacement = root.querySelector<HTMLInputElement>('[data-testid="newer"]');
     if (replacement === null) throw new Error('Missing replacement focus anchor');
     const focusReplacement = vi.spyOn(replacement, 'focus');
     host.visible.set(false);
     fixture.detectChanges();
-    host.focus.focus('folder-filter');
+    vi.advanceTimersByTime(0);
+    host.focus.request('folder-filter');
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
     expect(focusReplacement).toHaveBeenCalledOnce();
     expect(focusOlder).toHaveBeenCalledOnce();
+  });
+
+  it('cancels pending focus when the host is destroyed', () => {
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    vi.advanceTimersByTime(0);
+    const focus = fixture.componentInstance.focus;
+    const anchor = { focus: vi.fn() };
+    focus.register('key', anchor);
+    focus.request('key');
+    fixture.destroy();
+    TestBed.tick();
+    vi.advanceTimersByTime(0);
+    expect(anchor.focus).not.toHaveBeenCalled();
   });
 });

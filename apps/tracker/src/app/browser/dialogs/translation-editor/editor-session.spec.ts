@@ -86,7 +86,7 @@ describe('EditorSession', () => {
       activeLang: () => 'en',
       confirm,
       close: dialogRef.close,
-      focus,
+      editorFocus: { request: focus },
       feedbackText: (feedback) => feedbackText(feedback, translate),
       notifications: { success: vi.fn(), error: vi.fn() },
     });
@@ -769,7 +769,7 @@ describe('EditorSession', () => {
     expect(session.errorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS);
     expect(session.panels.isFolderPopoverOpen()).toBe(false);
     expect(session.panels.isLocalesDrawerOpen()).toBe(false);
-    expect(focus).toHaveBeenCalledExactlyOnceWith('key');
+    expect(focus.mock.calls).toEqual([['drawer-first-control'], ['folder-filter'], ['key']]);
     expect(dialogRef.close).not.toHaveBeenCalled();
   });
 
@@ -783,7 +783,7 @@ describe('EditorSession', () => {
     confirm.mockResolvedValue(false);
     session.form.patchValue({ key: 'valid', baseValue: 'Value' });
     await session.onSubmit();
-    expect(session.panels.focusRequest()?.target).toBe('comment');
+    expect(focus).toHaveBeenLastCalledWith('comment');
     expect(dialogRef.close).not.toHaveBeenCalled();
   });
 
