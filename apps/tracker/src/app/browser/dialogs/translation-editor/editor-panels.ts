@@ -6,6 +6,7 @@ export type EditorFocusTarget =
   | 'locales-row'
   | 'folder-filter'
   | 'drawer-first-control'
+  | 'invalid-locale-value'
   | 'key'
   | 'comment'
   | 'base-value';

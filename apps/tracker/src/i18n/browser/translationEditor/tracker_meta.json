@@ -1318,5 +1318,35 @@
       "baseChecksum": "1efa1e85283ed4a018441b35da7c49fb",
       "status": "translated"
     }
+  },
+  "bracedPlaceholderX": {
+    "en": {
+      "checksum": "a35988e5943c9be437437f4c3502231b"
+    },
+    "es": {
+      "checksum": "4493b97a6010010c6ab97a9d679ea211",
+      "baseChecksum": "a35988e5943c9be437437f4c3502231b",
+      "status": "translated"
+    },
+    "fr-ca": {
+      "checksum": "9b940d809323417e4f6f89391535ae7f",
+      "baseChecksum": "a35988e5943c9be437437f4c3502231b",
+      "status": "translated"
+    },
+    "ru": {
+      "checksum": "c9ba05103aa5e6263db8b0240953ca71",
+      "baseChecksum": "a35988e5943c9be437437f4c3502231b",
+      "status": "translated"
+    },
+    "ja": {
+      "checksum": "cdee5410e5bef3efdf2e698592461eae",
+      "baseChecksum": "a35988e5943c9be437437f4c3502231b",
+      "status": "translated"
+    },
+    "de": {
+      "checksum": "fe169986c6ddcb94bb9e5a001dfa3805",
+      "baseChecksum": "a35988e5943c9be437437f4c3502231b",
+      "status": "translated"
+    }
   }
 }

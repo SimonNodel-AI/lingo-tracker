@@ -90,6 +90,8 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'browser.toast.createFolderFailed': 'Failed to create folder',
         'browser.toast.deleteFolderFailed': 'Failed to delete folder',
         'browser.translationEditor.closeDialog': 'Close dialog',
+        'browser.translationEditor.bracedPlaceholderX':
+          '{{ placeholder }} is inside literal braces. Quote them: {{ example }}.',
         'browser.translationEditor.translationKey': 'Translation Key',
         'browser.translationEditor.keyHint':
           'Entry name only — paste a full dotted key and its folder part moves to Location',

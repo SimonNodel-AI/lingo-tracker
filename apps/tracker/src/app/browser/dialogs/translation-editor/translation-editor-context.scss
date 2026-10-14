@@ -367,6 +367,11 @@
   grid-row: 2;
 }
 
+.lrow-error {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
 .auto-tag {
   display: inline-flex;
   align-items: center;

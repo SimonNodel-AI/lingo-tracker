@@ -163,7 +163,17 @@
         </div>
         @if (session.showBaseValueError()) {
           <p id="translation-editor-base-value-error" class="field-error" role="alert">
-            {{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEVALUEREQUIRED | transloco }}
+            @if (session.form.controls.baseValue.hasError('required')) {
+              {{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEVALUEREQUIRED | transloco }}
+            } @else {
+              <!-- The params carry escaped markup; the name in them is translator input. -->
+              <span
+                [innerHTML]="
+                  TOKENS.BROWSER.TRANSLATIONEDITOR.BRACEDPLACEHOLDERX
+                    | transloco: presentation.bracedPlaceholderParams(session.form.controls.baseValue)
+                "
+              ></span>
+            }
           </p>
         } @else {
           <p id="translation-editor-icu-hint" class="field-hint field-hint--icon">
@@ -412,7 +422,9 @@
 
               <div class="text-input text-input--area lrow-value">
                 <textarea
-                  [editorFocusAnchor]="i === 0 ? 'drawer-first-control' : null"
+                  [editorFocusAnchor]="
+                    i === session.firstInvalidLocaleIndex() ? 'invalid-locale-value' : i === 0 ? 'drawer-first-control' : null
+                  "
                   cdkTextareaAutosize
                   cdkAutosizeMinRows="1"
                   cdkAutosizeMaxRows="6"
@@ -428,8 +440,20 @@
                       : TOKENS.BROWSER.TRANSLATIONEDITOR.LEAVEEMPTYTOAUTOTRANSLATE
                     ) | transloco
                   "
+                  [attr.aria-invalid]="session.showLocaleValueError(i)"
+                  [attr.aria-describedby]="session.showLocaleValueError(i) ? 'translation-editor-locale-error-' + i : null"
                 ></textarea>
               </div>
+              @if (session.showLocaleValueError(i)) {
+                <p [id]="'translation-editor-locale-error-' + i" class="field-error lrow-error" role="alert">
+                  <span
+                    [innerHTML]="
+                      TOKENS.BROWSER.TRANSLATIONEDITOR.BRACEDPLACEHOLDERX
+                        | transloco: presentation.bracedPlaceholderParams(localeGroup.controls.value)
+                    "
+                  ></span>
+                </p>
+              }
             </div>
           }
         </div>

@@ -147,6 +147,30 @@ describe('EditorPresentation', () => {
     expect(presentation.baseValueDescribedBy()).toBe('translation-editor-icu-hint');
   });
 
+  it('builds braced-placeholder params only when the control has the error', () => {
+    const control = entry.form.controls.baseValue;
+    control.setValue('Hi {{name}}');
+    expect(presentation.bracedPlaceholderParams(control)).toBeNull();
+
+    control.setValue('Hi {{{name}}}');
+    expect(presentation.bracedPlaceholderParams(control)).toEqual({
+      placeholder: '<code>&#123;&#123;name&#125;&#125;</code>',
+      example: "<code>'&#123;'&#123;&#123;name&#125;&#125;'&#125;'</code>",
+    });
+  });
+
+  it('escapes a hostile placeholder name in the braced-placeholder params', () => {
+    const control = entry.form.controls.baseValue;
+    control.setErrors({ bracedPlaceholder: { name: '<img src=x onerror=alert(1)>' } });
+    const params = presentation.bracedPlaceholderParams(control);
+
+    expect(params).not.toBeNull();
+    expect(params?.placeholder).not.toContain('<img');
+    expect(params?.placeholder).toContain('&#60;img');
+    expect(params?.example).toContain('&#60;img');
+    expect(params?.example).not.toContain('<img');
+  });
+
   it('keeps the app-owned ICU placeholder markup', () => {
     expect(presentation.icuPlaceholderMarkup).toBe('<code>&#123;count&#125;</code>');
   });
