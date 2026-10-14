@@ -26,7 +26,10 @@ const cases = {
     message:
       'Auto-translation is not enabled for collection "main". Set translation.enabled = true in your configuration',
   }),
-  BRACED_PLACEHOLDER: unchanged(new core.BracedPlaceholderError('en', ['braced'])),
+  BRACED_PLACEHOLDER: changed(new core.BracedPlaceholderError('en', ['first', 'second']), {
+    message: 'Value for locale "en" is not valid:',
+    details: ['first', 'second'],
+  }),
   BASE_LOCALE_IMMUTABLE: unchanged(new core.BaseLocaleImmutableError('en')),
   BUNDLE_ALREADY_EXISTS: unchanged(new core.BundleAlreadyExistsError('main')),
   BUNDLE_HIERARCHICAL_CONFLICT: unchanged(new core.BundleHierarchicalConflictError('main', ['a.b'])),

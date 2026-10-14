@@ -10,11 +10,13 @@ describe('normalizeCollections', () => {
   it('carries collection findings separately from numeric totals', async () => {
     writeFolderFiles(root(), 'common', { entries: { ok: { source: '{p, plural, offset:2other{x}}' } } });
     const collection = testCollection(root(), { name: 'Main' });
-    const dry = await normalizeCollections([collection], { dryRun: true });
     const result = await normalizeCollections([collection]);
-    expect(result.findings).toEqual(dry.findings);
-    expect(result.findings).toEqual([{ collectionName: 'Main', ...result.collections[0]?.findings[0] }]);
-    expect(result.findings[0]).toMatchObject({ key: 'common.ok', locale: 'en', kind: 'collapsed-case-body' });
+    expect(result).not.toHaveProperty('findings');
+    expect(result.collections[0]?.findings[0]).toMatchObject({
+      key: 'common.ok',
+      locale: 'en',
+      kind: 'collapsed-case-body',
+    });
     expect(Object.values(result.totals).every((value) => typeof value === 'number')).toBe(true);
   });
   afterEach(() => vi.restoreAllMocks());

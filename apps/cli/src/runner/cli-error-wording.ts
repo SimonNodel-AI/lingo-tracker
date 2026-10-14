@@ -1,4 +1,5 @@
 import {
+  BracedPlaceholderError,
   CONFIG_FILENAME,
   type CollectionTagEditProblem,
   type ErrorCode,
@@ -101,6 +102,11 @@ function preferredValidation(error: LingoTrackerError): CliErrorWording {
   };
 }
 
+function bracedPlaceholderWording(error: LingoTrackerError): CliErrorWording {
+  if (!(error instanceof BracedPlaceholderError)) return original(error);
+  return { message: `Value for locale "${error.locale}" is not valid:`, details: error.details };
+}
+
 /** Explicit even for unchanged messages: a new core/provider code requires a CLI decision. */
 const CLI_BY_CODE = {
   AUTO_TRANSLATION_DISABLED: (error) => ({
@@ -163,7 +169,7 @@ const CLI_BY_CODE = {
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
     message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
-  BRACED_PLACEHOLDER: original,
+  BRACED_PLACEHOLDER: bracedPlaceholderWording,
   RESOURCE_ALREADY_EXISTS: (error, commandName) =>
     commandName === ADD_RESOURCE_COMMAND_NAME
       ? {

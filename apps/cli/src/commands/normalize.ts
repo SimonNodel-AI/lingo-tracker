@@ -103,7 +103,7 @@ function reportNormalize(
   const summary = result.totals;
   return printRunReport({
     presentation: options.json
-      ? { kind: 'json', payload: { collections: result.collections, totals: result.totals, findings: result.findings } }
+      ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
       : { kind: 'text' },
     section: collectionCount > 1 ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
     counts:

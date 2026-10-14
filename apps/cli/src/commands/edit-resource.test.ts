@@ -24,7 +24,19 @@ describe('editResourceCommand (real project)', () => {
     const found = findBracedPlaceholders('{{{a}}}')[0];
     expect(found).toBeDefined();
     if (!found) throw new Error('Missing finding');
-    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid: ${describeBracedPlaceholder(found)}\n`);
+    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid:\n  ${describeBracedPlaceholder(found)}\n`);
+    expect(entries()).toEqual(before);
+  });
+  it('prints every braced placeholder finding and preserves the entry', async () => {
+    const before = entries();
+    const value = '{{{a}}} and {{{b}}}';
+    const result = await project.run(editResourceCommand, { key, baseValue: value });
+    const found = findBracedPlaceholders(value);
+    expect(found).toHaveLength(2);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe(
+      `❌ Value for locale "en" is not valid:\n${found.map((finding) => `  ${describeBracedPlaceholder(finding)}\n`).join('')}`,
+    );
     expect(entries()).toEqual(before);
   });
   it('updates the base value and reports success', async () => {

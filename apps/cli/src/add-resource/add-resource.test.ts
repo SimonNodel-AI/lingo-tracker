@@ -22,7 +22,7 @@ describe('addResourceCommand (real project)', () => {
     if (!found) throw new Error('Missing finding');
     const result = await project.run(addResourceCommand, { ...flags, value });
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid: ${describeBracedPlaceholder(found)}\n`);
+    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid:\n  ${describeBracedPlaceholder(found)}\n`);
     expect(project.exists('translations/main/buttons')).toBe(false);
   });
   it('trims comma-string tags from an interactive answer', async () => {
