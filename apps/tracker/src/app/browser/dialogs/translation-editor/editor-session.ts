@@ -14,15 +14,14 @@ import { copyWithFeedback } from '../../../shared/clipboard';
 import type { ConfirmationSpec, ConfirmOptions } from '../../../shared/confirm';
 import type { NotificationService } from '../../../shared/notification';
 import { hasSearchLength } from '../../../shared/search/search-minimum';
-import { createFlash, createRestartableDelay } from '../../../shared/timed-transients';
+import { createFlash } from '../../../shared/timed-transients';
 import type { TokenTranslator } from '../../../shared/translate-token';
 import type { Feedback } from '../../feedback';
 import type { SimilarValues } from '../../services/similar-values';
 import type { BrowserStore } from '../../store/browser.store';
 import { filterFolderTree } from '../../store/folder-tree.utils';
-import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisories';
+import { EditorAdvisories, suggestTags } from './editor-advisories';
 import { EditorEntryForm } from './editor-entry-form';
-import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import type { EditorFocus } from './editor-focus';
 import { EditorPanels } from './editor-panels';
@@ -62,10 +61,7 @@ export interface EditorSessionOptions {
 /** Composes one editor's form, location, advice, panels and save protocol into its view model. */
 export class EditorSession {
   readonly #subscriptions = new Subscription();
-  #destroyed = false;
-  #animationFrame = 0;
   readonly #copyFlash = createFlash(1500);
-  readonly #locationDelay = createRestartableDelay(900);
 
   readonly presentation: EditorPresentation;
 
@@ -85,9 +81,9 @@ export class EditorSession {
   readonly preferredTermFindings: EditorAdvisories['preferredTermFindings'];
   readonly similarResources: EditorAdvisories['similarResources'];
   /** True while the location pill is highlighting a folder it just absorbed from the key field. */
-  readonly locationAbsorbedFlash = signal(false);
+  readonly locationAbsorbedFlash: EditorLocation['absorbedFlash'];
   /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
-  readonly locationAbsorbedMessage = signal('');
+  readonly locationAbsorbedMessage: EditorLocation['absorbedMessage'];
   /** Set once the user attempts to save, so errors surface on untouched fields too. */
   readonly submitAttempted = signal(false);
   /** True for a moment after the footer key is copied, so the button can confirm it. */
@@ -169,16 +165,7 @@ export class EditorSession {
   /** The folder the popover's primary button would commit. */
   readonly popoverFolderPath = computed(() => this.panels.stagedFolderPath() ?? this.location.selectedFolderPath());
 
-  readonly #tagSuggestions: Signal<string[]>;
-
-  readonly filteredTagSuggestions = computed(() =>
-    filteredEditorTagSuggestions(
-      this.tagInputText(),
-      this.entry.tags(),
-      this.inheritedTagsList(),
-      this.#tagSuggestions(),
-    ),
-  );
+  readonly filteredTagSuggestions: Signal<string[]>;
 
   constructor(
     private readonly data: TranslationEditorDialogData,
@@ -198,9 +185,13 @@ export class EditorSession {
       browserFolderPath: this.options.browser.currentFolderPath,
       browserEntries: this.options.browser.translations,
       peek: this.options.peek,
+      absorbedLabel: (folder) =>
+        this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.LOCATIONFROMKEYX, { folder }),
       moreLabel: (count) =>
         this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
     });
+    this.locationAbsorbedFlash = this.location.absorbedFlash;
+    this.locationAbsorbedMessage = this.location.absorbedMessage;
     this.contextTree = this.location.contextTree;
     this.folderSegments = this.location.folderSegments;
     this.fullKeyPreview = this.location.fullKeyPreview;
@@ -218,7 +209,12 @@ export class EditorSession {
       onWriteStart: () => this.errorMessage.set(null),
     });
     this.isSubmitting = this.submit.isSubmitting;
-    this.#tagSuggestions = editorTagSuggestions(options.browser);
+    this.filteredTagSuggestions = suggestTags({
+      entries: options.browser.translations,
+      inputText: this.tagInputText,
+      tags: this.entry.tags,
+      inheritedTags: this.inheritedTagsList,
+    });
     this.presentation = new EditorPresentation(
       {
         isEditMode: this.isEditMode,
@@ -280,9 +276,6 @@ export class EditorSession {
   }
 
   destroy(): void {
-    this.#destroyed = true;
-    cancelAnimationFrame(this.#animationFrame);
-    this.#locationDelay.destroy();
     this.#copyFlash.destroy();
     this.#subscriptions.unsubscribe();
     this.advisories.destroy();
@@ -322,10 +315,6 @@ export class EditorSession {
         }
 
         this.#setKeyControl(absorbed.leaf);
-
-        if (absorbed.folder !== undefined) {
-          this.#announceLocationAbsorbed(absorbed.folder);
-        }
       }),
     );
   }
@@ -337,24 +326,6 @@ export class EditorSession {
     control.markAsDirty();
     control.updateValueAndValidity({ emitEvent: false });
     this.entry.publishSnapshot();
-  }
-
-  /**
-   * The prefix leaves the field the user is looking at and lands in a pill above
-   * it, so say so twice: a highlight for the eye, a live region for the reader.
-   */
-  #announceLocationAbsorbed(folderPath: string): void {
-    this.locationAbsorbedMessage.set(
-      this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.LOCATIONFROMKEYX, { folder: folderPath }),
-    );
-
-    this.locationAbsorbedFlash.set(false);
-    // Let the class drop for a frame so a second paste re-runs the animation.
-    cancelAnimationFrame(this.#animationFrame);
-    this.#animationFrame = requestAnimationFrame(() => {
-      if (!this.#destroyed) this.locationAbsorbedFlash.set(true);
-    });
-    this.#locationDelay.schedule(() => this.locationAbsorbedFlash.set(false));
   }
 
   /** Confirms the folder staged in the popover and closes it. */

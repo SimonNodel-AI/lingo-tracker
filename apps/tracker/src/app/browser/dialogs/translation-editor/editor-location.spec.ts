@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { type Observable, of, Subject } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EditorLocation, type EditorLocationOptions } from './editor-location';
 
 const entry = (fullKey: string): ResourceSummaryDto => {
@@ -18,6 +18,8 @@ const entry = (fullKey: string): ResourceSummaryDto => {
   };
 };
 
+const locations: EditorLocation[] = [];
+
 function setup(overrides: Partial<EditorLocationOptions> = {}) {
   const folderEntries = signal<ReadonlyMap<string, readonly string[]>>(new Map());
   const loadingFolders = signal<ReadonlySet<string>>(new Set());
@@ -33,13 +35,71 @@ function setup(overrides: Partial<EditorLocationOptions> = {}) {
     browserFolderPath: signal(''),
     browserEntries: signal([]),
     peek: { folderEntries, loadingFolders, peekFolder },
+    absorbedLabel: (folder) => `Location set to ${folder}`,
     moreLabel: (hidden) => `+${hidden} more`,
     ...overrides,
   });
+  locations.push(location);
   return { location, folderEntries, loadingFolders, responses, peekFolder };
 }
 
 describe('EditorLocation', () => {
+  afterEach(() => {
+    locations.splice(0).forEach((location) => {
+      location.destroy();
+    });
+  });
+
+  it('restarts the absorption highlight delay and releases pending work on destroy', () => {
+    const { location } = setup();
+    vi.useFakeTimers();
+    try {
+      location.typeKey('first.key');
+      expect(location.absorbedFlash()).toBe(false);
+      vi.advanceTimersByTime(20);
+      expect(location.absorbedFlash()).toBe(true);
+      vi.advanceTimersByTime(800);
+      location.typeKey('second.key');
+      expect(location.absorbedFlash()).toBe(false);
+      vi.advanceTimersByTime(100);
+      expect(location.absorbedFlash()).toBe(true);
+      vi.advanceTimersByTime(800);
+      expect(location.absorbedFlash()).toBe(false);
+      location.typeKey('third.key');
+      location.destroy();
+      vi.runAllTimers();
+      expect(location.absorbedFlash()).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('announces each absorbed folder and leaves the announcement for ordinary keys and picks', () => {
+    const { location } = setup();
+    location.typeKey('apps.common.ok');
+    expect(location.absorbedMessage()).toBe('Location set to apps.common');
+    location.typeKey('buttons.ok');
+    expect(location.absorbedMessage()).toBe('Location set to apps.common.buttons');
+    location.typeKey('cancel');
+    location.pick('chosen');
+    expect(location.absorbedMessage()).toBe('Location set to apps.common.buttons');
+    location.destroy();
+  });
+
+  it('does not announce or flash keys in edit mode or keys without an absorbed folder', () => {
+    const { location } = setup({ mode: 'edit' });
+    location.typeKey('apps.common.ok');
+    expect(location.absorbedMessage()).toBe('');
+    expect(location.absorbedFlash()).toBe(false);
+    location.destroy();
+    const created = setup().location;
+    created.typeKey('ok');
+    created.typeKey('bad prefix.ok');
+    expect(created.absorbedMessage()).toBe('');
+    expect(created.absorbedFlash()).toBe(false);
+    created.destroy();
+  });
+
   it('extends the absorbed folder when typing a. then b.', () => {
     const { location } = setup();
 
