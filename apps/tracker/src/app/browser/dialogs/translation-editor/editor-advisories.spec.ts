@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { FormControl } from '@angular/forms';
-import type { LingoTrackerConfigDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
+import type { LingoTrackerConfigDto, ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { EMPTY, Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SimilarSuggestion } from '../../services/similar-values';
@@ -9,6 +9,7 @@ import {
   exactSimilarMatch,
   filteredEditorTagSuggestions,
   PREFERRED_TERM_DEBOUNCE_MS,
+  suggestTags,
 } from './editor-advisories';
 
 describe('EditorAdvisories', () => {
@@ -89,6 +90,25 @@ describe('EditorAdvisories', () => {
       exactSimilarMatch(' clear search ', [hit('first', 'Clear All'), hit('second', ' Clear Search ')])?.fullKey,
     ).toBe('second');
     expect(exactSimilarMatch('  ', [hit('first', '')])).toBeUndefined();
+  });
+
+  it('derives sorted unique tag suggestions from live collection entries and filters them', () => {
+    const entries = signal<ResourceSummaryDto[]>([
+      { ...hit('first', 'Value'), tags: ['ui', 'browser', 'browse'] },
+      { ...hit('second', 'Value'), tags: ['browser', 'broad'] },
+    ]);
+    const inputText = signal('');
+    const tags = signal(['browser']);
+    const inheritedTags = signal(['broad']);
+    const suggestions = suggestTags({ entries, inputText, tags, inheritedTags });
+    expect(suggestions()).toEqual(['browse', 'ui']);
+    inputText.set('BRO');
+    expect(suggestions()).toEqual(['browse']);
+    tags.set([]);
+    inheritedTags.set([]);
+    expect(suggestions()).toEqual(['broad', 'browse', 'browser']);
+    entries.set([{ ...hit('third', 'Value'), tags: ['broccoli'] }]);
+    expect(suggestions()).toEqual(['broccoli']);
   });
 
   it('filters used and inherited tags using the typed substring', () => {

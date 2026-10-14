@@ -4,7 +4,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { ApiError, type ApiErrorKind } from '../../../shared/api-error/api-error';
 import { feedbackText } from '../../feedback';
-import { type EditorRefusal, type EditorWrites, refusalDecision, submitEditor, submitGate } from './editor-submit';
+import {
+  type EditorRefusal,
+  type EditorWrites,
+  refusalDecision,
+  submitEditor,
+  EditorSubmitSession,
+  type EditorSubmitTrigger,
+} from './editor-submit';
 import type { ResourceEntryDraft } from './resource-entry-draft';
 
 const draft: ResourceEntryDraft = {
@@ -187,30 +194,64 @@ describe('submitEditor refusals', () => {
   }
 });
 
-describe('submitGate', () => {
-  const blocked = { readOnly: true, submitting: true, invalid: true, collision: true, needsCommentConfirmation: true };
+describe('editor submit gate through its session', () => {
+  const blocked: EditorSubmitTrigger = {
+    mode: 'create',
+    draft: { ...draft, comment: '' },
+    readOnly: true,
+    invalid: true,
+    collision: true,
+  };
+  const setup = () => {
+    const fake = writes();
+    const confirmMissingComment = vi.fn(async () => false);
+    const chooseConflict = vi.fn(async () => false);
+    const submit = new EditorSubmitSession({
+      writes: fake,
+      confirmMissingComment,
+      chooseConflict,
+      onWriteStart: vi.fn(),
+    });
+    return { submit, fake, confirmMissingComment, chooseConflict };
+  };
 
-  it('returns read-only first', () => expect(submitGate(blocked)).toBe('read-only'));
-  it('returns submitting before invalidity', () =>
-    expect(submitGate({ ...blocked, readOnly: false })).toBe('submitting'));
-  it('returns invalid before collision', () =>
-    expect(submitGate({ ...blocked, readOnly: false, submitting: false })).toBe('invalid'));
-  it('returns collision before confirmation', () =>
-    expect(submitGate({ ...blocked, readOnly: false, submitting: false, invalid: false })).toBe('collision'));
-  it('requests comment confirmation last', () =>
-    expect(submitGate({ ...blocked, readOnly: false, submitting: false, invalid: false, collision: false })).toBe(
-      'needs-comment-confirmation',
-    ));
-  it('allows a valid confirmed submission', () =>
+  it('returns read-only first', async () => {
+    const { submit, fake, confirmMissingComment, chooseConflict } = setup();
+    expect(await submit.trigger(blocked)).toEqual({ kind: 'ignored' });
+    expect(fake.create).not.toHaveBeenCalled();
+    expect(confirmMissingComment).not.toHaveBeenCalled();
+    expect(chooseConflict).not.toHaveBeenCalled();
+  });
+  it('ignores a trigger while writing', async () => {
+    const { submit } = setup();
+    submit.phase.set('writing');
+    expect(await submit.trigger({ ...blocked, readOnly: false })).toEqual({ kind: 'ignored' });
+  });
+  it('returns invalid before collision', async () => {
+    const { submit, chooseConflict } = setup();
+    expect(await submit.trigger({ ...blocked, readOnly: false })).toEqual({ kind: 'invalid' });
+    expect(chooseConflict).not.toHaveBeenCalled();
+  });
+  it('returns collision before confirmation', async () => {
+    const { submit, chooseConflict, confirmMissingComment } = setup();
+    expect(await submit.trigger({ ...blocked, readOnly: false, invalid: false })).toEqual({ kind: 'ignored' });
+    expect(chooseConflict).toHaveBeenCalledExactlyOnceWith('common.buttons.ok');
+    expect(confirmMissingComment).not.toHaveBeenCalled();
+  });
+  it('requests comment confirmation last', async () => {
+    const { submit, confirmMissingComment } = setup();
+    expect(await submit.trigger({ ...blocked, readOnly: false, invalid: false, collision: false })).toEqual({
+      kind: 'focus-comment',
+    });
+    expect(confirmMissingComment).toHaveBeenCalledTimes(1);
+  });
+  it('allows a valid confirmed submission', async () => {
+    const { submit, fake } = setup();
     expect(
-      submitGate({
-        readOnly: false,
-        submitting: false,
-        invalid: false,
-        collision: false,
-        needsCommentConfirmation: false,
-      }),
-    ).toBeNull());
+      await submit.trigger({ ...blocked, draft, readOnly: false, invalid: false, collision: false }),
+    ).toMatchObject({ kind: 'outcome' });
+    expect(fake.create).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('editor submit decision feedback', () => {

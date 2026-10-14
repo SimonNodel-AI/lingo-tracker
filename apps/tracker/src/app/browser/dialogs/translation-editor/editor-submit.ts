@@ -108,20 +108,18 @@ export function classifyEditorError(mode: EditorSubmitInput['mode'], error: unkn
   return mode === 'create' ? { kind: 'create-failed', error } : { kind: 'update-failed', error };
 }
 
-export interface EditorGateState {
+interface EditorGateState {
   readOnly: boolean;
-  submitting: boolean;
   invalid: boolean;
   collision: boolean;
   needsCommentConfirmation: boolean;
 }
 
-export type EditorGateReason = 'read-only' | 'submitting' | 'invalid' | 'collision' | 'needs-comment-confirmation';
+type EditorGateReason = 'read-only' | 'invalid' | 'collision' | 'needs-comment-confirmation';
 
 /** The first reason to stop submission, in the order the editor has always used. */
-export function submitGate(state: EditorGateState): EditorGateReason | null {
+function submitGate(state: EditorGateState): EditorGateReason | null {
   if (state.readOnly) return 'read-only';
-  if (state.submitting) return 'submitting';
   if (state.invalid) return 'invalid';
   if (state.collision) return 'collision';
   if (state.needsCommentConfirmation) return 'needs-comment-confirmation';
@@ -163,12 +161,11 @@ export class EditorSubmitSession {
 
     const gate = submitGate({
       readOnly: input.readOnly,
-      submitting: false,
       invalid: input.invalid,
       collision: input.collision,
       needsCommentConfirmation: !input.draft.comment.trim() && !this.#saveAnyway,
     });
-    if (gate === 'read-only' || gate === 'submitting') return { kind: 'ignored' };
+    if (gate === 'read-only') return { kind: 'ignored' };
     if (gate === 'invalid') return { kind: 'invalid' };
 
     try {
