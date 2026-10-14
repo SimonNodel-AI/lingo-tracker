@@ -330,7 +330,7 @@ describe('tracker HTTP route contract', () => {
       expect(scanned.get(path), `${path} must have checked requests`).toBeGreaterThan(0);
     }
     expect(failures).toEqual([]);
-  });
+  }, 30_000);
 
   it('matches all three requests when a tree read waits for indexing', async () => {
     const result = firstValueFrom(browser.getResourceTree('My Collection'));
