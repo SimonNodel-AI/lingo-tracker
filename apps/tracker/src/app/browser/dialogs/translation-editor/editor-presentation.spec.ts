@@ -150,7 +150,7 @@ describe('EditorPresentation', () => {
   it('builds braced-placeholder params only when the control has the error', () => {
     const control = entry.form.controls.baseValue;
     control.setValue('Hi {{name}}');
-    expect(presentation.bracedPlaceholderParams(control)).toBeNull();
+    expect(presentation.bracedPlaceholderParams(control)).toBeUndefined();
 
     control.setValue('Hi {{{name}}}');
     expect(presentation.bracedPlaceholderParams(control)).toEqual({
@@ -164,7 +164,7 @@ describe('EditorPresentation', () => {
     control.setErrors({ bracedPlaceholder: { name: '<img src=x onerror=alert(1)>' } });
     const params = presentation.bracedPlaceholderParams(control);
 
-    expect(params).not.toBeNull();
+    expect(params).toBeDefined();
     expect(params?.placeholder).not.toContain('<img');
     expect(params?.placeholder).toContain('&#60;img');
     expect(params?.example).toContain('&#60;img');
