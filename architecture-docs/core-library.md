@@ -61,7 +61,7 @@ libs/core/src/
 │
 └── lib/                          # Deeper sub-modules
     ├── bundle/                   # Bundle generation pipeline
-    │   ├── generate-bundle.ts    # generateBundle(): main entry point
+    │   ├── generate-bundle.ts    # generatePreparedBundle(): write a prepared run
     │   ├── plan-bundle.ts        # planBundle(): the dry-run plan (files, key counts, conflicts), writes nothing
     │   ├── prepare-bundle-run.ts  # Bundle Run Preparation: definition, settings, locales and collections
     │   ├── bundle-definition-operations.ts # add/update/deleteBundleDefinition(): edit `bundles` in the config file
@@ -183,7 +183,7 @@ graph TD
     end
 
     subgraph lib["core/lib/ sub-modules"]
-        BUNDLE["bundle/\ngenerateBundle"]
+        BUNDLE["bundle/\ngeneratePreparedBundle"]
         EXPORT["export/\nrunExport"]
         IMPORT["import/\nrunImport · importResources\nparseJsonImport · parseXliffImport"]
         VALIDATE["validate/\nvalidateResources"]
@@ -900,19 +900,19 @@ Each written result carries its sole outcome in `action`. `protectedTermsResult.
 
 ## Bundle Generation
 
-**Entry points:** `generateBundle(params)` for one saved bundle and `generateBundles(config, options)` for an all or named run in `lib/bundle/`
+**Entry points:** `prepareBundleRun(params)` and `generatePreparedBundle(prepared, options)` for one bundle, and `generateBundles(config, options)` for an all or named run in `lib/bundle/`
 
 [Bundle](glossary.md#bundle) generation aggregates resources from one or more collections into a single locale JSON file per configured locale, converting [ICU format](glossary.md#icu-format) to Transloco syntax in the process.
 
 Key steps:
 
-1. **Prepare the run** — `prepareBundleRun` checks a supplied dry-run definition with the full domain rules. For a saved generation run, it checks only the definition lookup and requested locales, preserving generation of older saved definitions. Both modes resolve token casing, constant name and ICU transformation, and return the bundle key, absolute project root and collections that open on first use. `planBundle`, `generateBundle` and `generateBundles` use this step. The API job service calls it synchronously before queueing and passes the result to `generatePreparedBundle` with only progress options. Settings follow a priority chain: CLI override → bundle config → global config → default. The prepared `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API passes the Opened Project’s `projectRoot`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
+1. **Prepare the run** — `prepareBundleRun` checks a supplied dry-run definition with the full domain rules. For a saved generation run, it checks only the definition lookup and requested locales, preserving generation of older saved definitions. Both modes resolve token casing, constant name and ICU transformation, and return the bundle key, absolute project root and collections that open on first use. `planBundle` and `generateBundles` use this step. The API job service calls it synchronously before queueing and passes the result to `generatePreparedBundle` with only progress options. Settings follow a priority chain: CLI override → bundle config → global config → default. The prepared `cwd` (default `process.cwd()`; the CLI passes its `INIT_CWD`-aware project directory, the API passes the Opened Project’s `projectRoot`) is the directory that translations folders, `dist` and `typeDistFile` resolve against.
 2. **Resolve the collections** — `resolveBundleCollections(definition, config, { cwd })` opens each collection the definition reads once per run, with `openCollection(config, name, { cwd })`. See [Bundle Selection](#bundle-selection).
 3. **Select, per locale** — `selectBundleEntries(collections, locale, { transformICUToTransloco, cache })` returns the locale's final keys with their values and origins. It reads, filters, prefixes, converts ICU and merges.
 4. **Build hierarchy** — prepared content uses the domain [Key Tree](glossary.md#key-tree) for each locale and the base keys. Hierarchical conflicts, including duplicate paths after token casing, stop generation with `BundleHierarchicalConflictError` before all file writes.
-5. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at the domain `bundleOutputFile(definition, locale)` (`<dist>/<bundleName with {locale} replaced>.json`, `/` separators, no leading `./`), resolved against `cwd`. The dry-run plan, the progress events and the Tracker preview show this path. The API job result shows it too, but the API makes it project-relative (`toProjectRelative`), so an absolute `dist` inside `cwd` appears there as a relative path. Config paths use `/`; `bundleOutputFile` does not normalize backslashes. A locale with no entries is skipped with a warning.
+5. **Write output** — `writeBundleFile()` creates the output directory if needed and writes the JSON file at the domain `bundleOutputFile(definition, locale)` (`<dist>/<bundleName with {locale} replaced>.json`, `/` separators, no leading `./`), resolved against `cwd`. The dry-run plan, the progress events and the Tracker preview show this path. The API job result shows it too, with core making it project-relative (`toProjectRelative`), so an absolute `dist` inside `cwd` appears there as a relative path. Config paths use `/`; `bundleOutputFile` does not normalize backslashes. A locale with no entries is skipped with a warning.
 6. **Base keys** — prepared content selects every collection's base values once with `COLLECTION_BASE_LOCALE` and the resolved ICU flag. Base conflicts block only runs that request types or debug keys.
-7. **Type generation** — if `typeDistFile` (or the deprecated `typeDist`) is configured, `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` writes the TypeScript constant file from those keys. It does not read collections itself.
+7. **Type generation** — if `typeDistFile` (or the deprecated `typeDist`) is configured, `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` writes the TypeScript constant file from those keys. It returns `BundleTypeOutcome` directly and does not read collections itself.
 
 `planBundle(params)` prepares a run and calls `planPreparedBundle(prepared)`. Both planning and generation consume the cached `content()` from that run. Content selects every locale and the base values with the resolved ICU flag. Base-selection warnings appear only when the locale warnings do not already contain them. The plan reports nonempty output files, counts, collection conflicts, hierarchical conflicts, and an example key with its origin. Empty locales retain zero counts and warnings. An empty base key set has no planned type file.
 
@@ -922,19 +922,19 @@ Progress fires before each locale selection, with its locale, index, total, and 
 This preflight holds every locale selection and JSON tree in memory at once, alongside the collection read cache and base keys. Memory grows with the total selected keys across all requested locales. This costs more memory than locale-at-a-time writes but permits conflict refusal before output. `bundleRunConflicts` and `bundleRunWarnings` apply the same output policy to planning and generation. Base conflicts matter only when types or debug keys consume the base tree. Duplicate token paths name both source keys and refuse type output.
 
 
-`bundleResultWarnings(result)` projects the complete warning array from a bundle result for both CLI reports and API job DTOs. It preserves generation → config → type order and returns a fresh array. See [Bundle Result Warnings](glossary.md#bundle-result-warnings).
+A bundle result carries one `warnings: BundleWarning[]` list in generation → config → type order. Each warning carries `origin` and `message`; CLI reports select by origin, and the API mapper copies messages into its string-list DTO. The prepared run's `configDeprecation` becomes a `config` warning on the result, or on the failed outcome's `warnings` when generation throws. Core totals count processed bundles and generated JSON files; the CLI derives generation-only warning totals from results. See [Bundle Result Warnings](glossary.md#bundle-result-warnings).
 
 ### Bundle Selection
 
 **Entry points:** `resolveBundleCollections(definition, config, { cwd })` and `selectBundleEntries(collections, locale, options)` in `lib/bundle/bundle-selection.ts`
 
-The [Bundle Selection](glossary.md#bundle-selection) is the one place that decides what a bundle holds. `generateBundle`, `planBundle` and the type file all consume it.
+The [Bundle Selection](glossary.md#bundle-selection) is the one place that decides what a bundle holds. `generatePreparedBundle`, `planBundle` and the type file all consume it.
 
 - `resolveBundleCollections` expands `'All'` to every collection in the config, with `entriesSelectionRules: 'All'` and no prefix. It opens each named collection once and pairs it with its `CollectionBundleDefinition` (a `BundleCollection`). For saved generation, an unknown collection is omitted with one warning per run. A supplied dry-run definition with that name fails the full definition check before selection.
 - `selectBundleEntries` reads each collection for the locale with `loadCollectionResources` (the `source` for the collection's own base locale or `COLLECTION_BASE_LOCALE`, otherwise the stored translation). It keeps the entries that match any rule (`matchesPattern()` and `matchesTags()` on the reader's effective tags), prepends `bundledKeyPrefix`, and converts ICU to Transloco when asked. Then it merges in definition order: the first value of a final key wins, unless a later collection's `mergeStrategy` is `'override'`.
 - The result is `{ entries, conflicts, warnings }`. `entries` maps each final key to `{ value, origin: { collectionName, sourceKey } }` in first-selected order. `conflicts` holds the final keys that more than one resource defines. `warnings` holds the unreadable folders (on the first read of a run, through the shared `cache`) and the ICU warnings: a malformed value, and a branch body that cannot be carried to Transloco.
 
-The ICU conversion is inside the selection because the bundle and the plan report the same warnings for the same values. `generateBundle`'s base selection (for the debug-keys bundle and the type file) turns it off, because it uses keys only. The type file selects nothing itself: `generateBundleTypes` receives those keys.
+The ICU conversion is inside the selection because the bundle and the plan report the same warnings for the same values. The prepared run's base selection (for the debug-keys bundle and the type file) uses the resolved ICU flag and reports distinct base-selection warnings once. The type file selects nothing itself: `generateBundleTypes` receives those keys.
 
 ### Bundle Definition
 

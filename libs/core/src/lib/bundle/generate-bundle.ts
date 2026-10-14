@@ -9,12 +9,8 @@ import { buildKeyTree, bundleOutputFile, hasTypeDistConfigured, type TokenCasing
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { BundleHierarchicalConflictError } from '../errors/internal';
 import type { RunOutcome } from '../run-outcome';
-import { bundleRunConflicts, bundleRunWarnings, type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
-import {
-  type GenerateBundleTypesParams,
-  type GenerateTypesResult,
-  generateBundleTypes,
-} from './type-generation/generate-types';
+import { bundleRunConflicts, bundleRunWarnings, type PreparedBundleRun } from './prepare-bundle-run';
+import { type GenerateBundleTypesParams, generateBundleTypes } from './type-generation/generate-types';
 
 export interface GenerateBundleParams {
   readonly bundleKey: string;
@@ -69,16 +65,17 @@ export interface GenerateBundleResult {
   readonly filesGenerated: number;
   /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
   readonly writtenFiles: string[];
-  /** Generation warnings in encounter order. */
-  readonly warnings: readonly string[];
-  /** Config deprecation printed separately from run warnings by the CLI. */
-  readonly configWarning?: string;
-  /** Core warning text for a failed or skipped type outcome. */
-  readonly typeWarning?: string;
+  /** Warnings in generation, config, then type order, with their origins. */
+  readonly warnings: readonly BundleWarning[];
   readonly localesProcessed: string[];
   /** Number of keys written per processed locale (empty locales are omitted). */
   readonly keysPerLocale: Record<string, number>;
   readonly typeOutcome: BundleTypeOutcome;
+}
+
+export interface BundleWarning {
+  readonly origin: 'generation' | 'config' | 'type';
+  readonly message: string;
 }
 
 export type BundleTypeOutcome =
@@ -130,20 +127,6 @@ function describeTypeOutcome(bundleKey: string, outcome: BundleTypeOutcome): str
   }
 }
 
-/**
- * Generates a bundle's files: one JSON file per locale (a locale with no entries is skipped with a
- * warning), the debug-keys file when `debugKeysLocale` is set, and the type file when the
- * definition configures one. Collections the config lacks, unreadable folders, ICU values that do
- * not carry to Transloco are reported in `warnings`. A legacy type setting is reported as
- * `configWarning`; a failed or skipped type outcome is reported as `typeWarning`.
- * Type generation also has a structured outcome.
- */
-export async function generateBundle(params: GenerateBundleParams): Promise<GenerateBundleResult> {
-  const prepared = prepareBundleRun({ ...params, source: 'saved' });
-  const { debugKeysLocale, onProgress } = params;
-  return generatePreparedBundle(prepared, { debugKeysLocale, onProgress });
-}
-
 /** The job service and run coordinator use an already prepared run. */
 export async function generatePreparedBundle(
   prepared: PreparedBundleRun,
@@ -162,7 +145,10 @@ export async function generatePreparedBundle(
   });
   const conflicts = bundleRunConflicts(prepared, content, options);
   if (conflicts.length > 0) throw new BundleHierarchicalConflictError(bundleKey, conflicts);
-  const warnings = bundleRunWarnings(prepared, content, options);
+  const warnings: BundleWarning[] = bundleRunWarnings(prepared, content, options).map((message) => ({
+    origin: 'generation',
+    message,
+  }));
   const { baseKeys } = content;
 
   const localesProcessed: string[] = [];
@@ -198,7 +184,6 @@ export async function generatePreparedBundle(
           definition: prepared.definition,
           tokenCasing,
           tokenConstantName: prepared.tokenConstantNameOverride,
-          warning: prepared.typeWarning,
           cwd,
         },
         baseKeys,
@@ -207,7 +192,9 @@ export async function generatePreparedBundle(
 
   if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
+  if (prepared.configDeprecation) warnings.push({ origin: 'config', message: prepared.configDeprecation });
   const typeOutcomeWarning = describeTypeOutcome(bundleKey, typeOutcome);
+  if (typeOutcomeWarning) warnings.push({ origin: 'type', message: typeOutcomeWarning });
 
   return {
     outcome: typeOutcome.status === 'failed' ? 'failed' : 'succeeded',
@@ -215,8 +202,6 @@ export async function generatePreparedBundle(
     filesGenerated: localesProcessed.length,
     writtenFiles,
     warnings,
-    ...(prepared.typeWarning && { configWarning: prepared.typeWarning }),
-    ...(typeOutcomeWarning && { typeWarning: typeOutcomeWarning }),
     localesProcessed,
     keysPerLocale,
     typeOutcome,
@@ -226,24 +211,10 @@ export async function generatePreparedBundle(
 /** Reports type-file failures through the structured outcome. */
 function generateTypes(params: Omit<GenerateBundleTypesParams, 'keys'>, keys: readonly string[]): BundleTypeOutcome {
   try {
-    const result = generateBundleTypes({ ...params, keys });
-    return typeOutcomeFromResult(result, params.cwd ?? process.cwd());
+    return generateBundleTypes({ ...params, keys });
   } catch (error) {
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
-}
-
-function typeOutcomeFromResult(result: GenerateTypesResult, cwd: string): BundleTypeOutcome {
-  if (result.fileGenerated && result.typeDistFile) {
-    return {
-      status: 'written',
-      path: toProjectRelative(result.typeDistFile, cwd),
-      keysCount: result.keysCount,
-    };
-  }
-  if (result.errorReason) return { status: 'failed', reason: result.errorReason };
-  if (result.skippedReason === 'empty-bundle') return { status: 'skipped', reason: 'empty-bundle' };
-  return { status: 'not-configured' };
 }
 
 function toProjectRelative(filePath: string, cwd: string): string {

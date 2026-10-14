@@ -9,9 +9,9 @@ export {
 export {
   type BundleProgressEvent,
   type BundleTypeOutcome,
+  type BundleWarning,
   type GenerateBundleParams,
   type GenerateBundleResult,
-  generateBundle,
   generatePreparedBundle,
 } from './generate-bundle';
 export {
@@ -32,4 +32,3 @@ export {
   type PreparedBundleRun,
   prepareBundleRun,
 } from './prepare-bundle-run';
-export { bundleResultWarnings } from './result-warnings';

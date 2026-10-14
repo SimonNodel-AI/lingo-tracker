@@ -30,6 +30,7 @@ export type {
   BundleProgressEvent,
   BundleRunOutcome,
   BundleTypeOutcome,
+  BundleWarning,
   GenerateBundleParams,
   GenerateBundleResult,
   GenerateBundlesOptions,
@@ -40,7 +41,6 @@ export type {
 // Operations: bundles
 export {
   addBundleDefinition,
-  bundleResultWarnings,
   deleteBundleDefinition,
   generateBundles,
   generatePreparedBundle,

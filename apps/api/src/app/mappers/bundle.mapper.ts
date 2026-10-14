@@ -1,4 +1,4 @@
-import { type BundlePlan, bundleResultWarnings, type GenerateBundleResult } from '@simoncodes-ca/core';
+import { type BundlePlan, type GenerateBundleResult } from '@simoncodes-ca/core';
 import type { BundleDryRunResultDto, BundleGenerateJobResultDto } from '@simoncodes-ca/data-transfer';
 
 /** Upper bound on conflict keys returned by a dry run so huge bundles stay cheap to serialise. */
@@ -26,7 +26,7 @@ export function mapBundlePlanToDto(plan: BundlePlan): BundleDryRunResultDto {
 }
 
 /**
- * Maps a finished `generateBundle` run to the job result DTO. Core reports
+ * Maps a finished `generatePreparedBundle` run to the job result DTO. Core reports
  * written paths directly; the DTO keeps the same fields for the Tracker.
  */
 export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult): BundleGenerateJobResultDto {
@@ -36,7 +36,7 @@ export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult)
   return {
     filesGenerated: [...result.writtenFiles],
     keysPerLocale: { ...result.keysPerLocale },
-    warnings: bundleResultWarnings(result),
+    warnings: result.warnings.map((warning) => warning.message),
     localesProcessed: [...result.localesProcessed],
     ...(typeDistFile !== undefined && { typeDistFile }),
     ...(types.status === 'written' && { typesKeysCount: types.keysCount }),

@@ -49,7 +49,7 @@ export interface PreparedBundleRun {
     readonly onLocale?: (locale: string, index: number) => void;
     readonly onBase?: () => void;
   }): PreparedBundleContent;
-  readonly typeWarning?: string;
+  readonly configDeprecation?: string;
   readonly tokenConstantNameOverride?: string;
 }
 
@@ -109,7 +109,7 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
       }
       return content;
     },
-    typeWarning: legacyTypeDistWarning(bundleKey, definition),
+    configDeprecation: legacyTypeDistWarning(bundleKey, definition),
     tokenConstantNameOverride: params.tokenConstantName,
   };
   return prepared;

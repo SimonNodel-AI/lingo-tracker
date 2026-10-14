@@ -1,9 +1,4 @@
-import {
-  bundleResultWarnings,
-  type GenerateBundleResult,
-  type GenerateBundlesOptions,
-  type GenerateBundlesResult,
-} from '@simoncodes-ca/core';
+import type { GenerateBundlesOptions, GenerateBundlesResult } from '@simoncodes-ca/core';
 import { printCliError } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { flagName } from '../runner/flag-record';
@@ -18,19 +13,6 @@ interface BundlePresentationOptions {
 
 type BundleEvent = Parameters<NonNullable<GenerateBundlesOptions['onEvent']>>[0];
 
-/** Keep provenance when presenting the same complete warning projection as the API. */
-function diagnostics(result: GenerateBundleResult) {
-  return bundleResultWarnings(result).map((message, index) => ({
-    message,
-    kind:
-      index < result.warnings.length
-        ? 'generation'
-        : result.configWarning && index === result.warnings.length
-          ? 'config'
-          : 'type',
-  }));
-}
-
 /** Bundle's event presentation preserves its established streams, including quiet and verbose modes. */
 export function printBundleEvent(event: BundleEvent, options: BundlePresentationOptions): void {
   if (event.kind === 'start') {
@@ -43,15 +25,17 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     return;
   }
   const { outcome } = event;
-  if ('error' in outcome) {
-    if (outcome.configWarning) CommandOutput.warn(outcome.configWarning);
+  if ('warnings' in outcome) {
+    for (const warning of outcome.warnings) {
+      if (warning.origin === 'config') CommandOutput.warn(warning.message);
+    }
     printCliError(outcome.error, { fallbackMessage: 'Failed to generate bundle' });
     return;
   }
   const result = outcome.result;
-  const findings = diagnostics(result);
+  const findings = result.warnings;
   for (const finding of findings) {
-    if (finding.kind === 'config') CommandOutput.warn(finding.message);
+    if (finding.origin === 'config') CommandOutput.warn(finding.message);
   }
   if (!options.quiet) {
     ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
@@ -78,7 +62,7 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
   }
   // Type warnings are represented by the type tree/failure above. Only generation
   // findings belong in the legacy warning count and verbose detail list.
-  const warnings = findings.filter((finding) => finding.kind === 'generation');
+  const warnings = findings.filter((finding) => finding.origin === 'generation');
   if (warnings.length > 0)
     ConsoleFormatter.warning(
       `Warnings: ${warnings.length}`,
@@ -94,7 +78,7 @@ export function printBundleSummary(run: GenerateBundlesResult, options: BundlePr
     ConsoleFormatter.keyValue('Total files generated', run.totals.filesGenerated);
   }
   const warnings = run.outcomes.flatMap((item) =>
-    item.result ? diagnostics(item.result).filter((finding) => finding.kind === 'generation') : [],
+    item.result ? item.result.warnings.filter((finding) => finding.origin === 'generation') : [],
   );
   if (warnings.length > 0) {
     ConsoleFormatter.keyValue('Total warnings', warnings.length);

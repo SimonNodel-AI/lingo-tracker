@@ -118,7 +118,7 @@ describe('prepareBundleRun', () => {
       config: { ...config, bundles: { main: saved } },
     });
     expect(prepared.definition).toBe(saved);
-    expect(prepared.typeWarning).toBe(
+    expect(prepared.configDeprecation).toBe(
       "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.",
     );
   });

@@ -1,7 +1,12 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { MultipleBundleConstantNameError } from '../errors';
 import type { RunOutcome } from '../run-outcome';
-import { type GenerateBundleParams, type GenerateBundleResult, generatePreparedBundle } from './generate-bundle';
+import {
+  type GenerateBundleParams,
+  type GenerateBundleResult,
+  type BundleWarning,
+  generatePreparedBundle,
+} from './generate-bundle';
 import { type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 
 export interface GenerateBundlesOptions {
@@ -19,23 +24,23 @@ export interface GenerateBundlesOptions {
 export type BundleRunOutcome =
   | {
       readonly name: string;
-      readonly configWarning?: string;
       readonly outcome: RunOutcome;
       readonly result: GenerateBundleResult;
       readonly error?: never;
+      readonly warnings?: never;
     }
   | {
       readonly name: string;
-      readonly configWarning?: string;
       readonly outcome: 'failed';
       readonly error: unknown;
+      readonly warnings: readonly BundleWarning[];
       readonly result?: never;
     };
 
 export interface GenerateBundlesResult {
   readonly outcome: RunOutcome;
   readonly outcomes: BundleRunOutcome[];
-  readonly totals: { bundlesProcessed: number; filesGenerated: number; warningsCount: number };
+  readonly totals: { bundlesProcessed: number; filesGenerated: number };
 }
 
 /** Runs every selected saved bundle, continuing after an individual failure. */
@@ -47,28 +52,32 @@ export async function generateBundles(
   if (overrides?.tokenConstantName && selected.length > 1) throw new MultipleBundleConstantNameError();
 
   const outcomes: BundleRunOutcome[] = [];
-  const totals = { bundlesProcessed: 0, filesGenerated: 0, warningsCount: 0 };
+  const totals = { bundlesProcessed: 0, filesGenerated: 0 };
   for (const name of selected) {
     let outcome: BundleRunOutcome;
     let prepared: PreparedBundleRun;
     try {
       prepared = prepareBundleRun({ source: 'saved', bundleKey: name, config, locales, cwd, ...overrides });
     } catch (error) {
-      outcome = { name, outcome: 'failed', error };
+      outcome = { name, outcome: 'failed', error, warnings: [] };
       outcomes.push(outcome);
       onEvent?.({ kind: 'result', outcome });
       continue;
     }
-    const configWarning = prepared.typeWarning ? { configWarning: prepared.typeWarning } : {};
+
     onEvent?.({ kind: 'start', name });
     try {
       const result = await generatePreparedBundle(prepared, { debugKeysLocale: overrides?.debugKeysLocale });
-      outcome = { name, outcome: result.outcome, result, ...configWarning };
+      outcome = { name, outcome: result.outcome, result };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
-      totals.warningsCount += result.warnings.length + (result.configWarning ? 1 : 0);
     } catch (error) {
-      outcome = { name, outcome: 'failed', error, ...configWarning };
+      outcome = {
+        name,
+        outcome: 'failed',
+        error,
+        warnings: prepared.configDeprecation ? [{ origin: 'config', message: prepared.configDeprecation }] : [],
+      };
     }
     outcomes.push(outcome);
     onEvent?.({ kind: 'result', outcome });

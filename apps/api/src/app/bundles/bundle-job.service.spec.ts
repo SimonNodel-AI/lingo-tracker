@@ -114,7 +114,9 @@ describe('BundleJobService', () => {
   });
 
   it('completes a saved bundle with an unknown collection and its warning', async () => {
-    mockGenerateBundle.mockResolvedValue(makeResult({ warnings: ["Collection 'deleted' not found in config"] }));
+    mockGenerateBundle.mockResolvedValue(
+      makeResult({ warnings: [{ origin: 'generation', message: "Collection 'deleted' not found in config" }] }),
+    );
     const { jobId } = service.startJob({
       bundleName: 'main',
       project: project({
@@ -240,7 +242,7 @@ describe('BundleJobService', () => {
       async (_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {
         options.onProgress?.({ locale: 'en', index: 1, total: 2, file: 'dist/i18n/en.json' });
         options.onProgress?.({ locale: 'fr', index: 2, total: 2, file: 'dist/i18n/fr.json' });
-        return makeResult({ warnings: ['careful'] });
+        return makeResult({ warnings: [{ origin: 'generation', message: 'careful' }] });
       },
     );
 

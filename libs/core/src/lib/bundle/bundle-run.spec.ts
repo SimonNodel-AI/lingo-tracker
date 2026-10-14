@@ -61,7 +61,9 @@ describe('prepared bundle run', () => {
     expect(plan.locales).toEqual(['fr', 'es']);
     expect(plan.keysPerLocale).toEqual({ fr: 2, es: 0 });
     expect(generated.keysPerLocale).toEqual({ fr: plan.keysPerLocale['fr'] });
-    expect(generated.warnings).toEqual(plan.warnings);
+    expect(
+      generated.warnings.filter((warning) => warning.origin === 'generation').map((warning) => warning.message),
+    ).toEqual(plan.warnings);
     expect(plan.exampleKey?.tokenPath).toMatch(/^CUSTOM_TOKENS\./);
     expect(generated.writtenFiles).toEqual(['out/fr.json', 'types/tokens.ts']);
     expect(generated.typeOutcome).toMatchObject({ status: 'written', keysCount: 2 });
@@ -86,18 +88,12 @@ describe('prepared bundle run', () => {
     const result = await generatePreparedBundle(prepared);
 
     expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
-    expect(prepared.typeWarning).toBeDefined();
-    expect(result.configWarning).toBe(prepared.typeWarning);
-    expect(result.warnings).toEqual(["Bundle 'main' for locale 'en' is empty"]);
-    expect(result.typeWarning).toBe("Type generation skipped for 'main': bundle is empty");
-    expect(result.warnings.filter((warning) => warning === prepared.typeWarning)).toHaveLength(0);
-    const allWarnings = [
-      ...result.warnings,
-      ...(result.configWarning ? [result.configWarning] : []),
-      ...(result.typeWarning ? [result.typeWarning] : []),
-    ];
-    expect(allWarnings.filter((warning) => warning === prepared.typeWarning)).toHaveLength(1);
-    expect(allWarnings.filter((warning) => warning === result.typeWarning)).toHaveLength(1);
+    expect(prepared.configDeprecation).toBeDefined();
+    expect(result.warnings).toEqual([
+      { origin: 'generation', message: "Bundle 'main' for locale 'en' is empty" },
+      { origin: 'config', message: prepared.configDeprecation },
+      { origin: 'type', message: "Type generation skipped for 'main': bundle is empty" },
+    ]);
   });
 
   it('rejects a later locale conflict before creating any output, in either key order', async () => {
@@ -219,7 +215,9 @@ describe('prepared bundle run', () => {
     expect(plan.hierarchicalConflicts).toEqual([]);
     expect(plan.warnings.some((warning) => warning.includes('Hierarchical conflict'))).toBe(false);
     const generated = await generatePreparedBundle(prepared);
-    expect(generated.warnings).toEqual(plan.warnings);
+    expect(
+      generated.warnings.filter((warning) => warning.origin === 'generation').map((warning) => warning.message),
+    ).toEqual(plan.warnings);
     expect(JSON.parse(readFileSync(join(root(), 'out/fr.json'), 'utf8'))).toEqual({ a: 'Parent FR' });
     const debugPlan = planPreparedBundle(prepared, { debugKeysLocale: '99' });
     expect(debugPlan.hierarchicalConflicts).toEqual(['a']);

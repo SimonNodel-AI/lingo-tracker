@@ -37,11 +37,11 @@ Return to [architecture README](README.md).
 
 ## Where Bundle Generation Lives
 
-Bundle generation is a sub-module of `@simoncodes-ca/core`. The internal `generateBundle()` implementation in `libs/core/src/lib/bundle/generate-bundle.ts` powers the public `generateBundles()` CLI entry and the API’s `prepareBundleRun()` / `generatePreparedBundle()` path. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
+Bundle generation is a sub-module of `@simoncodes-ca/core`. The `generatePreparedBundle()` implementation in `libs/core/src/lib/bundle/generate-bundle.ts` writes a prepared run for the public `generateBundles()` CLI coordinator and the API job service. Both prepare with `prepareBundleRun()`. For the module map of the full core library and its internal dependency graph, see [core-library.md](core-library.md).
 
 ```
 libs/core/src/lib/bundle/
-├── generate-bundle.ts          # generateBundle(): single saved bundle
+├── generate-bundle.ts          # generatePreparedBundle(): writes a prepared bundle
 ├── generate-bundles.ts         # generateBundles(): all or named bundles, outcomes and totals
 ├── resolve-bundle-settings.ts # one setting precedence rule for generate and plan
 ├── prepare-bundle-run.ts      # validate and resolve a plan or generation run
@@ -186,7 +186,7 @@ A more complex example demonstrating `bundledKeyPrefix`, filtered rules, and tag
 
 Prepared `content()` selects each locale and the base values once, on first use. Progress reports each locale before selection, with its output path. All selections remain in memory until output completes, so conflicts stop all writes. Planning and generation consume that same content. Empty locales have counts and warnings but no planned or generated file. Base selection uses the resolved ICU flag and adds only warnings absent from locale selections.
 
-The pipeline is the [Bundle Selection](glossary.md#bundle-selection) (`bundle-selection.ts`). `resolveBundleCollections()` opens the collections once per run. Then, for each locale, `selectBundleEntries()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map with the winning origin of each key. `generateBundle()`, `planBundle()` (the dry run) and the type file (keys only) all consume the same selection, so the rules below are applied in one place. The pipeline for a single collection runs as follows.
+The pipeline is the [Bundle Selection](glossary.md#bundle-selection) (`bundle-selection.ts`). `resolveBundleCollections()` opens the collections once per run. Then, for each locale, `selectBundleEntries()` iterates over each `CollectionBundleDefinition`, loads resources, applies the filtering pipeline, and merges results into a single flat key-value map with the winning origin of each key. `generatePreparedBundle()`, `planBundle()` (the dry run) and the type file (keys only) all consume the same selection, so the rules below are applied in one place. The pipeline for a single collection runs as follows.
 
 ### Pipeline Flowchart
 
@@ -270,7 +270,7 @@ flowchart TD
     WRITE_JSON --> TYPE_GEN_CHECK{"typeDistFile\nconfigured?"}
 
     TYPE_GEN_CHECK -- No --> DONE(["Bundle complete for this locale"])
-    TYPE_GEN_CHECK -- Yes --> GENERATE_TYPES["generateBundleTypes()\n(runs once per bundle, not per locale)\nkeys = selection with\nCOLLECTION_BASE_LOCALE, no ICU\nSee Type Generation section"]
+    TYPE_GEN_CHECK -- Yes --> GENERATE_TYPES["generateBundleTypes()\n(runs once per bundle, not per locale)\nkeys = selection with\nCOLLECTION_BASE_LOCALE, resolved ICU flag\nSee Type Generation section"]
 
     GENERATE_TYPES --> DONE
 
@@ -320,7 +320,7 @@ This allows a layered composition pattern: a base design-system collection uses 
 
 LingoTracker stores translation values in [ICU format](glossary.md#icu-format) internally. At bundle time, `icuToTransloco()` from `@simoncodes-ca/domain` converts them to the syntax Angular's Transloco library expects. For the full explanation of why ICU is the internal storage format, see [domain-and-data-model.md — ICU vs Transloco Format](domain-and-data-model.md#icu-vs-transloco-format).
 
-**Conversion happens per value, inside `selectBundleEntries()`, after filtering and before merging.** It is part of the selection so that the bundle and the dry-run plan report the same warnings. `generateBundle()`'s base selection, which gives the debug-keys bundle and the type file their keys, turns the conversion off, because it uses keys only.
+**Conversion happens per value, inside `selectBundleEntries()`, after filtering and before merging.** It is part of the selection so that the bundle and the dry-run plan report the same warnings. The prepared run's base selection, which gives the debug-keys bundle and the type file their keys, uses the resolved conversion flag and reports distinct base-selection warnings once.
 
 The conversion rules applied by `icuToTransloco()`:
 
@@ -357,15 +357,13 @@ On both shapes, the interpolation pass strands a branch with no body. The ICU co
 
 ### Per-Locale JSON Files
 
-`generateBundle({ bundleKey, config, ...options })` uses [Bundle Run Preparation](glossary.md#bundle-run-preparation) in saved mode. It checks only the saved definition's own-property name and the requested locales before generation. An unknown name, including an `Object.prototype` member, throws `BundleNotFoundError`; a malformed or unknown locale filter throws `InvalidBundleLocalesError`. Collection rename and delete update explicit bundle references through the [Collection Lifecycle](glossary.md#collection-lifecycle). A saved definition that still names a deleted collection (for example after manual config edits) generates from its remaining collections and reports `Collection '<name>' not found in config` once. An invalid type-file extension or constant name still allows JSON files to be written and appears as a failed `typeOutcome`. The API prepares the run synchronously before queuing a job and passes that prepared result to generation. A supplied dry-run definition is fully normalized and validated.
+`generateBundles(config, { names, locales, overrides, cwd })` uses [Bundle Run Preparation](glossary.md#bundle-run-preparation) in saved mode. Preparation checks only each saved definition's own-property name and the requested locales before generation. Preparation raises `BundleNotFoundError` for an unknown name, including an `Object.prototype` member, or `InvalidBundleLocalesError` for a malformed or unknown locale filter. The coordinator records these failures in per-bundle outcomes and continues. Collection rename and delete update explicit bundle references through the [Collection Lifecycle](glossary.md#collection-lifecycle). A saved definition that still names a deleted collection (for example after manual config edits) generates from its remaining collections and reports `Collection '<name>' not found in config` once. An invalid type-file extension or constant name still allows JSON files to be written and appears as a failed `typeOutcome`. The API prepares the run synchronously before queuing a job and passes that prepared result to generation. A supplied dry-run definition is fully normalized and validated.
 
-For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (`cwd` on `generateBundle`: the CLI's `INIT_CWD`-aware directory, the API's `process.cwd()`). Collection `translationsFolder` values resolve against the same directory. The result's `writtenFiles` lists every successful JSON, debug-keys and type-file write as a project-relative path. `typeOutcome` is `written` (path and key count), `skipped` (`empty-bundle` reason code), `failed` (error reason), or `not-configured`.
+For each locale in `config.locales` (or the `--locale` CLI override), one JSON file is written to `<dist>/<bundleName>.json`. The `{locale}` placeholder in `bundleName` is replaced with the locale code, and a relative path is resolved against the project directory (the prepared run's `cwd`: the CLI's `INIT_CWD`-aware directory, the API's Opened Project `projectRoot`). Collection `translationsFolder` values resolve against the same directory. The result's `writtenFiles` lists every successful JSON, debug-keys and type-file write as a project-relative path. `typeOutcome` is `written` (path and key count), `skipped` (`empty-bundle` reason code), `failed` (error reason), or `not-configured`.
 
-Core keeps generation warnings and the structured type outcome separate. `warnings: readonly string[]` contains collection warnings first, then locale, debug and selection warnings in encounter order. Config deprecations and type-outcome warnings have separate named fields.
+Core supplies one `warnings: BundleWarning[]` list in generation, config, then type order. Each warning carries `origin: 'generation' | 'config' | 'type'` and `message`. Generation warnings contain collection warnings first, then locale, debug and selection warnings in encounter order. The prepared `configDeprecation` supplies the legacy type-setting warning with the `config` origin. The internal type formatter supplies `Type generation failed for '<key>': <reason>` or `Type generation skipped for '<key>': bundle is empty` with the `type` origin; written and unconfigured outcomes have no type warning. The CLI reads origins to select its presentation. The API mapper copies the messages into the unchanged string-list response DTO.
 
-Core supplies generation warnings in `warnings`, the legacy type-setting deprecation in optional `configWarning`, and a failed or skipped type-outcome warning in optional `typeWarning`. The internal type formatter produces `Type generation failed for '<key>': <reason>` or `Type generation skipped for '<key>': bundle is empty`; written and unconfigured outcomes have no type warning. The API mapper and CLI both call `bundleResultWarnings(result)` to combine these named fields in the existing API order: generation warnings, config deprecation, then type-outcome warning. The helper returns a fresh array and preserves every warning string. The API response shape stays unchanged.
-
-Structured `typeOutcome` supplies status, reason, path and key count for decisions and DTO metadata. The CLI retains progress and successful/skipped type-file tree lines. The command-side Bundle Presentation owns event output: config deprecation before result progress, then individual type failures and generation warnings. A config deprecation from an attempt that throws still appears once before its error. Core totals retain their original meaning: generation warnings plus a config deprecation for each returned generation result; type-outcome warnings and attempts that throw do not contribute. CLI summaries preserve their generation-only warning count; config deprecation and type-outcome diagnostics do not contribute. Quiet mode suppresses progress and file totals but retains diagnostics and warning totals. Verbose mode adds locale progress and generation warning details; other modes print only the generation warning count.
+Structured `typeOutcome` supplies status, reason, path and key count for decisions and DTO metadata. The CLI retains progress and successful/skipped type-file tree lines. The command-side Bundle Presentation owns event output: config deprecation before result progress, then individual type failures and generation warnings. When generation throws, the failed outcome's `warnings` carries the config deprecation, which appears once before its error. Core totals count processed bundles and generated JSON files. CLI summaries preserve their generation-only warning count; config deprecation and type-outcome diagnostics do not contribute. Quiet mode suppresses progress and file totals but retains diagnostics and warning totals. Verbose mode adds locale progress and generation warning details; other modes print only the generation warning count.
 
 Example for the `"main"` bundle with `bundleName: "{locale}"` and `dist: "./dist/i18n"`:
 
@@ -419,7 +417,7 @@ Output nested JSON (`en.json`):
 
 ### Debug Key Bundle
 
-When the `debugKeysLocale` parameter is passed to `generateBundle()` (exposed via `--debug-keys [locale]` on the CLI), an additional bundle file is emitted after all normal locale bundles. In this file every translation value is replaced with its own dot-delimited key.
+When the `debugKeysLocale` option is passed to `generatePreparedBundle()` (exposed via `--debug-keys [locale]` on the CLI), an additional bundle file is emitted after all normal locale bundles. In this file every translation value is replaced with its own dot-delimited key.
 
 ```json
 {
@@ -446,7 +444,7 @@ When `typeDistFile` is set on a `BundleDefinition`, `generateBundleTypes()` emit
 2. An `export const` declaration: the key tree as an `as const` object.
 3. An `export type` declaration: the type alias derived from the `const`.
 
-The type file is written to the path specified by `typeDistFile`, resolved against the project directory (`cwd`). The output directory is created if it does not already exist. `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` does not select keys: `generateBundle()` passes the [Bundle Selection](glossary.md#bundle-selection)'s base keys, the same key set as the debug-keys bundle.
+The type file is written to the path specified by `typeDistFile`, resolved against the project directory (`cwd`). The output directory is created if it does not already exist. Type generation returns `BundleTypeOutcome` directly. `generateBundleTypes({ bundleKey, definition, keys, tokenCasing, tokenConstantName, cwd })` does not select keys: `generatePreparedBundle()` passes the [Bundle Selection](glossary.md#bundle-selection)'s base keys, the same key set as the debug-keys bundle.
 
 ---
 
@@ -598,7 +596,7 @@ Rule: if the name contains underscores, split on `_`, title-case each segment, j
 
 ## Priority Chain for Overridable Settings
 
-`resolveBundleSettings(bundleKey, config, definition, overrides)` applies the shared casing, constant-name and ICU transformation precedence for `generateBundle`, `planBundle` and the type generator. The resolution order is:
+`resolveBundleSettings(bundleKey, config, definition, overrides)` applies the shared casing, constant-name and ICU transformation precedence for `generatePreparedBundle`, `planBundle` and the type generator. The resolution order is:
 
 ```
 CLI flag  →  BundleDefinition field  →  global config field  →  hard default
@@ -612,7 +610,7 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 
 ---
 
-`generateBundles(config, { names?, locales?, overrides, cwd })` prepares each selected bundle once, catches individual failures in its outcomes, and totals returned generation results, generated files, and warnings. It rejects `tokenConstantName` with more than one selected bundle using `MultipleBundleConstantNameError`. The CLI receives only start and result events. A prepared config deprecation is carried on the per-bundle outcome in both success and error branches; there is no separate warning event. Callback errors propagate instead of becoming bundle failures. The API job service prepares by name before queueing and runs `generatePreparedBundle(prepared, { onProgress })`. Generation takes its bundle key and root from the prepared run; debug locale and progress callback remain run options. A returned result carries generation `warnings`, optional `configWarning`, and optional `typeWarning`. If a JSON write throws before a result exists, the CLI Bundle Presentation prints the outcome's config deprecation, and the API job service logs it once with Nest `Logger.warn` while the job fails.
+`generateBundles(config, { names?, locales?, overrides, cwd })` prepares each selected bundle once, catches individual failures in its outcomes, and totals processed bundles and generated JSON files. It rejects `tokenConstantName` with more than one selected bundle using `MultipleBundleConstantNameError`. The CLI receives only start and result events. The prepared `configDeprecation` is carried with the `config` origin in the returned result's `warnings` or the failed outcome's `warnings`; there is no separate warning event. Callback errors propagate instead of becoming bundle failures. The API job service prepares by name before queueing and runs `generatePreparedBundle(prepared, { onProgress })`. Generation takes its bundle key and root from the prepared run; debug locale and progress callback remain run options. A returned result carries one ordered `warnings: BundleWarning[]` list with generation, config and type origins, alongside `typeOutcome`. If a JSON write throws before a result exists, the CLI Bundle Presentation prints the failed outcome's config warning, and the API job service logs it once with Nest `Logger.warn` while the job fails.
 
 ---
 
@@ -622,5 +620,5 @@ CLI flag  →  BundleDefinition field  →  global config field  →  hard defau
 - [domain-and-data-model.md](domain-and-data-model.md) — ICU format, resource entry structure (`ResourceEntry`, `TrackerMetadata`), and the full explanation of internal vs. bundle-time format.
 - [frontend.md](frontend.md) — how the Tracker UI imports and uses the generated type constants via Transloco.
 - [cli.md](cli.md) — the `bundle` CLI command that invokes `generateBundles()`, including interactive bundle selection and locale filtering.
-- [api.md](api.md) — the REST API's bundle endpoints: definition CRUD, `POST /bundles/dry-run` (`planBundle`), `POST /bundles/:name/generate` (a `generateBundle` job) and `GET /bundles/jobs/:jobId`.
+- [api.md](api.md) — the REST API's bundle endpoints: definition CRUD, `POST /bundles/dry-run` (`planBundle`), `POST /bundles/:name/generate` (a `generatePreparedBundle` job) and `GET /bundles/jobs/:jobId`.
 - [glossary.md](glossary.md) — definitions for [bundle](glossary.md#bundle), [resource key](glossary.md#resource-key), [ICU format](glossary.md#icu-format), [Transloco](glossary.md#transloco), [collection](glossary.md#collection), [base locale](glossary.md#base-locale).

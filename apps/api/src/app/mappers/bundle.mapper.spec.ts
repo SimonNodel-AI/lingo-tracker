@@ -1,4 +1,4 @@
-import type { BundlePlan, GenerateBundleResult } from '@simoncodes-ca/core';
+import type { BundlePlan, BundleWarning, GenerateBundleResult } from '@simoncodes-ca/core';
 import { MAX_CONFLICT_KEYS, mapBundlePlanToDto, mapGenerateBundleResultToJobResult } from './bundle.mapper';
 
 describe('bundle.mapper', () => {
@@ -71,7 +71,7 @@ describe('bundle.mapper', () => {
       bundleKey: 'main',
       filesGenerated: 2,
       writtenFiles: ['dist/i18n/main.en.json', 'dist/i18n/main.fr.json', 'dist/types/main.ts'],
-      warnings: ['Bundle empty for de'],
+      warnings: [{ origin: 'generation', message: 'Bundle empty for de' }],
       localesProcessed: ['en', 'fr'],
       keysPerLocale: { en: 4, fr: 4 },
       typeOutcome: { status: 'written', path: 'dist/types/main.ts', keysCount: 4 },
@@ -98,7 +98,10 @@ describe('bundle.mapper', () => {
     });
 
     it('copies warnings independently of type metadata', () => {
-      const warnings: readonly string[] = ['first', 'second'];
+      const warnings: readonly BundleWarning[] = [
+        { origin: 'generation', message: 'first' },
+        { origin: 'generation', message: 'second' },
+      ];
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
         warnings,
@@ -110,7 +113,6 @@ describe('bundle.mapper', () => {
       expect('typeDistFile' in dto).toBe(false);
       expect('typesKeysCount' in dto).toBe(false);
       expect(dto.warnings).toEqual(['first', 'second']);
-      expect(dto.warnings).not.toBe(warnings);
     });
 
     it('copies the core warning for a failed type file with the bundle key', () => {
@@ -119,7 +121,10 @@ describe('bundle.mapper', () => {
           ...result,
           bundleKey,
           outcome: 'failed',
-          typeWarning: `Type generation failed for '${bundleKey}': disk full`,
+          warnings: [
+            ...result.warnings,
+            { origin: 'type', message: `Type generation failed for '${bundleKey}': disk full` },
+          ],
           writtenFiles: result.writtenFiles.slice(0, 2),
           typeOutcome: { status: 'failed', reason: 'disk full' },
         });
@@ -130,21 +135,22 @@ describe('bundle.mapper', () => {
     });
 
     it('merges config and run warnings without repeating the skipped type warning', () => {
-      const warnings: readonly string[] = ['generation warning'];
+      const warnings: readonly BundleWarning[] = [{ origin: 'generation', message: 'generation warning' }];
       const dto = mapGenerateBundleResultToJobResult({
         ...result,
-        warnings,
-        configWarning: 'prepared deprecation warning',
-        typeWarning: "Type generation skipped for 'main': bundle is empty",
+        warnings: [
+          ...warnings,
+          { origin: 'config', message: 'prepared deprecation warning' },
+          { origin: 'type', message: "Type generation skipped for 'main': bundle is empty" },
+        ],
         writtenFiles: result.writtenFiles.slice(0, 2),
         typeOutcome: { status: 'skipped', reason: 'empty-bundle' },
       });
       expect(dto.warnings).toEqual([
-        ...warnings,
+        ...warnings.map((warning) => warning.message),
         'prepared deprecation warning',
         "Type generation skipped for 'main': bundle is empty",
       ]);
-      expect(dto.warnings).not.toBe(warnings);
       expect(dto.typeDistFile).toBeUndefined();
       expect(dto.typesKeysCount).toBeUndefined();
     });
