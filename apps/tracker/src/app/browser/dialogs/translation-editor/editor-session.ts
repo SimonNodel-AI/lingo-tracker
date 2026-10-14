@@ -24,7 +24,8 @@ import { EditorAdvisories, filteredEditorTagSuggestions } from './editor-advisor
 import { EditorEntryForm } from './editor-entry-form';
 import { editorTagSuggestions } from './editor-entry-sources';
 import { EditorLocation, type EditorLocationPeek } from './editor-location';
-import { type EditorFocusTarget, EditorPanels } from './editor-panels';
+import type { EditorFocus } from './editor-focus';
+import { EditorPanels } from './editor-panels';
 import { EditorPresentation } from './editor-presentation';
 import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { resolveDraftKey } from './resource-entry-draft';
@@ -53,7 +54,7 @@ export interface EditorSessionOptions {
   activeLang: () => string;
   confirm: (spec: ConfirmationSpec, options?: ConfirmOptions) => Promise<boolean>;
   close: (outcome: EditorOutcome) => void;
-  focus: (target: EditorFocusTarget) => void;
+  editorFocus: Pick<EditorFocus, 'request'>;
   feedbackText: (feedback: Feedback) => string;
   notifications: Pick<NotificationService, 'success' | 'error'>;
 }
@@ -93,10 +94,7 @@ export class EditorSession {
   readonly keyJustCopied = this.#copyFlash.active;
 
   /** The folder popover, locales drawer and context disclosure; the template binds to it directly. */
-  readonly panels = new EditorPanels({
-    canOpenFolderPopover: () => !this.isReadOnly(),
-    canOpenLocalesDrawer: () => this.otherLocales().length > 0,
-  });
+  readonly panels: EditorPanels;
 
   readonly tagInputText = signal('');
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
@@ -186,6 +184,11 @@ export class EditorSession {
     private readonly data: TranslationEditorDialogData,
     private readonly options: EditorSessionOptions,
   ) {
+    this.panels = new EditorPanels({
+      editorFocus: this.options.editorFocus,
+      canOpenFolderPopover: () => !this.isReadOnly(),
+      canOpenLocalesDrawer: () => this.otherLocales().length > 0,
+    });
     this.advisories = new EditorAdvisories(this.options.config);
     this.location = new EditorLocation({
       collectionName: this.data.collectionName,
@@ -298,7 +301,7 @@ export class EditorSession {
       return;
     }
     this.advisories.applyTerm(this.entry.form.controls.baseValue, rule);
-    this.panels.requestFocus('base-value');
+    this.options.editorFocus.request('base-value');
   }
 
   /**
@@ -479,16 +482,14 @@ export class EditorSession {
       // The offending field is a translation row, which only the drawer shows.
       this.panels.closeFolderPopover(false);
       this.panels.openLocalesDrawer();
-      this.panels.requestFocus('invalid-locale-value');
+      this.options.editorFocus.request('invalid-locale-value');
       return;
     }
 
     // Focus belongs to the offending field, not to whatever opened the panel.
     this.panels.closeAll();
 
-    queueMicrotask(() => {
-      if (!this.#destroyed) this.options.focus(key.invalid ? 'key' : 'base-value');
-    });
+    this.options.editorFocus.request(key.invalid ? 'key' : 'base-value');
   }
 
   #renderSubmitDecision(decision: EditorSubmitDecision): void {
@@ -498,7 +499,7 @@ export class EditorSession {
       return;
     }
     if (decision.kind === 'focus-comment') {
-      this.panels.requestFocus('comment');
+      this.options.editorFocus.request('comment');
       return;
     }
     if (decision.kind === 'outcome') {
