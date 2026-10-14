@@ -1,13 +1,88 @@
+// @vitest-environment node
+
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import * as domain from './index';
+
+// Read consumers without loading app modules or their I/O side effects.
+function consumerSources(library: string): string[] {
+  const root = fileURLToPath(new URL('../../../', import.meta.url));
+  const sources: string[] = [];
+  function visit(directory: string): void {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'testing') visit(path);
+      } else if (path.endsWith('.ts') && !/\.(spec|test)\.ts$/.test(path)) {
+        sources.push(readFileSync(path, 'utf8'));
+      }
+    }
+  }
+  for (const group of ['apps', 'libs']) {
+    for (const entry of readdirSync(join(root, group), { withFileTypes: true })) {
+      if (!entry.isDirectory() || (group === 'libs' && entry.name === library)) continue;
+      const sourceRoot = join(root, group, entry.name, 'src');
+      if (existsSync(sourceRoot)) visit(sourceRoot);
+    }
+  }
+  return sources;
+}
+
+function consumedNames(source: string, library: string): Set<string> {
+  if (!source.includes(`@simoncodes-ca/${library}`)) return new Set();
+  const parsed = ts.createSourceFile('consumer.ts', source, ts.ScriptTarget.Latest, true);
+  const names = new Set<string>();
+  const namespaces = new Set<string>();
+  for (const statement of parsed.statements) {
+    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+    if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== `@simoncodes-ca/${library}`) continue;
+    const bindings = ts.isImportDeclaration(statement) ? statement.importClause?.namedBindings : statement.exportClause;
+    if (bindings && (ts.isNamedImports(bindings) || ts.isNamedExports(bindings))) {
+      for (const binding of bindings.elements) names.add(binding.propertyName?.text ?? binding.name.text);
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      namespaces.add(bindings.name.text);
+    }
+  }
+  function visit(node: ts.Node): void {
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      namespaces.has(node.expression.text)
+    ) {
+      names.add(node.name.text);
+    } else if (
+      ts.isElementAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      namespaces.has(node.expression.text) &&
+      ts.isStringLiteral(node.argumentExpression)
+    ) {
+      names.add(node.argumentExpression.text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+  return names;
+}
 
 // The barrel is the library's interface. Adding a name here is a deliberate API change:
 // export it only when something outside libs/domain needs it. Types are erased, so only values appear.
 describe('domain public surface', () => {
+  it('requires an outside non-test consumer for every runtime export', () => {
+    const consumed = new Set(consumerSources('domain').flatMap((source) => [...consumedNames(source, 'domain')]));
+    const unused = Object.keys(domain)
+      .filter((name) => !consumed.has(name))
+      .sort();
+    expect(unused, `Unused @simoncodes-ca/domain runtime exports: ${unused.join(', ')}`).toEqual([]);
+  }, 30_000);
+
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
       'CONFIG_FILENAME',
-      'DEFAULT_BASE_LOCALE',
+      'CONVERSION_SAFETY_RULES',
       'DEFAULT_BUNDLE_DIST',
       'DEFAULT_BUNDLE_NAME',
       'DEFAULT_CONFIG',
@@ -15,7 +90,6 @@ describe('domain public surface', () => {
       'DEFAULT_MISSING_METADATA_STATUS',
       'DEFAULT_TYPE_DIST_FILE',
       'IMPORT_STRATEGIES',
-      'JS_IDENTIFIER_PATTERN',
       'NEEDS_WORK_STATUSES',
       'STATUS_PRECEDENCE',
       'TRANSLATION_STATUSES',
@@ -28,12 +102,12 @@ describe('domain public surface', () => {
       'bundleOutputFile',
       'canImportLocale',
       'checkBundleDefinition',
+      'checkStoredValue',
       'checkTranslatedValue',
       'classifyICUContent',
       'collectAncestorPaths',
-      'compareIcuArguments',
       'countByStatus',
-      'describeBracedPlaceholder',
+      'describeStoredValueFinding',
       'describeValueViolation',
       'detectDuplicateKeys',
       'detectHierarchicalConflicts',
@@ -42,25 +116,18 @@ describe('domain public surface', () => {
       'effectiveTags',
       'entryChange',
       'escapeRegExp',
-      'findBracedPlaceholders',
       'findBundleDefinition',
-      'findCollapsedCaseBodies',
       'findCollectionEntry',
-      'findIcuCompileError',
       'findPreferredTermFindings',
-      'findProtectedTermViolations',
       'findProtectedTerms',
-      'findUnportablePluralCases',
       'flattenKeyTree',
       'folderPathFromSegments',
       'folderPathLeaf',
       'folderPathSegments',
       'hasBundleCollections',
       'hasBundleRules',
-      'hasICUPlaceholders',
       'hasLocalePlaceholder',
       'hasQuotedInterpolationDelimiter',
-      'hasTranslocoPlaceholders',
       'hasTypeDistConfigured',
       'hasUnbundlableBranchBody',
       'honouredImportSourceStatus',
@@ -73,7 +140,6 @@ describe('domain public surface', () => {
       'isFolderPathUnder',
       'isIcuLocaleSupported',
       'isImportStrategy',
-      'isJavaScriptReservedWord',
       'isKeyTooLong',
       'isNeedsWorkStatus',
       'isNeedsWorkStatusSelection',
@@ -84,7 +150,6 @@ describe('domain public surface', () => {
       'isValidJavaScriptIdentifier',
       'isValidSegment',
       'joinFolderPath',
-      'listEditProblem',
       'mergeListEdit',
       'needsTranslation',
       'normalizeBundleDefinition',
@@ -106,8 +171,6 @@ describe('domain public surface', () => {
       'statusCountsOver',
       'summaryTarget',
       'translocoToICU',
-      'validateBundleDefinition',
-      'validateBundleKey',
       'validateICUSyntax',
       'validateImportKey',
       'validateJavaScriptIdentifier',

@@ -227,7 +227,9 @@ describe('GoogleTranslateV2Provider', () => {
       it('times out a fetch that never returns and reports a retryable TranslationError', async () => {
         vi.useFakeTimers();
         try {
-          const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(() => new Promise<Response>(() => {}));
+          const fetchSpy = vi
+            .spyOn(globalThis, 'fetch')
+            .mockImplementation(() => new Promise<Response>(() => undefined));
           const timedProvider = new GoogleTranslateV2Provider({ apiKey: 'test-api-key', requestTimeoutMs: 25 });
           const pending = timedProvider.translate([makeRequest()]);
           const failure = expect(pending).rejects.toMatchObject({

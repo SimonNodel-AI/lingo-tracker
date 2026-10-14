@@ -62,6 +62,7 @@ Use the `/playwright-cli` skill for browser automation, UI testing, screenshots,
 ### Other Commands
 
 ```bash
+pnpm run lint          # Biome and cached ESLint checks for all six projects
 pnpm run commit        # Interactive conventional commit
 pnpm run test:release  # Dry-run semantic release
 pnpm nx                # Direct Nx CLI access
@@ -171,6 +172,7 @@ export class ExampleComponent implements OnInit {
 
 - **Domain Logic** (`@simoncodes-ca/domain`): Pure business logic with **zero Node.js dependencies** — importable by all apps including the browser-based Tracker UI. This is where platform-agnostic logic belongs: key validation/parsing, translation status helpers, ICU↔Transloco format conversion, validation utilities (locale, key length, duplicates, hierarchical conflicts), and shared types (`TranslationStatus`, `LocaleMetadata`).
 - **Core Logic** (`@simoncodes-ca/core`): Node.js-dependent business logic — file I/O, checksums (crypto), directory traversal, bundle generation, import/export. Core depends on domain; **domain must never depend on core**.
+- **Core test helpers** (`@simoncodes-ca/core/testing`): Test-only error fixtures and internal module access for app specs and test helpers (`testing/`, `*.spec-helpers.ts`). ESLint prevents production imports; these names do not extend the public barrel.
 - **DTOs** (`@simoncodes-ca/data-transfer`): API contracts shared between API/CLI/UI
 - **Validation**: Request shape is checked at the edge in `apps/api/src/app/validation/`; rules live in domain/core.
 - **Mappers**: Convert between domain models and DTOs in API layer
@@ -214,7 +216,8 @@ export const addLocaleCommand = defineCommand<AddLocaleOptions>()({
 - The runner owns config loading, collection resolution, the interactive rule, cancellation and exit codes (`process.exitCode`, never `process.exit`). `run` returns `{ exitCode: 1 }` for a failure it has already reported, or throws.
 - Diagnostics go to stderr via `ConsoleFormatter.error/warning`; the payload goes to stdout.
 - Command tests use `runCommand(command, flags, { cwd, ask?, interactive?, stdin? })` with a temporary project and real core. Use `testing/command-project.ts` to create and clean up the config, collection and summary files; assert on stored files and captured output rather than mocking core. For commands that accept piped text, supply `stdin: { isTTY, read() }` to control input without reading the test runner's stdin. Production defaults to `process.stdin.isTTY` and a deferred `readFileSync(0, 'utf8')`.
-- Commands are registered (flags, help text, lazy import) in the Command Manifest `apps/cli/src/command-manifest.ts`, which `createCli()` in `apps/cli/src/program.ts` registers; `main.ts` only supplies argv. `main.spec.ts` and `main.handlers.spec.ts` cover the flag wiring and every manifest entry, and `program.lazy.spec.ts` checks that help loads without core.
+- Flag records own registration, per-field prompts and selection metadata. Export and import add typed resolution rules in their `*-cmd-flags.ts` files; resolution takes values without a prompt context. The runner appends command `prompts` after flag-level questions. Export and import pass prompt-free flags to the runner and build record questions with command-specific context.
+- Commands are registered (flags, help text, lazy import) in the Command Manifest `apps/cli/src/command-manifest.ts`, which `createCli(manifest = commandManifest)` in `apps/cli/src/program.ts` registers; `main.ts` only supplies argv. `main.spec.ts` and `main.handlers.spec.ts` inject recording loaders derived from the real manifest to cover flag wiring and every entry without command-module mocks, and `program.lazy.spec.ts` checks that help loads without core.
 
 ### API Controller Pattern (apps/api/src/app/<feature>/<feature>.controller.ts)
 

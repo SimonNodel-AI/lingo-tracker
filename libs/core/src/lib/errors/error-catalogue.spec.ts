@@ -77,6 +77,7 @@ describe('error catalogue registration', () => {
     createErrorCatalogue({ FirstError, WidenedError });
     const catalogue = createErrorCatalogue({ FirstError, SecondError });
     type Codes = (typeof catalogue)[keyof typeof catalogue]['code'];
+    expect(Object.keys(catalogue)).toEqual(['FirstError', 'SecondError']);
     expectTypeOf<Codes>().toEqualTypeOf<'FIRST' | 'SECOND'>();
   });
 });

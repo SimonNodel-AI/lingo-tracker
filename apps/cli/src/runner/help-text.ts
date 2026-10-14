@@ -1,32 +1,32 @@
-import { IMPORT_OPTION_TABLE } from '../commands/import-option-table';
+import type { IMPORT_FLAGS } from '../commands/import-cmd-flags';
 import { PREFERRED_TERMINOLOGY_FLAGS } from '../commands/preferred-terminology-flags';
 import { VALIDATE_FLAGS } from '../commands/validate-options';
 import { flagName } from './flag-record';
 
-export const importHelpText = () => `
+export const importHelpText = (flags: typeof IMPORT_FLAGS) => `
 Examples:
   # Import XLIFF from translation service (most common workflow)
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translations-es.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} es
+  $ lingo-tracker import ${flagName(flags.source)} translations-es.xlf ${flagName(flags.locale)} es
 
   # Import with dry-run to preview changes first
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translations-fr.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} fr ${flagName(IMPORT_OPTION_TABLE.dryRun)}
+  $ lingo-tracker import ${flagName(flags.source)} translations-fr.xlf ${flagName(flags.locale)} fr ${flagName(flags.dryRun)}
 
   # Import JSON file (format auto-detected from .json extension)
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} translated-de.json ${flagName(IMPORT_OPTION_TABLE.locale)} de
+  $ lingo-tracker import ${flagName(flags.source)} translated-de.json ${flagName(flags.locale)} de
 
   # Migrate from another translation system with rich metadata
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} old-system.json ${flagName(IMPORT_OPTION_TABLE.locale)} es \\
-      ${flagName(IMPORT_OPTION_TABLE.strategy)} migration ${flagName(IMPORT_OPTION_TABLE.createMissing)} ${flagName(IMPORT_OPTION_TABLE.updateComments)} ${flagName(IMPORT_OPTION_TABLE.updateTags)}
+  $ lingo-tracker import ${flagName(flags.source)} old-system.json ${flagName(flags.locale)} es \\
+      ${flagName(flags.strategy)} migration ${flagName(flags.createMissing)} ${flagName(flags.updateComments)} ${flagName(flags.updateTags)}
 
   # Language expert verification workflow
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} verified-ja.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} ja ${flagName(IMPORT_OPTION_TABLE.strategy)} verification
+  $ lingo-tracker import ${flagName(flags.source)} verified-ja.xlf ${flagName(flags.locale)} ja ${flagName(flags.strategy)} verification
 
   # Bulk update existing translations (preserves current status)
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} updates-pt.json ${flagName(IMPORT_OPTION_TABLE.locale)} pt ${flagName(IMPORT_OPTION_TABLE.strategy)} update
+  $ lingo-tracker import ${flagName(flags.source)} updates-pt.json ${flagName(flags.locale)} pt ${flagName(flags.strategy)} update
 
   # Import to specific collection with verbose logging
-  $ lingo-tracker import ${flagName(IMPORT_OPTION_TABLE.source)} admin-ko.xlf ${flagName(IMPORT_OPTION_TABLE.locale)} ko \\
-      ${flagName(IMPORT_OPTION_TABLE.collection)} admin ${flagName(IMPORT_OPTION_TABLE.verbose)}
+  $ lingo-tracker import ${flagName(flags.source)} admin-ko.xlf ${flagName(flags.locale)} ko \\
+      ${flagName(flags.collection)} admin ${flagName(flags.verbose)}
 
 Import Strategies:
   translation-service  Professional translation import (default)
@@ -40,7 +40,7 @@ Import Strategies:
                        - Indicates higher confidence level
 
   migration           Migrate from another translation system
-                       - Allows creating missing resources (with ${flagName(IMPORT_OPTION_TABLE.createMissing)})
+                       - Allows creating missing resources (with ${flagName(flags.createMissing)})
                        - Resolves Transloco-style references: {{t('key')}}
                        - Can update comments and tags
                        - Best for one-time migration
@@ -52,7 +52,7 @@ Import Strategies:
 
 Notes:
   - Format is auto-detected from file extension (.xlf, .xliff, .json)
-  - Use ${flagName(IMPORT_OPTION_TABLE.dryRun)} to preview changes before committing
+  - Use ${flagName(flags.dryRun)} to preview changes before committing
   - Summary report saved to {translationsFolder}/import-summary.md
   - Large files (>5MB) will show a warning
 `;

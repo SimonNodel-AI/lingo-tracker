@@ -86,7 +86,7 @@ describe('EditorSession', () => {
       activeLang: () => 'en',
       confirm,
       close: dialogRef.close,
-      focus,
+      editorFocus: { request: focus },
       feedbackText: (feedback) => feedbackText(feedback, translate),
       notifications: { success: vi.fn(), error: vi.fn() },
     });
@@ -769,7 +769,7 @@ describe('EditorSession', () => {
     expect(session.errorMessage()).toBe(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS);
     expect(session.panels.isFolderPopoverOpen()).toBe(false);
     expect(session.panels.isLocalesDrawerOpen()).toBe(false);
-    expect(focus).toHaveBeenCalledExactlyOnceWith('key');
+    expect(focus.mock.calls).toEqual([['drawer-first-control'], ['folder-filter'], ['key']]);
     expect(dialogRef.close).not.toHaveBeenCalled();
   });
 
@@ -783,31 +783,32 @@ describe('EditorSession', () => {
     confirm.mockResolvedValue(false);
     session.form.patchValue({ key: 'valid', baseValue: 'Value' });
     await session.onSubmit();
-    expect(session.panels.focusRequest()?.target).toBe('comment');
+    expect(focus).toHaveBeenLastCalledWith('comment');
     expect(dialogRef.close).not.toHaveBeenCalled();
   });
 
-  it('restarts the absorption highlight delay and releases pending work on destroy', () => {
+  it('cancels pending absorption feedback when the session is destroyed', () => {
     vi.useFakeTimers();
     try {
-      session.form.controls.key.setValue('first.key');
-      vi.advanceTimersByTime(20);
-      expect(session.locationAbsorbedFlash()).toBe(true);
-      vi.advanceTimersByTime(800);
-      session.form.controls.key.setValue('second.key');
-      vi.advanceTimersByTime(100);
-      expect(session.locationAbsorbedFlash()).toBe(true);
-      vi.advanceTimersByTime(800);
+      session.form.controls.key.setValue('pending.key');
+      const announcement = session.locationAbsorbedMessage();
+      expect(announcement).toContain('pending');
       expect(session.locationAbsorbedFlash()).toBe(false);
-      session.form.controls.key.setValue('third.key');
       session.destroy();
+      session.form.controls.key.setValue('later.key');
       vi.runAllTimers();
       expect(session.locationAbsorbedFlash()).toBe(false);
-      session.form.controls.key.setValue('unchanged.key');
-      expect(session.form.controls.key.value).toBe('unchanged.key');
+      expect(session.locationAbsorbedMessage()).toBe(announcement);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('releases dotted-key synchronization on destroy', () => {
+    session.form.controls.key.setValue('third.key');
+    session.destroy();
+    session.form.controls.key.setValue('unchanged.key');
+    expect(session.form.controls.key.value).toBe('unchanged.key');
   });
 
   it('guards an existing-entry hand-off with the same discard decision', async () => {

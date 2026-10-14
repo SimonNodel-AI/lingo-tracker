@@ -1,10 +1,10 @@
 import type { Collection } from '../config/open-collection';
 import {
+  addEntry,
   type EntryAddChanges,
   type EntryAddResult,
   type EntryWriteOptions,
   type ExistingResourcePolicy,
-  writeEntry,
 } from './resource-entry';
 import { resolveCheckedResourceKey } from './resource-key';
 
@@ -47,11 +47,5 @@ export async function addResource(
   options: AddResourceOptions = {},
 ): Promise<EntryAddResult> {
   const resolvedKey = resolveCheckedResourceKey(params.key, params.targetFolder);
-  const outcome = await writeEntry(
-    collection,
-    resolvedKey,
-    { kind: 'add', changes: params, onExisting: options.onExisting ?? 'fail' },
-    options,
-  );
-  return outcome.result;
+  return addEntry(collection, resolvedKey, params, options.onExisting ?? 'fail', options);
 }

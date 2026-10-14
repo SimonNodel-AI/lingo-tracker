@@ -22,7 +22,7 @@ Return to [architecture README](README.md).
 
 ## 1. Resource Lifecycle
 
-The full lifecycle of a [resource](glossary.md#resource-entry) from creation through verification and bundle generation. Each status transition is driven by the [checksum-based staleness mechanism](domain-and-data-model.md#checksum-driven-staleness-detection). The flow ends with `generateBundle()` in [core-library.md — Bundle Generation](core-library.md#bundle-generation).
+The full lifecycle of a [resource](glossary.md#resource-entry) from creation through verification and bundle generation. Each status transition is driven by the [checksum-based staleness mechanism](domain-and-data-model.md#checksum-driven-staleness-detection). The flow ends with `generateBundles()` in [core-library.md — Bundle Generation](core-library.md#bundle-generation).
 
 <!-- Resource lifecycle: create → edit base → auto-translate → stale → re-translate → verify → bundle -->
 
@@ -83,7 +83,7 @@ sequenceDiagram
 
     Note over Dev,FS: 5. Bundle
     Dev->>CLI: bundle
-    CLI->>Core: generateBundle({ ..., cwd })
+    CLI->>Core: generateBundles(config, { ..., cwd })
     Core->>Core: resolveBundleCollections() — open each collection once
     Core->>FS: selectBundleEntries() per locale — readCollection(), once per collection
     Core->>Domain: icuToTransloco(value) — per selected entry
@@ -91,7 +91,7 @@ sequenceDiagram
     Core->>FS: writeBundleFile(dist/i18n/en.json, dist/i18n/fr.json, ...)
     Core->>Core: generateBundleTypes(base keys) [if typeDistFile configured]
     Core->>FS: write TRACKER_TOKENS type file
-    Core-->>CLI: BundleResult
+    Core-->>CLI: GenerateBundlesResult (outcomes and totals)
     CLI-->>Dev: "Bundle written"
 ```
 

@@ -4,8 +4,8 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import type { MultipleBundleConstantNameError } from '../errors';
-import { BundleNotFoundError } from '../errors';
+import type { MultipleBundleConstantNameError } from '../errors/internal';
+import { BundleNotFoundError } from '../errors/internal';
 import { type BundleRunOutcome, generateBundles } from './generate-bundles';
 
 describe('generateBundles', () => {
@@ -34,7 +34,7 @@ describe('generateBundles', () => {
     expect(result.outcomes.map(({ name }) => name)).toEqual(['first', 'second']);
     expect(result.outcome).toBe('succeeded');
     expect(result.outcomes.map((item) => item.outcome)).toEqual(['succeeded', 'succeeded']);
-    expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 0, warningsCount: 2 });
+    expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 0 });
   });
 
   it('runs named bundles in request order', async () => {
@@ -70,9 +70,10 @@ describe('generateBundles', () => {
       { cwd: cwd() },
     );
     expect(result.outcomes[0]?.result?.typeOutcome.status).toBe('failed');
-    expect(result.outcomes[0]?.result?.typeWarning).toContain("Type generation failed for 'first':");
-    expect(result.outcomes[0]?.result?.warnings).toEqual([]);
-    expect(result.totals.warningsCount).toBe(0);
+    expect(result.outcomes[0]?.result?.warnings.find((warning) => warning.origin === 'type')?.message).toContain(
+      "Type generation failed for 'first':",
+    );
+    expect(result.outcomes[0]?.result?.warnings.filter((warning) => warning.origin === 'generation')).toEqual([]);
     expect(result.outcomes[0]?.outcome).toBe('failed');
     expect(result.outcome).toBe('failed');
   });
@@ -97,9 +98,11 @@ describe('generateBundles', () => {
     );
 
     expect(result.outcomes[0]?.error).toBeUndefined();
-    expect(result.outcomes[0]?.result?.warnings).toEqual(["Collection 'deleted' not found in config"]);
+    expect(result.outcomes[0]?.result?.warnings).toEqual([
+      { origin: 'generation', message: "Collection 'deleted' not found in config" },
+    ]);
     expect(result.outcomes[0]?.result?.writtenFiles).toEqual(['out/first-en.json']);
-    expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1, warningsCount: 1 });
+    expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1 });
     expect(existsSync(join(cwd(), 'out/first-en.json'))).toBe(true);
   });
 
@@ -129,11 +132,11 @@ describe('generateBundles', () => {
     expect(result.outcomes[0]?.error).toBeInstanceOf(Error);
     expect(result.outcome).toBe('failed');
     expect(result.outcomes[1]?.result?.filesGenerated).toBe(1);
-    expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1, warningsCount: 0 });
+    expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1 });
     expect(existsSync(join(cwd(), 'out/second-en.json'))).toBe(true);
   });
 
-  it('emits start then result carrying the type warning', async () => {
+  it('emits start then result carrying the config warning', async () => {
     const populated = populatedConfig();
     const legacy = {
       bundleName: 'first-{locale}',
@@ -153,13 +156,14 @@ describe('generateBundles', () => {
     );
 
     expect(events).toEqual(['start', 'result']);
-    expect(result.totals.warningsCount).toBe(1);
-    expect(result.outcomes[0]?.configWarning).toBe(result.outcomes[0]?.result?.configWarning);
-    expect(result.outcomes[0]?.result?.warnings).toEqual([]);
-    expect(result.outcomes[0]?.result?.configWarning).toContain("Bundle 'first': 'typeDist' is deprecated");
+    expect(result.outcomes[0]?.result?.warnings).toHaveLength(1);
+    expect(result.outcomes[0]?.result?.warnings.filter((warning) => warning.origin === 'generation')).toEqual([]);
+    expect(result.outcomes[0]?.result?.warnings.find((warning) => warning.origin === 'config')?.message).toContain(
+      "Bundle 'first': 'typeDist' is deprecated",
+    );
   });
 
-  it('reports the prepared type warning once when a bundle write fails', async () => {
+  it('reports the prepared config warning once when a bundle write fails', async () => {
     writeFileSync(join(cwd(), 'blocked'), 'a file');
     const events: Array<{ kind: string; outcome?: BundleRunOutcome }> = [];
     const legacy = {
@@ -182,10 +186,19 @@ describe('generateBundles', () => {
 
     expect(result.outcomes[0]?.error).toBeInstanceOf(Error);
     expect(events.map((event) => event.kind)).toEqual(['start', 'result']);
-    expect(events[1]?.outcome?.configWarning).toContain("Bundle 'first': 'typeDist' is deprecated");
-    expect(events.filter((event) => event.outcome?.configWarning)).toHaveLength(1);
-    expect(result.outcomes[0]?.configWarning).toBe(events[1]?.outcome?.configWarning);
-    expect(result.totals.warningsCount).toBe(0);
+    const reported = events[1]?.outcome;
+    const failed = result.outcomes[0];
+    expect(reported && 'warnings' in reported ? reported.warnings : undefined).toEqual([
+      { origin: 'config', message: expect.stringContaining("Bundle 'first': 'typeDist' is deprecated") },
+    ]);
+    expect(
+      events.filter(
+        (event) => event.outcome && 'warnings' in event.outcome && (event.outcome.warnings?.length ?? 0) > 0,
+      ),
+    ).toHaveLength(1);
+    expect(failed && 'warnings' in failed ? failed.warnings : undefined).toBe(
+      reported && 'warnings' in reported ? reported.warnings : undefined,
+    );
   });
 
   it('forwards overrides and allows a constant name for one named bundle', async () => {
@@ -213,7 +226,7 @@ describe('generateBundles', () => {
 
   it('totals files from every non-empty bundle', async () => {
     const result = await generateBundles(populatedConfig(), { cwd: cwd() });
-    expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 2, warningsCount: 0 });
+    expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 2 });
   });
 
   it('propagates a start event callback error', async () => {

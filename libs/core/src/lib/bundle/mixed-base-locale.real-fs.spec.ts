@@ -4,7 +4,8 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { generateBundle } from './generate-bundle';
+import { generatePreparedBundle } from './generate-bundle';
+import { prepareBundleRun } from './prepare-bundle-run';
 import { planBundle } from './plan-bundle';
 
 /**
@@ -60,12 +61,15 @@ describe('bundles with a collection that overrides the base locale (real fs)', (
   it('includes the collection in the debug-keys bundle', async () => {
     const { config, definition } = setup();
 
-    const result = await generateBundle({
-      bundleKey: 'main',
-      config: { ...config, bundles: { main: { ...definition, typeDistFile: undefined } } },
-      locales: ['en'],
-      debugKeysLocale: '99',
-    });
+    const result = await generatePreparedBundle(
+      prepareBundleRun({
+        source: 'saved',
+        bundleKey: 'main',
+        config: { ...config, bundles: { main: { ...definition, typeDistFile: undefined } } },
+        locales: ['en'],
+      }),
+      { debugKeysLocale: '99' },
+    );
 
     expect(result.keysPerLocale['99']).toBe(3);
     expect(JSON.parse(readFileSync(join(root(), 'dist', '99.json'), 'utf8'))).toEqual({

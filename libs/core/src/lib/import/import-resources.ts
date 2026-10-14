@@ -1,6 +1,6 @@
 import {
-  describeBracedPlaceholder,
-  findBracedPlaceholders,
+  checkStoredValue,
+  describeStoredValueFinding,
   importStrategyPolicy,
   resolveAllReferences,
 } from '@simoncodes-ca/domain';
@@ -54,10 +54,10 @@ export function importResources(
 
   prepared = prepared.filter((resource) => {
     const descriptions = [
-      ...findBracedPlaceholders(resource.value).map((found) => `Value: ${describeBracedPlaceholder(found)}`),
+      ...checkStoredValue(resource.value).map((found) => `Value: ${describeStoredValueFinding(found)}`),
       ...(resource.baseValue === undefined
         ? []
-        : findBracedPlaceholders(resource.baseValue).map((found) => `Base value: ${describeBracedPlaceholder(found)}`)),
+        : checkStoredValue(resource.baseValue).map((found) => `Base value: ${describeStoredValueFinding(found)}`)),
     ];
     if (descriptions.length === 0) return true;
     const message = descriptions.join('\n');

@@ -4,7 +4,7 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../../testing/temp-dir.spec-helpers';
 import { BundleHierarchicalConflictError } from '../../errors/internal';
-import { generateBundleTypes } from './generate-types';
+import { generateBundleTypes, legacyTypeDistWarning } from './generate-types';
 
 describe('generateBundleTypes (real fs)', () => {
   const root = useTempDir('bundle-types-');
@@ -48,10 +48,7 @@ describe('generateBundleTypes (real fs)', () => {
     const result = generate({ definition: definition({ typeDistFile: undefined }) });
 
     expect(result).toMatchObject({
-      fileGenerated: false,
-      keysCount: 0,
-      skippedReason: 'not-configured',
-      typeDistFile: undefined,
+      status: 'not-configured',
     });
     expect(existsSync(join(root(), 'src/generated/main-tokens.ts'))).toBe(false);
   });
@@ -60,7 +57,7 @@ describe('generateBundleTypes (real fs)', () => {
     const result = generate({ keys: ['buttons.ok', 'buttons.cancel'] });
     const output = readFileSync(join(root(), 'src/generated/main-tokens.ts'), 'utf8');
 
-    expect(result).toMatchObject({ fileGenerated: true, keysCount: 2 });
+    expect(result).toMatchObject({ status: 'written', keysCount: 2 });
     expect(output).toContain('Auto-generated translation keys for bundle: main');
     expect(output).toContain('export const MAIN_TOKENS');
     expect(output).toContain("CANCEL: 'buttons.cancel'");
@@ -80,8 +77,8 @@ describe('generateBundleTypes (real fs)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const result = generate({ keys: [] });
 
-    expect(result.skippedReason).toBe('empty-bundle');
-    expect(result.fileGenerated).toBe(false);
+    expect(result).toEqual({ status: 'skipped', reason: 'empty-bundle' });
+    expect(result.status).toBe('skipped');
     expect(warn).not.toHaveBeenCalled();
     expect(existsSync(join(root(), 'src/generated/main-tokens.ts'))).toBe(false);
   });
@@ -89,7 +86,7 @@ describe('generateBundleTypes (real fs)', () => {
   it('creates the output directory when it does not exist', () => {
     const result = generate({ definition: definition({ typeDistFile: 'new/deep/tokens.ts' }) });
 
-    expect(result.fileGenerated).toBe(true);
+    expect(result.status).toBe('written');
     expect(existsSync(join(root(), 'new/deep/tokens.ts'))).toBe(true);
   });
 
@@ -114,24 +111,26 @@ describe('generateBundleTypes (real fs)', () => {
     mkdirSync(join(root(), 'types.ts'));
     const result = generate({ definition: definition({ typeDistFile: 'types.ts' }) });
 
-    expect(result.fileGenerated).toBe(false);
-    expect(result.errorReason).toMatch(/typeDistFile must be a file path/);
-    expect(result.errorReason).toContain(join(root(), 'types.ts'));
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' ? result.reason : undefined).toMatch(/typeDistFile must be a file path/);
+    expect(result.status === 'failed' ? result.reason : undefined).toContain(join(root(), 'types.ts'));
   });
 
   it('returns an error containing the configured value when typeDistFile is not a .ts file', () => {
     const result = generate({ definition: definition({ typeDistFile: 'src/generated/tokens.js' }) });
 
-    expect(result.fileGenerated).toBe(false);
-    expect(result.errorReason).toMatch(/typeDistFile must end with a \.ts extension/);
-    expect(result.errorReason).toContain('src/generated/tokens.js');
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' ? result.reason : undefined).toMatch(
+      /typeDistFile must end with a \.ts extension/,
+    );
+    expect(result.status === 'failed' ? result.reason : undefined).toContain('src/generated/tokens.js');
     expect(existsSync(join(root(), 'src/generated/tokens.js'))).toBe(false);
   });
 
-  it('resolves relative typeDistFile against cwd and returns its absolute path', () => {
+  it('resolves relative typeDistFile against cwd and returns its project-relative path', () => {
     const result = generate({ definition: definition({ typeDistFile: 'types/tokens.ts' }) });
 
-    expect(result.typeDistFile).toBe(join(root(), 'types/tokens.ts'));
+    expect(result.status === 'written' ? result.path : undefined).toBe('types/tokens.ts');
     expect(existsSync(join(root(), 'types/tokens.ts'))).toBe(true);
   });
 
@@ -178,16 +177,16 @@ describe('generateBundleTypes (real fs)', () => {
   it('returns an error for an invalid tokenConstantName parameter', () => {
     const result = generate({ tokenConstantName: 'my-bad-name' });
 
-    expect(result.fileGenerated).toBe(false);
-    expect(result.errorReason).toMatch(/Invalid tokenConstantName/);
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' ? result.reason : undefined).toMatch(/Invalid tokenConstantName/);
     expect(existsSync(join(root(), 'src/generated/main-tokens.ts'))).toBe(false);
   });
 
   it('returns an error for an invalid tokenConstantName in the definition', () => {
     const result = generate({ definition: definition({ tokenConstantName: '1bad' }) });
 
-    expect(result.fileGenerated).toBe(false);
-    expect(result.errorReason).toMatch(/Invalid tokenConstantName/);
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' ? result.reason : undefined).toMatch(/Invalid tokenConstantName/);
     expect(existsSync(join(root(), 'src/generated/main-tokens.ts'))).toBe(false);
   });
 
@@ -196,8 +195,8 @@ describe('generateBundleTypes (real fs)', () => {
     const legacy = { ...definition({ typeDistFile: undefined }), typeDist: null } as unknown as BundleDefinition;
     const result = generate({ definition: legacy });
 
-    expect(result.skippedReason).toBe('not-configured');
-    expect(result.fileGenerated).toBe(false);
+    expect(result).toEqual({ status: 'not-configured' });
+    expect(result.status).toBe('not-configured');
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -209,13 +208,13 @@ describe('generateBundleTypes (real fs)', () => {
     } as unknown as BundleDefinition;
     const result = generate({ definition: withBoth });
 
-    expect(result.typeDistFile).toBe(join(root(), 'types/current.ts'));
+    expect(result.status === 'written' ? result.path : undefined).toBe('types/current.ts');
     expect(existsSync(join(root(), 'types/current.ts'))).toBe(true);
     expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(false);
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('supports deprecated typeDist and returns a deprecation warning', () => {
+  it('supports deprecated typeDist while preparation owns its deprecation warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const legacy = {
       ...definition({ typeDistFile: undefined }),
@@ -223,15 +222,15 @@ describe('generateBundleTypes (real fs)', () => {
     } as unknown as BundleDefinition;
     const result = generate({ definition: legacy });
 
-    expect(result.fileGenerated).toBe(true);
+    expect(result.status).toBe('written');
     expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-    expect(result.warning).toContain("Bundle 'main'");
-    expect(result.warning).toContain("'typeDist' is deprecated");
-    expect(result.warning).toContain("'typeDistFile'");
+    expect(legacyTypeDistWarning('main', legacy)).toContain("Bundle 'main'");
+    expect(legacyTypeDistWarning('main', legacy)).toContain("'typeDist' is deprecated");
+    expect(legacyTypeDistWarning('main', legacy)).toContain("'typeDistFile'");
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it('keeps the legacy warning when creating the type directory fails', () => {
+  it('keeps the preparation warning available when creating the type directory fails', () => {
     writeFileSync(join(root(), 'blocked'), 'a file');
     const legacy = {
       ...definition({ typeDistFile: undefined }),
@@ -240,8 +239,8 @@ describe('generateBundleTypes (real fs)', () => {
 
     const result = generate({ definition: legacy });
 
-    expect(result.fileGenerated).toBe(false);
-    expect(result.errorReason).toBeDefined();
-    expect(result.warning).toContain("'typeDist' is deprecated");
+    expect(result.status).toBe('failed');
+    expect(result.status === 'failed' ? result.reason : undefined).toBeDefined();
+    expect(legacyTypeDistWarning('main', legacy)).toContain("'typeDist' is deprecated");
   });
 });

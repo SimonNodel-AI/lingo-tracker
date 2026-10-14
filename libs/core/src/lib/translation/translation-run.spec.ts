@@ -4,13 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-tracker-error';
-import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
-import * as batchModule from '../resource/translation-batch';
 import type { TranslateLocaleProgress } from './translation-run';
 import {
   prepareTranslationRun,
@@ -18,12 +17,30 @@ import {
   type TranslationRunOptions,
 } from './translation-run';
 
+vi.mock('../file-io/json-file-operations', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
+  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+});
+
+async function failWrite(filePath: string) {
+  const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
+    '../file-io/json-file-operations',
+  );
+  const error = new Error('write failed');
+  const writer = vi.mocked(writeJsonFile);
+  writer.mockImplementation((options) => {
+    if (options.filePath === filePath) throw error;
+    return actual.writeJsonFile(options);
+  });
+  return { error, restore: () => writer.mockImplementation(actual.writeJsonFile) };
+}
+
 const executeLocale = async (
   collection: Collection,
   params: TranslationRunOptions & TranslationRunExecutionOptions & { targetLocale: string },
 ) => {
   const { targetLocale, onProgress, ...options } = params;
-  return prepareTranslationRun(collection, { ...options, delay: async () => {} })
+  return prepareTranslationRun(collection, { ...options, delay: async () => undefined })
     .forLocale(targetLocale)
     .execute({ onProgress });
 };
@@ -34,11 +51,6 @@ const onMutation = (mutation: ResourceMutation): void => {
 };
 beforeEach(() => {
   collected.length = 0;
-});
-
-vi.mock('../file-io/json-file-operations', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
-  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
 });
 
 const AUTO: TranslationConfig = {
@@ -121,7 +133,7 @@ describe('Translation Run', () => {
     seedResources(target, { 'a.one': { source: 'One' }, 'b.two': { source: 'Two' }, 'c.three': { source: 'Three' } });
     const result = await prepareTranslationRun(target, {
       provider: new InMemoryTranslationProvider(),
-      delay: async () => {},
+      delay: async () => undefined,
     })
       .forLocale('fr')
       .execute();
@@ -133,14 +145,8 @@ describe('Translation Run', () => {
   it('emits one reindex when a folder fails and another folder succeeds in the same batch', async () => {
     const target = withBatchSize(5);
     seedResources(target, { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
-    const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-      '../file-io/json-file-operations',
-    );
-    const writer = vi.mocked(writeJsonFile);
-    writer.mockImplementation((options) => {
-      if (options.filePath.endsWith(join('first', TRACKER_META_FILENAME))) throw new Error('metadata write failed');
-      actual.writeJsonFile(options);
-    });
+    const failedPath = join(dir(), 'first', TRACKER_META_FILENAME);
+    const { error, restore } = await failWrite(failedPath);
     try {
       const result = await executeLocale(target, {
         targetLocale: 'fr',
@@ -154,46 +160,37 @@ describe('Translation Run', () => {
         translatedCount: 1,
         failedCount: 1,
         skippedCount: 0,
-        failures: [{ key: 'first.ok', error: 'metadata write failed' }],
+        failures: [{ key: 'first.ok', error: error.message }],
       });
       expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
     } finally {
-      writer.mockImplementation(actual.writeJsonFile);
+      restore();
     }
   });
 
-  it('preserves an execution error when mutation delivery also throws', async () => {
+  it('preserves an execution error without repeating mutation delivery', async () => {
     const target = collection();
     seedResources(target, { ok: { source: 'OK' } });
-    const originalError = new Error('batch execution failed');
-    const sinkError = new Error('sink failed');
+    const originalError = new Error('progress failed');
     const reported: ResourceMutation[] = [];
-    const batch = vi
-      .spyOn(batchModule, 'translationBatch')
-      .mockImplementationOnce(async (opened, _rows, _locales, _translator, options) => {
-        options?.onMutation?.({ kind: 'reindex', translationsFolder: opened.translationsFolder });
-        throw originalError;
-      });
-    try {
-      await expect(
-        executeLocale(target, {
-          targetLocale: 'fr',
-          provider: new InMemoryTranslationProvider(),
-          onMutation: (mutation) => {
-            reported.push(mutation);
-            throw sinkError;
-          },
-        }),
-      ).rejects.toBe(originalError);
-      expect(reported).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
-    } finally {
-      batch.mockRestore();
-    }
+    await expect(
+      executeLocale(target, {
+        targetLocale: 'fr',
+        provider: new InMemoryTranslationProvider(),
+        onProgress: () => {
+          throw originalError;
+        },
+        onMutation: (mutation) => {
+          reported.push(mutation);
+        },
+      }),
+    ).rejects.toBe(originalError);
+    expect(reported).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
   });
 
   it('prepares availability before a prompt and selects the final locale afterward', async () => {
     const target = collection();
-    const prepared = prepareTranslationRun(target, { delay: async () => {} });
+    const prepared = prepareTranslationRun(target, { delay: async () => undefined });
     expect(prepared.targetLocales).toEqual(['fr']);
     expect(prepared).not.toHaveProperty('targetLocale');
     expect(prepared).not.toHaveProperty('collection');
@@ -217,7 +214,7 @@ describe('Translation Run', () => {
         return `[fr] ${text}`;
       }),
       onMutation,
-      delay: async () => {},
+      delay: async () => undefined,
     })
       .forLocale('fr')
       .execute({ onProgress: (event) => progress.push(event) });
@@ -420,16 +417,8 @@ describe('Translation Run', () => {
 
     it('reports a failed save in the last folder after an earlier batch saved', async () => {
       seedResources(collection(), { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
-      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-        '../file-io/json-file-operations',
-      );
-      const writer = vi.mocked(writeJsonFile);
-      writer.mockImplementation((options) => {
-        if (options.filePath.endsWith(join('second', TRACKER_META_FILENAME))) {
-          throw new Error('second metadata write failed');
-        }
-        actual.writeJsonFile(options);
-      });
+      const failedPath = join(dir(), 'second', TRACKER_META_FILENAME);
+      const { error, restore } = await failWrite(failedPath);
       const events: string[] = [];
 
       let result: Awaited<ReturnType<typeof executeLocale>>;
@@ -441,11 +430,11 @@ describe('Translation Run', () => {
           onProgress: (progress) => events.push(`batch ${progress.currentBatch}`),
         });
       } finally {
-        writer.mockImplementation(actual.writeJsonFile);
+        restore();
       }
 
       expect(result.failedCount).toBe(1);
-      expect(result.failures).toEqual([{ key: 'second.cancel', error: 'second metadata write failed' }]);
+      expect(result.failures).toEqual([{ key: 'second.cancel', error: error.message }]);
       expect(events).toEqual(['reindex', 'batch 1', 'reindex', 'batch 2']);
       expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
     });
@@ -458,16 +447,8 @@ describe('Translation Run', () => {
         'second.close': { source: 'Close' },
         'second.items': { source: '{count, plural, one {# item} other {# items}}' },
       });
-      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-        '../file-io/json-file-operations',
-      );
-      const writer = vi.mocked(writeJsonFile);
-      writer.mockImplementation((options) => {
-        if (options.filePath.endsWith(join('second', RESOURCE_ENTRIES_FILENAME))) {
-          throw new Error('second write failed');
-        }
-        actual.writeJsonFile(options);
-      });
+      const failedPath = join(dir(), 'second', RESOURCE_ENTRIES_FILENAME);
+      const { error, restore } = await failWrite(failedPath);
       const progress: TranslateLocaleProgress[] = [];
       try {
         const result = await executeLocale(target, {
@@ -478,9 +459,9 @@ describe('Translation Run', () => {
         expect(result).toMatchObject({ totalResources: 4, translatedCount: 1, failedCount: 3, skippedCount: 0 });
         expect(result.translatedCount + result.failedCount + result.skippedCount).toBe(result.totalResources);
         expect(result.failures).toEqual([
-          { key: 'second.cancel', error: 'second write failed' },
-          { key: 'second.close', error: 'second write failed' },
-          { key: 'second.items', error: 'second write failed' },
+          { key: 'second.cancel', error: error.message },
+          { key: 'second.close', error: error.message },
+          { key: 'second.items', error: error.message },
         ]);
         expect(result.skippedKeys).toEqual([]);
         expect(read(RESOURCE_ENTRIES_FILENAME, 'first').ok.fr).toBe('[fr] OK');
@@ -495,7 +476,7 @@ describe('Translation Run', () => {
           },
         ]);
       } finally {
-        writer.mockImplementation(actual.writeJsonFile);
+        restore();
       }
     });
 
@@ -522,16 +503,8 @@ describe('Translation Run', () => {
     it('reports the mutation when a folder saves only resource entries', async () => {
       seedResources(collection(), { 'second.cancel': { source: 'Cancel' } });
       const originalMeta = read(TRACKER_META_FILENAME, 'second');
-      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-        '../file-io/json-file-operations',
-      );
-      const writer = vi.mocked(writeJsonFile);
-      writer.mockImplementation((options) => {
-        if (options.filePath.endsWith(join('second', TRACKER_META_FILENAME))) {
-          throw new Error('second metadata write failed');
-        }
-        actual.writeJsonFile(options);
-      });
+      const failedPath = join(dir(), 'second', TRACKER_META_FILENAME);
+      const { error, restore } = await failWrite(failedPath);
       const writes: ResourceMutation[] = [];
 
       let result: Awaited<ReturnType<typeof executeLocale>>;
@@ -542,11 +515,11 @@ describe('Translation Run', () => {
           onMutation: (mutation) => writes.push(mutation),
         });
       } finally {
-        writer.mockImplementation(actual.writeJsonFile);
+        restore();
       }
 
       expect(result.failedCount).toBe(1);
-      expect(result.failures).toEqual([{ key: 'second.cancel', error: 'second metadata write failed' }]);
+      expect(result.failures).toEqual([{ key: 'second.cancel', error: error.message }]);
       expect(result.outcome).toBe('failed');
       expect(writes).toEqual([{ kind: 'reindex', translationsFolder: dir() }]);
       expect(read(RESOURCE_ENTRIES_FILENAME, 'second').cancel.fr).toBe('[fr] Cancel');
@@ -555,16 +528,8 @@ describe('Translation Run', () => {
 
     it('continues with later batches after a folder save fails', async () => {
       seedResources(collection(), { 'first.ok': { source: 'OK' }, 'second.cancel': { source: 'Cancel' } });
-      const actual = await vi.importActual<typeof import('../file-io/json-file-operations')>(
-        '../file-io/json-file-operations',
-      );
-      const writer = vi.mocked(writeJsonFile);
-      writer.mockImplementation((options) => {
-        if (options.filePath.endsWith(join('first', TRACKER_META_FILENAME))) {
-          throw new Error('first metadata write failed');
-        }
-        actual.writeJsonFile(options);
-      });
+      const failedPath = join(dir(), 'first', TRACKER_META_FILENAME);
+      const { error, restore } = await failWrite(failedPath);
 
       let result: Awaited<ReturnType<typeof executeLocale>>;
       try {
@@ -574,11 +539,11 @@ describe('Translation Run', () => {
           provider: new InMemoryTranslationProvider(),
         });
       } finally {
-        writer.mockImplementation(actual.writeJsonFile);
+        restore();
       }
 
       expect(result.failedCount).toBe(1);
-      expect(result.failures).toEqual([{ key: 'first.ok', error: 'first metadata write failed' }]);
+      expect(result.failures).toEqual([{ key: 'first.ok', error: error.message }]);
       expect(result.translatedCount).toBe(1);
       expect(result.outcome).toBe('failed');
       expect(collected).toEqual([

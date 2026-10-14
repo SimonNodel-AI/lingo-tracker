@@ -1,6 +1,5 @@
 import { Directive, ElementRef, effect, inject, input } from '@angular/core';
-import { EditorFocus } from './editor-focus';
-import type { EditorFocusTarget } from './editor-panels';
+import { EditorFocus, type EditorFocusTarget } from './editor-focus';
 
 /** Registers conditional and overlay elements with their editor's focus scope. */
 @Directive({

@@ -58,9 +58,6 @@
       "dependsOn": ["prune-lockfile", "copy-workspace-modules"],
       "executor": "nx:noop"
     },
-    "lint": {
-      "executor": "@nx/eslint:lint"
-    },
     "typecheck": {
       "dependsOn": ["^typecheck", "typecheck-spec"]
     },

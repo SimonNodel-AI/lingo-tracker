@@ -11,7 +11,7 @@ import {
 import { METHOD_METADATA, MODULE_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import { addResource, CONFIG_FILENAME, type LingoTrackerConfig, openCollection } from '@simoncodes-ca/core';
-import * as providerFactory from '../../../../../libs/core/src/lib/machine-translation/translation-provider-factory';
+import { translationProviderFactory as providerFactory } from '@simoncodes-ca/core/testing';
 import { AppModule } from '../app.module';
 import { CollectionIndex } from '../cache/collection-index.service';
 

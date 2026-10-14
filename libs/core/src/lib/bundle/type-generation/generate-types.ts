@@ -7,19 +7,10 @@ import {
   validateJavaScriptIdentifier,
 } from '@simoncodes-ca/domain';
 import { BundleHierarchicalConflictError } from '../../errors/internal';
+import type { BundleTypeOutcome } from '../generate-bundle';
 import { resolveBundleSettings } from '../resolve-bundle-settings';
 import { generateFileHeader } from './file-header';
 import { buildTypeHierarchy, serializeHierarchy } from './hierarchy-builder';
-
-export interface GenerateTypesResult {
-  bundleKey: string;
-  typeDistFile: string | undefined;
-  keysCount: number;
-  fileGenerated: boolean;
-  skippedReason?: 'not-configured' | 'empty-bundle';
-  errorReason?: string;
-  warning?: string;
-}
 
 export interface GenerateBundleTypesParams {
   readonly bundleKey: string;
@@ -30,35 +21,26 @@ export interface GenerateBundleTypesParams {
   readonly tokenCasing: TokenCasing;
   /** CLI override for the constant name; wins over `definition.tokenConstantName`. */
   readonly tokenConstantName?: string;
-  /** Warning captured while preparing a saved bundle with deprecated `typeDist`. */
-  readonly warning?: string;
   /** The project directory `typeDistFile` resolves against. Default: `process.cwd()`. */
   readonly cwd?: string;
 }
 
 /**
  * Writes a bundle's type file: the keys as an `as const` tree plus its type alias, at
- * `typeDistFile` (or the deprecated `typeDist`, with a warning). Selecting the keys is the caller's
- * job (see Bundle Selection). Returns `skippedReason` when no file is configured or there are no
- * keys, and `errorReason` for a path that does not end in `.ts`, a path that is a directory, or an
+ * `typeDistFile` (or the deprecated `typeDist`). Selecting the keys is the caller's
+ * job (see Bundle Selection). Returns a not-configured or skipped outcome when there are no
+ * configured files or keys, and a failed outcome for a path that does not end in `.ts`, a path that is a directory, or an
  * invalid constant name. Hierarchical conflicts throw `BundleHierarchicalConflictError` before writes.
  */
-export function generateBundleTypes(params: GenerateBundleTypesParams): GenerateTypesResult {
+export function generateBundleTypes(params: GenerateBundleTypesParams): BundleTypeOutcome {
   const { bundleKey, definition: bundleDef, tokenCasing, tokenConstantName } = params;
 
   const resolvedTypeDistFile = bundleTypeOutputFile(bundleDef);
 
-  const warning = params.warning ?? legacyTypeDistWarning(bundleKey, bundleDef);
-
   try {
     if (!hasTypeDistConfigured(bundleDef) || !resolvedTypeDistFile) {
       return {
-        bundleKey,
-        typeDistFile: undefined,
-        keysCount: 0,
-        fileGenerated: false,
-        skippedReason: 'not-configured',
-        warning,
+        status: 'not-configured',
       };
     }
 
@@ -66,12 +48,8 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
     // so the error message reflects the value as configured, not the resolved path)
     if (!resolvedTypeDistFile.endsWith('.ts')) {
       return {
-        bundleKey,
-        typeDistFile: resolvedTypeDistFile,
-        keysCount: 0,
-        fileGenerated: false,
-        errorReason: `typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: ${resolvedTypeDistFile}`,
-        warning,
+        status: 'failed',
+        reason: `typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: ${resolvedTypeDistFile}`,
       };
     }
 
@@ -81,12 +59,8 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
     // Validate: typeDistFile must not point to an existing directory
     if (fs.existsSync(outputPath) && fs.statSync(outputPath).isDirectory()) {
       return {
-        bundleKey,
-        typeDistFile: resolvedTypeDistFile,
-        keysCount: 0,
-        fileGenerated: false,
-        errorReason: `typeDistFile must be a file path (e.g. './src/types/tokens.ts'), but '${resolvedTypeDistFile}' resolves to a directory at: ${outputPath}`,
-        warning,
+        status: 'failed',
+        reason: `typeDistFile must be a file path (e.g. './src/types/tokens.ts'), but '${resolvedTypeDistFile}' resolves to a directory at: ${outputPath}`,
       };
     }
 
@@ -94,12 +68,8 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
 
     if (sortedKeys.length === 0) {
       return {
-        bundleKey,
-        typeDistFile: resolvedTypeDistFile,
-        keysCount: 0,
-        fileGenerated: false,
-        skippedReason: 'empty-bundle',
-        warning,
+        status: 'skipped',
+        reason: 'empty-bundle',
       };
     }
 
@@ -110,12 +80,8 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
     const validationError = explicitName ? validateJavaScriptIdentifier(explicitName) : undefined;
     if (validationError) {
       return {
-        bundleKey,
-        typeDistFile: resolvedTypeDistFile,
-        keysCount: 0,
-        fileGenerated: false,
-        errorReason: `Invalid tokenConstantName for bundle '${bundleKey}': ${validationError}`,
-        warning,
+        status: 'failed',
+        reason: `Invalid tokenConstantName for bundle '${bundleKey}': ${validationError}`,
       };
     }
 
@@ -134,21 +100,18 @@ export function generateBundleTypes(params: GenerateBundleTypesParams): Generate
     fs.writeFileSync(outputPath, fileContent, 'utf-8');
 
     return {
-      bundleKey,
-      typeDistFile: outputPath,
+      status: 'written',
+      path: path
+        .relative(params.cwd ?? process.cwd(), outputPath)
+        .split(path.sep)
+        .join('/'),
       keysCount: sortedKeys.length,
-      fileGenerated: true,
-      warning,
     };
   } catch (error) {
     if (error instanceof BundleHierarchicalConflictError) throw error;
     return {
-      bundleKey,
-      typeDistFile: resolvedTypeDistFile,
-      keysCount: 0,
-      fileGenerated: false,
-      errorReason: error instanceof Error ? error.message : String(error),
-      warning,
+      status: 'failed',
+      reason: error instanceof Error ? error.message : String(error),
     };
   }
 }

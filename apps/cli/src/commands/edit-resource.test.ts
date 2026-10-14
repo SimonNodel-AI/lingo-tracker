@@ -1,4 +1,4 @@
-import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
+import { checkStoredValue, describeStoredValueFinding } from '@simoncodes-ca/domain';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
@@ -21,21 +21,21 @@ describe('editResourceCommand (real project)', () => {
     const before = entries();
     const result = await project.run(editResourceCommand, { key, baseValue: '{{{a}}}' });
     expect(result.exitCode).toBe(1);
-    const found = findBracedPlaceholders('{{{a}}}')[0];
+    const found = checkStoredValue('{{{a}}}')[0];
     expect(found).toBeDefined();
     if (!found) throw new Error('Missing finding');
-    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid:\n  ${describeBracedPlaceholder(found)}\n`);
+    expect(result.stderr).toBe(`❌ Value for locale "en" is not valid:\n  ${describeStoredValueFinding(found)}\n`);
     expect(entries()).toEqual(before);
   });
   it('prints every braced placeholder finding and preserves the entry', async () => {
     const before = entries();
     const value = '{{{a}}} and {{{b}}}';
     const result = await project.run(editResourceCommand, { key, baseValue: value });
-    const found = findBracedPlaceholders(value);
+    const found = checkStoredValue(value);
     expect(found).toHaveLength(2);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toBe(
-      `❌ Value for locale "en" is not valid:\n${found.map((finding) => `  ${describeBracedPlaceholder(finding)}\n`).join('')}`,
+      `❌ Value for locale "en" is not valid:\n${found.map((finding) => `  ${describeStoredValueFinding(finding)}\n`).join('')}`,
     );
     expect(entries()).toEqual(before);
   });

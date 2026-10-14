@@ -22,7 +22,8 @@ export default [
       '@nx/enforce-module-boundaries': [
         'error',
         {
-          enforceBuildableLibDependency: true,
+          // Apps bundle libraries from source; no consumer uses the standalone library build outputs.
+          enforceBuildableLibDependency: false,
           allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'],
           depConstraints: [
             {
@@ -48,6 +49,19 @@ export default [
           destructuredArrayIgnorePattern: '^_',
           varsIgnorePattern: '^_',
           ignoreRestSiblings: true,
+        },
+      ],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx,cts,mts,js,jsx,cjs,mjs}'],
+    ignores: ['**/*.{spec,test}.{ts,tsx,cts,mts,js,jsx,cjs,mjs}', '**/testing/**', '**/*.spec-helpers.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [{ name: '@simoncodes-ca/core/testing', message: 'Core testing helpers are only for tests.' }],
+          patterns: ['@simoncodes-ca/core/testing/*'],
         },
       ],
     },

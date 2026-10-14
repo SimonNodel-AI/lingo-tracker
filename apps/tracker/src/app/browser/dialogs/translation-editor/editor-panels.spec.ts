@@ -1,15 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EditorPanels } from './editor-panels';
+
+const focus = { request: vi.fn() };
 
 function setup(options: { readOnly?: boolean; hasOtherLocales?: boolean } = {}) {
   const { readOnly = false, hasOtherLocales = true } = options;
   return new EditorPanels({
+    editorFocus: focus,
     canOpenFolderPopover: () => !readOnly,
     canOpenLocalesDrawer: () => hasOtherLocales,
   });
 }
 
 describe('EditorPanels', () => {
+  beforeEach(() => focus.request.mockClear());
   describe('folder popover', () => {
     it('starts closed with nothing staged, filtered or requested', () => {
       const panels = setup();
@@ -17,7 +21,7 @@ describe('EditorPanels', () => {
       expect(panels.isFolderPopoverOpen()).toBe(false);
       expect(panels.stagedFolderPath()).toBeNull();
       expect(panels.folderFilter()).toBe('');
-      expect(panels.focusRequest()).toBeNull();
+      expect(focus.request).not.toHaveBeenCalled();
     });
 
     it('opens, resets staging and filter, and asks for the filter input', () => {
@@ -32,7 +36,7 @@ describe('EditorPanels', () => {
       expect(panels.isFolderPopoverOpen()).toBe(true);
       expect(panels.stagedFolderPath()).toBeNull();
       expect(panels.folderFilter()).toBe('');
-      expect(panels.focusRequest()?.target).toBe('folder-filter');
+      expect(focus.request).toHaveBeenLastCalledWith('folder-filter');
     });
 
     it('keeps a restaged folder and filter until the popover is reopened', () => {
@@ -62,7 +66,7 @@ describe('EditorPanels', () => {
       panels.openFolderPopover();
 
       expect(panels.isFolderPopoverOpen()).toBe(false);
-      expect(panels.focusRequest()).toBeNull();
+      expect(focus.request).not.toHaveBeenCalled();
     });
 
     it('stages a folder and hands it back on confirm, closing and returning focus to the pill', () => {
@@ -75,7 +79,7 @@ describe('EditorPanels', () => {
 
       expect(panels.isFolderPopoverOpen()).toBe(false);
       expect(panels.stagedFolderPath()).toBeNull();
-      expect(panels.focusRequest()?.target).toBe('location-pill');
+      expect(focus.request).toHaveBeenLastCalledWith('location-pill');
     });
 
     it('confirms nothing when no folder was staged', () => {
@@ -90,14 +94,14 @@ describe('EditorPanels', () => {
       const panels = setup();
       panels.openFolderPopover();
       panels.closeFolderPopover();
-      const afterFirstClose = panels.focusRequest();
-      panels.requestFocus('comment');
-      const elsewhere = panels.focusRequest();
+      expect(focus.request).toHaveBeenLastCalledWith('location-pill');
+      focus.request('comment');
+      const requests = focus.request.mock.calls.length;
 
       panels.closeFolderPopover();
 
-      expect(afterFirstClose?.target).toBe('location-pill');
-      expect(panels.focusRequest()).toBe(elsewhere);
+      expect(focus.request).toHaveBeenCalledTimes(requests);
+      expect(focus.request).toHaveBeenLastCalledWith('comment');
     });
   });
 
@@ -108,7 +112,7 @@ describe('EditorPanels', () => {
       panels.openLocalesDrawer();
 
       expect(panels.isLocalesDrawerOpen()).toBe(true);
-      expect(panels.focusRequest()?.target).toBe('drawer-first-control');
+      expect(focus.request).toHaveBeenLastCalledWith('drawer-first-control');
     });
 
     it('does not open when there is no other locale', () => {
@@ -117,19 +121,19 @@ describe('EditorPanels', () => {
       panels.openLocalesDrawer();
 
       expect(panels.isLocalesDrawerOpen()).toBe(false);
-      expect(panels.focusRequest()).toBeNull();
+      expect(focus.request).not.toHaveBeenCalled();
     });
 
     it('hands focus back to the row on close, but only when it was open', () => {
       const panels = setup();
       panels.closeLocalesDrawer();
-      expect(panels.focusRequest()).toBeNull();
+      expect(focus.request).not.toHaveBeenCalled();
 
       panels.openLocalesDrawer();
       panels.closeLocalesDrawer();
 
       expect(panels.isLocalesDrawerOpen()).toBe(false);
-      expect(panels.focusRequest()?.target).toBe('locales-row');
+      expect(focus.request).toHaveBeenLastCalledWith('locales-row');
     });
   });
 
@@ -141,7 +145,7 @@ describe('EditorPanels', () => {
       expect(panels.isContextOpen()).toBe(true);
       panels.toggleContext();
       expect(panels.isContextOpen()).toBe(false);
-      expect(panels.focusRequest()).toBeNull();
+      expect(focus.request).not.toHaveBeenCalled();
     });
   });
 
@@ -158,11 +162,11 @@ describe('EditorPanels', () => {
       expect(panels.dismissNearest()).toBe(true);
       expect(panels.isFolderPopoverOpen()).toBe(false);
       expect(panels.isLocalesDrawerOpen()).toBe(true);
-      expect(panels.focusRequest()?.target).toBe('location-pill');
+      expect(focus.request).toHaveBeenLastCalledWith('location-pill');
 
       expect(panels.dismissNearest()).toBe(true);
       expect(panels.isLocalesDrawerOpen()).toBe(false);
-      expect(panels.focusRequest()?.target).toBe('locales-row');
+      expect(focus.request).toHaveBeenLastCalledWith('locales-row');
 
       expect(panels.dismissNearest()).toBe(false);
     });
@@ -182,14 +186,14 @@ describe('EditorPanels', () => {
       panels.openLocalesDrawer();
       panels.openFolderPopover();
       panels.stageFolder('a');
-      const lastIntent = panels.focusRequest();
+      const requests = focus.request.mock.calls.length;
 
       panels.closeAll();
 
       expect(panels.isFolderPopoverOpen()).toBe(false);
       expect(panels.isLocalesDrawerOpen()).toBe(false);
       expect(panels.stagedFolderPath()).toBeNull();
-      expect(panels.focusRequest()).toBe(lastIntent);
+      expect(focus.request).toHaveBeenCalledTimes(requests);
     });
   });
 
@@ -197,12 +201,12 @@ describe('EditorPanels', () => {
     it('issues a new request each time, even for the same target', () => {
       const panels = setup();
 
-      panels.requestFocus('comment');
-      const first = panels.focusRequest();
-      panels.requestFocus('comment');
+      panels.openLocalesDrawer();
+      panels.openLocalesDrawer();
 
-      expect(panels.focusRequest()).not.toBe(first);
-      expect(panels.focusRequest()?.target).toBe('comment');
+      expect(focus.request).toHaveBeenCalledTimes(2);
+      expect(focus.request).toHaveBeenNthCalledWith(1, 'drawer-first-control');
+      expect(focus.request).toHaveBeenNthCalledWith(2, 'drawer-first-control');
     });
   });
 });

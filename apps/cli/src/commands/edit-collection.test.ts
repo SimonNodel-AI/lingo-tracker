@@ -1,5 +1,6 @@
-import { editCollectionTags, InvalidCollectionError, loadConfig } from '@simoncodes-ca/core';
+import { editCollectionTags, loadConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { InvalidCollectionError } from '@simoncodes-ca/core/testing';
 import { createCli } from '../program';
 import { editCollectionCommand } from './edit-collection';
 

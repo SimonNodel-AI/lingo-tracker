@@ -1,3 +1,4 @@
+import { needsTranslation } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import {
@@ -11,14 +12,16 @@ import {
   openPreparedTranslator,
 } from '../machine-translation/translator';
 import { readCollection } from '../resource/read-collection';
-import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../resource/resource-mutation';
 import {
-  selectTranslationRow,
-  type TranslationBatchOutcome,
-  type TranslationBatchRow,
-  translationBatch,
-} from '../resource/translation-batch';
+  type MutationSink,
+  type MutationSinkOptions,
+  reindexMutation,
+  resolveMutationSink,
+} from '../resource/resource-mutation';
+import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import type { RunOutcome } from '../run-outcome';
+import { translationBatch } from './translation-batch';
+import { snapshotTranslation, type TranslationSnapshot } from './translation-write-back';
 
 export interface TranslateLocaleCounts {
   /**
@@ -87,24 +90,59 @@ interface TranslationRunTally {
   translatedCount: number;
   skippedCount: number;
   failedCount: number;
-  readonly skipped: Array<Extract<TranslationBatchOutcome, { status: 'skipped' }>>;
-  readonly failures: Array<Extract<TranslationBatchOutcome, { status: 'failed' }>>;
+  readonly outcomes: TranslationRunOutcome[];
+  readonly skipped: Array<Extract<TranslationRunOutcome, { status: 'skipped' }>>;
+  readonly failures: Array<Extract<TranslationRunOutcome, { status: 'failed' }>>;
 }
 
-interface ExecuteTranslationRunOptions extends TranslationRunOptions {
+interface ExecuteTranslationRunOptions extends Omit<TranslationRunOptions, 'onMutation'> {
+  readonly mutationSink: MutationSink | undefined;
   readonly collection: Collection;
   readonly translationConfig: TranslationConfig;
-  readonly rows: readonly TranslationBatchRow[];
+  readonly rows: readonly TranslationRunRow[];
   readonly locales: readonly string[];
+  readonly failurePolicy: 'tally' | 'throw-first';
   readonly onProgress?: (progress: TranslateLocaleProgress) => void;
 }
 
+export interface TranslationRunRow {
+  readonly key: string;
+  readonly source: string;
+  /** One snapshot for each requested target locale, taken before translation. */
+  readonly snapshots: Readonly<Record<string, TranslationSnapshot>>;
+}
+
+export type TranslationRunOutcome = { readonly key: string; readonly locale: string } & (
+  | { readonly status: 'written'; readonly entry: ResourceTreeEntry | undefined }
+  | { readonly status: 'skipped'; readonly entry: ResourceTreeEntry | undefined }
+  | {
+      readonly status: 'failed';
+      readonly stage: 'provider' | 'write';
+      /** The original error, shared by callers that report it or rethrow it. */
+      readonly error: unknown;
+    }
+);
+
+/** Select eligible targets and snapshot them before translation. */
+export function selectTranslationRow(key: string, entry: ResourceTreeEntry, locales: readonly string[]) {
+  const targets = locales.filter((locale) => needsTranslation(entry.metadata[locale]));
+  const row: TranslationRunRow = {
+    key,
+    source: entry.source,
+    snapshots: Object.fromEntries(
+      targets.map((locale) => [locale, snapshotTranslation(entry.source, entry.metadata[locale])]),
+    ),
+  };
+  return { row, locales: targets };
+}
+
 /** Execute selected work; each key/locale outcome contributes exactly once. */
-async function executeTranslationRun(
+export async function executeTranslationRun(
   options: ExecuteTranslationRunOptions,
 ): Promise<{ tally: TranslationRunTally; warnings: string[] }> {
   const { collection, translationConfig, rows, locales } = options;
   const tally: TranslationRunTally = {
+    outcomes: [],
     translatedCount: 0,
     skippedCount: 0,
     failedCount: 0,
@@ -113,37 +151,28 @@ async function executeTranslationRun(
   };
   if (rows.length === 0 || locales.length === 0) return { tally, warnings: [] };
   const translator = openPreparedTranslator(collection, translationConfig, options);
-  const sink = resolveMutationSink(collection, options);
+  const sink = options.mutationSink;
+  const tallyFailures = options.failurePolicy === 'tally';
   const batchSize = translationConfig.batchSize ?? 5;
   const totalBatches = Math.ceil(rows.length / batchSize);
   const delay = options.delay ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   for (let index = 0; index < totalBatches; index++) {
     let mutated = false;
-    let outcomes: TranslationBatchOutcome[];
-    try {
-      outcomes = await translationBatch(
-        collection,
-        rows.slice(index * batchSize, (index + 1) * batchSize),
-        locales,
-        translator,
-        {
-          onMutation: () => {
+    const outcomes = await translationBatch(
+      collection,
+      rows.slice(index * batchSize, (index + 1) * batchSize),
+      locales,
+      translator,
+      tallyFailures
+        ? () => {
             mutated = true;
-          },
-        },
-      );
-    } catch (error) {
-      // Report partial writes before rethrowing; a secondary sink error cannot replace this error.
-      try {
-        if (mutated) sink?.(reindexMutation(collection.translationsFolder));
-      } catch {
-        // The original execution error takes precedence over mutation delivery.
-      }
-      throw error;
-    }
+          }
+        : sink,
+    );
     if (mutated) sink?.(reindexMutation(collection.translationsFolder));
     for (const outcome of outcomes) {
       if (outcome.status === 'failed') {
+        if (!tallyFailures) throw outcome.error;
         tally.failedCount++;
         tally.failures.push(outcome);
       } else {
@@ -154,6 +183,7 @@ async function executeTranslationRun(
         }
       }
     }
+    tally.outcomes.push(...outcomes);
     options.onProgress?.({
       totalResources: rows.length,
       translatedCount: tally.translatedCount,
@@ -174,6 +204,7 @@ async function executeLocale(
   translationConfig: TranslationConfig,
   options: TranslationRunOptions & TranslationRunExecutionOptions,
 ): Promise<TranslateLocaleResult> {
+  const mutationSink = resolveMutationSink(collection, options);
   const { resources, problems } = readCollection(collection);
   const rows = resources
     .map(({ fullKey, entry }) => selectTranslationRow(fullKey, entry, [targetLocale]))
@@ -181,10 +212,12 @@ async function executeLocale(
     .map(({ row }) => row);
   const { tally, warnings } = await executeTranslationRun({
     ...options,
+    mutationSink,
     collection,
     translationConfig,
     rows,
     locales: [targetLocale],
+    failurePolicy: 'tally',
   });
   return {
     outcome: tally.failedCount > 0 ? 'failed' : 'succeeded',

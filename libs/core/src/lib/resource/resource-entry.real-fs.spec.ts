@@ -7,24 +7,11 @@ import * as fileIO from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum } from './checksum';
 import { pruneEmptiedFolders } from './folder-pruning';
-import { type EntryWriteResult, removeEntry, writeEntry } from './resource-entry';
+import { addEntry, editEntry, removeEntry, translateEntry } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
-function requireAddResult(outcome: EntryWriteResult) {
-  if (outcome.kind !== 'add') throw new Error('Expected add result');
-  return outcome.result;
-}
-function requireEditResult(outcome: EntryWriteResult) {
-  if (outcome.kind !== 'edit') throw new Error('Expected edit result');
-  return outcome.result;
-}
-function requireTranslateResult(outcome: EntryWriteResult) {
-  if (outcome.kind !== 'translate') throw new Error('Expected translate result');
-  return outcome.result;
-}
-
-describe('writeEntry (real fs)', () => {
+describe('entry writes (real fs)', () => {
   const root = useTempDir('entry-write-');
   afterEach(() => vi.restoreAllMocks());
   const collection = () => testCollection(root());
@@ -41,21 +28,18 @@ describe('writeEntry (real fs)', () => {
 
   it('adds ICU values, inferred and explicit statuses, details, and the exact saved upsert', async () => {
     const mutations: ResourceMutation[] = [];
-    const result = await writeEntry(
+    const result = await addEntry(
       collection(),
       'buttons.ok',
       {
-        kind: 'add',
-        onExisting: 'fail',
-        changes: {
-          baseValue: 'Hello {{ name }}',
-          comment: 'Greeting',
-          tags: [' UI ', 'UI'],
-          translations: [{ locale: 'fr', value: 'Bonjour {{ name }}', status: 'verified' }],
-        },
+        baseValue: 'Hello {{ name }}',
+        comment: 'Greeting',
+        tags: [' UI ', 'UI'],
+        translations: [{ locale: 'fr', value: 'Bonjour {{ name }}', status: 'verified' }],
       },
+      'fail',
       { onMutation: (mutation) => mutations.push(mutation) },
-    ).then(requireAddResult);
+    );
     const stored = folder().treeEntry('ok');
     expect(stored).toBeDefined();
     expect(result.created).toBe(true);
@@ -88,45 +72,35 @@ describe('writeEntry (real fs)', () => {
   it('refuses an existing add before provider work and replaces only when requested', async () => {
     seed();
     const provider = new InMemoryTranslationProvider();
-    const intent = {
-      kind: 'add' as const,
-      onExisting: 'fail' as const,
-      changes: { baseValue: 'Replace' },
-    };
-    await expect(writeEntry(automatic(), 'buttons.ok', intent, { provider }).then(requireAddResult)).rejects.toThrow(
+    const changes = { baseValue: 'Replace' };
+    await expect(addEntry(automatic(), 'buttons.ok', changes, 'fail', { provider })).rejects.toThrow(
       ResourceAlreadyExistsError,
     );
     expect(provider.calls).toEqual([]);
-    const result = await writeEntry(collection(), 'buttons.ok', { ...intent, onExisting: 'replace' }).then(
-      requireAddResult,
-    );
+    const result = await addEntry(collection(), 'buttons.ok', changes, 'replace');
     expect(result.created).toBe(false);
     expect(folder().treeEntry('ok')?.translations).toEqual({ fr: 'Replace', es: 'Replace' });
     expect(folder().keys()).toEqual(['ok', 'keep']);
   });
 
   it('leaves an add unwritten on provider failure and detects a late existence conflict', async () => {
-    const intent = {
-      kind: 'add' as const,
-      onExisting: 'fail' as const,
-      changes: { baseValue: 'OK' },
-    };
+    const changes = { baseValue: 'OK' };
     const failure = new TranslationError('FAILED', 'provider failed', false);
     await expect(
-      writeEntry(automatic(), 'buttons.ok', intent, {
+      addEntry(automatic(), 'buttons.ok', changes, 'fail', {
         provider: new InMemoryTranslationProvider(() => {
           throw failure;
         }),
-      }).then(requireAddResult),
+      }),
     ).rejects.toBe(failure);
     expect(existsSync(join(root(), 'buttons'))).toBe(false);
     await expect(
-      writeEntry(automatic(), 'buttons.ok', intent, {
+      addEntry(automatic(), 'buttons.ok', changes, 'fail', {
         provider: new InMemoryTranslationProvider(() => {
           seedResources(collection(), { 'buttons.ok': { source: 'Late' } });
           return 'Translated';
         }),
-      }).then(requireAddResult),
+      }),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(folder().get('ok')?.entry.source).toBe('Late');
   });
@@ -137,12 +111,12 @@ describe('writeEntry (real fs)', () => {
     const before = files.map((file) => readFileSync(file, 'utf8'));
     const mutations: ResourceMutation[] = [];
     expect(
-      await writeEntry(
+      await editEntry(
         collection(),
         'buttons.ok',
-        { kind: 'edit', changes: { baseValue: 'OK' } },
+        { baseValue: 'OK' },
         { onMutation: (mutation) => mutations.push(mutation) },
-      ).then(requireEditResult),
+      ),
     ).toEqual({
       resolvedKey: 'buttons.ok',
       updated: false,
@@ -155,10 +129,10 @@ describe('writeEntry (real fs)', () => {
 
   it('applies staleness, seeds copies, and changes an unchanged translation status', async () => {
     seed();
-    const result = await writeEntry(collection(), 'buttons.ok', {
-      kind: 'edit',
-      changes: { baseValue: 'Save', translations: { es: { value: 'Aceptar', status: 'verified' } } },
-    }).then(requireEditResult);
+    const result = await editEntry(collection(), 'buttons.ok', {
+      baseValue: 'Save',
+      translations: { es: { value: 'Aceptar', status: 'verified' } },
+    });
     expect(result.entry?.translations).toEqual({ fr: 'Save', es: 'Aceptar' });
     expect(result.entry?.metadata['fr'].status).toBe('new');
     expect(result.entry?.metadata['es'].status).toBe('verified');
@@ -171,10 +145,10 @@ describe('writeEntry (real fs)', () => {
     const mutations: ResourceMutation[] = [];
     const failure = new TranslationError('FAILED', 'provider failed', false);
     await expect(
-      writeEntry(
+      editEntry(
         automatic(),
         'buttons.ok',
-        { kind: 'edit', changes: { baseValue: 'Save' } },
+        { baseValue: 'Save' },
         {
           onMutation: (mutation) => mutations.push(mutation),
           provider: new InMemoryTranslationProvider(() => {
@@ -183,7 +157,7 @@ describe('writeEntry (real fs)', () => {
             throw failure;
           }),
         },
-      ).then(requireEditResult),
+      ),
     ).rejects.toBe(failure);
     expect(folder().get('ok')?.entry.source).toBe('Save');
     expect(folder().get('ok')?.meta?.['es'].status).toBe('stale');
@@ -192,10 +166,10 @@ describe('writeEntry (real fs)', () => {
   it('keeps concurrent target edits and siblings while reporting ordered skips and fresh mutations', async () => {
     seed();
     const mutations: ResourceMutation[] = [];
-    const result = await writeEntry(
+    const result = await editEntry(
       automatic(),
       'buttons.ok',
-      { kind: 'edit', changes: { baseValue: 'Save' } },
+      { baseValue: 'Save' },
       {
         onMutation: (mutation) => mutations.push(mutation),
         provider: new InMemoryTranslationProvider(({ targetLocale }) => {
@@ -208,7 +182,7 @@ describe('writeEntry (real fs)', () => {
           return `Translated ${targetLocale}`;
         }),
       },
-    ).then(requireEditResult);
+    );
     expect(result.skippedLocales).toEqual(['fr']);
     expect(result.entry?.translations).toEqual({ fr: 'Manual', es: 'Translated es' });
     expect(folder().has('sibling')).toBe(true);
@@ -223,19 +197,14 @@ describe('writeEntry (real fs)', () => {
 
   it('skips all phase-two writes when the base changes and returns fresh disk state', async () => {
     seed();
-    const result = await writeEntry(
-      automatic(),
-      'buttons.ok',
-      { kind: 'translate' },
-      {
-        provider: new InMemoryTranslationProvider(() => {
-          const current = folder();
-          current.setBase('ok', 'Concurrent');
-          current.save();
-          return 'Translated';
-        }),
-      },
-    ).then(requireTranslateResult);
+    const result = await translateEntry(automatic(), 'buttons.ok', {
+      provider: new InMemoryTranslationProvider(() => {
+        const current = folder();
+        current.setBase('ok', 'Concurrent');
+        current.save();
+        return 'Translated';
+      }),
+    });
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr']);
     expect(result.entry.source).toBe('Concurrent');
@@ -245,10 +214,10 @@ describe('writeEntry (real fs)', () => {
   it('does not resurrect an entry deleted during translation', async () => {
     seed();
     await expect(
-      writeEntry(
+      editEntry(
         automatic(),
         'buttons.ok',
-        { kind: 'edit', changes: { baseValue: 'Save' } },
+        { baseValue: 'Save' },
         {
           provider: new InMemoryTranslationProvider(() => {
             const current = folder();
@@ -257,7 +226,7 @@ describe('writeEntry (real fs)', () => {
             return 'Translated';
           }),
         },
-      ).then(requireEditResult),
+      ),
     ).rejects.toThrow(ResourceNotFoundError);
     expect(folder().has('ok')).toBe(false);
     expect(folder().has('keep')).toBe(true);
@@ -266,7 +235,7 @@ describe('writeEntry (real fs)', () => {
   it('returns translator skips and warnings without writing skipped targets', async () => {
     seedResources(collection(), { 'buttons.ok': { source: '{count, plural, one {One} other {Many}}' } });
     const provider = new InMemoryTranslationProvider();
-    const result = await writeEntry(
+    const result = await translateEntry(
       testCollection(root(), {
         translationConfig: { enabled: true, provider: 'google-translate', apiKeyEnv: 'ENTRY_WRITE_TEST_KEY' },
         termFiles: {
@@ -275,9 +244,8 @@ describe('writeEntry (real fs)', () => {
         },
       }),
       'buttons.ok',
-      { kind: 'translate' },
       { provider },
-    ).then(requireTranslateResult);
+    );
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr', 'es']);
     expect(result.warnings).toHaveLength(1);
@@ -308,11 +276,11 @@ describe('writeEntry (real fs)', () => {
   it('moves a saved edit and prunes after remove/upsert mutations', async () => {
     seedResources(collection(), { 'nested.child.ok': { source: 'OK' } });
     const mutations: ResourceMutation[] = [];
-    const result = await writeEntry(
+    const result = await editEntry(
       testCollection(root(), { onMutation: (mutation) => mutations.push(mutation) }),
       'nested.child.ok',
-      { kind: 'edit', changes: { comment: 'Context', moveTo: 'shared' } },
-    ).then(requireEditResult);
+      { comment: 'Context', moveTo: 'shared' },
+    );
     expect(result.resolvedKey).toBe('shared.ok');
     expect(result.entry?.comment).toBe('Context');
     expect(existsSync(join(root(), 'nested'))).toBe(false);
@@ -324,10 +292,7 @@ describe('writeEntry (real fs)', () => {
       collection().termFiles.preferredTerminology.path,
       JSON.stringify([{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' }]),
     );
-    const result = await writeEntry(collection(), 'buttons.ok', {
-      kind: 'edit',
-      changes: { baseValue: 'Capital expenditure', moveTo: 'budget' },
-    }).then(requireEditResult);
+    const result = await editEntry(collection(), 'buttons.ok', { baseValue: 'Capital expenditure', moveTo: 'budget' });
     expect(result.terminology).toEqual({
       findings: [
         {
@@ -345,21 +310,16 @@ describe('writeEntry (real fs)', () => {
   it('skips a target edited during translation and returns its fresh value with unchanged siblings', async () => {
     seed();
     const mutations: ResourceMutation[] = [];
-    const result = await writeEntry(
-      automatic(),
-      'buttons.ok',
-      { kind: 'translate' },
-      {
-        provider: new InMemoryTranslationProvider(() => {
-          const current = folder();
-          current.setTranslation('ok', 'fr', 'Manual', 'verified');
-          current.setBase('sibling', 'Sibling');
-          current.save();
-          return 'Translated';
-        }),
-        onMutation: (mutation) => mutations.push(mutation),
-      },
-    ).then(requireTranslateResult);
+    const result = await translateEntry(automatic(), 'buttons.ok', {
+      provider: new InMemoryTranslationProvider(() => {
+        const current = folder();
+        current.setTranslation('ok', 'fr', 'Manual', 'verified');
+        current.setBase('sibling', 'Sibling');
+        current.save();
+        return 'Translated';
+      }),
+      onMutation: (mutation) => mutations.push(mutation),
+    });
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr']);
     expect(result.entry.translations).toEqual({ fr: 'Manual', es: 'Aceptar' });
@@ -373,20 +333,15 @@ describe('writeEntry (real fs)', () => {
     seed();
     const mutations: ResourceMutation[] = [];
     await expect(
-      writeEntry(
-        automatic(),
-        'buttons.ok',
-        { kind: 'translate' },
-        {
-          provider: new InMemoryTranslationProvider(() => {
-            const current = folder();
-            current.remove('ok');
-            current.save();
-            return 'Translated';
-          }),
-          onMutation: (mutation) => mutations.push(mutation),
-        },
-      ),
+      translateEntry(automatic(), 'buttons.ok', {
+        provider: new InMemoryTranslationProvider(() => {
+          const current = folder();
+          current.remove('ok');
+          current.save();
+          return 'Translated';
+        }),
+        onMutation: (mutation) => mutations.push(mutation),
+      }),
     ).rejects.toThrow(ResourceNotFoundError);
     expect(folder().has('ok')).toBe(false);
     expect(folder().has('keep')).toBe(true);
@@ -405,15 +360,10 @@ describe('writeEntry (real fs)', () => {
       return original(params);
     });
     await expect(
-      writeEntry(
-        automatic(),
-        'buttons.ok',
-        { kind: 'translate' },
-        {
-          provider: new InMemoryTranslationProvider(),
-          onMutation: (mutation) => mutations.push(mutation),
-        },
-      ),
+      translateEntry(automatic(), 'buttons.ok', {
+        provider: new InMemoryTranslationProvider(),
+        onMutation: (mutation) => mutations.push(mutation),
+      }),
     ).rejects.toBe(failure);
     expect(writes).toBe(2);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: root() }]);

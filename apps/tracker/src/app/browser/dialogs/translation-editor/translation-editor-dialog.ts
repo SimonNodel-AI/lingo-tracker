@@ -5,7 +5,6 @@ import {
   type AfterViewInit,
   ChangeDetectionStrategy,
   Component,
-  effect,
   HostListener,
   inject,
   type OnDestroy,
@@ -90,21 +89,12 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
     activeLang: () => this.transloco.getActiveLang(),
     confirm: injectConfirm(),
     close: (outcome) => this.dialogRef.close(outcome),
-    focus: (target) => this.#focus.focus(target),
+    editorFocus: this.#focus,
     feedbackText: injectFeedback().text,
     notifications: inject(NotificationService),
   });
 
   readonly presentation = this.session.presentation;
-
-  constructor() {
-    effect((onCleanup) => {
-      const request = this.session.panels.focusRequest();
-      if (!request) return;
-      const timer = setTimeout(() => this.#focus.focus(request.target));
-      onCleanup(() => clearTimeout(timer));
-    });
-  }
 
   ngOnInit(): void {
     this.dialogRef.disableClose = true;
@@ -128,7 +118,7 @@ export class TranslationEditorDialog implements OnInit, OnDestroy, AfterViewInit
       .afterOpened()
       .pipe(takeUntil(this.destroy$))
       .subscribe(() => {
-        this.#focus.focus(this.session.isEditMode() ? 'base-value' : 'key');
+        this.#focus.request(this.session.isEditMode() ? 'base-value' : 'key');
       });
   }
 

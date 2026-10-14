@@ -2,57 +2,10 @@ import { Option } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { commandManifest } from './command-manifest';
 import { createCli } from './program';
+import { createRecordingManifest } from './testing/recording-manifest';
 
-const handlers = vi.hoisted(() => ({
-  init: vi.fn(),
-  addCollection: vi.fn(),
-  deleteCollection: vi.fn(),
-  addLocale: vi.fn(),
-  removeLocale: vi.fn(),
-  addResource: vi.fn(),
-  editResource: vi.fn(),
-  deleteResource: vi.fn(),
-  move: vi.fn(),
-  normalize: vi.fn(),
-  translateLocale: vi.fn(),
-  bundle: vi.fn(),
-  export: vi.fn(),
-  import: vi.fn(),
-  validate: vi.fn(),
-  findSimilar: vi.fn(),
-  glossary: vi.fn(),
-  editCollection: vi.fn(),
-  protectedTerms: vi.fn(),
-  preferredTerminology: vi.fn(),
-  installSkill: vi.fn(),
-}));
-
-vi.mock('./init/init', () => ({ initCommand: handlers.init }));
-vi.mock('./add-collection/add-collection', () => ({ addCollectionCommand: handlers.addCollection }));
-vi.mock('./delete-collection/delete-collection', () => ({ deleteCollectionCommand: handlers.deleteCollection }));
-vi.mock('./commands/add-locale', () => ({ addLocaleCommand: handlers.addLocale }));
-vi.mock('./commands/remove-locale', () => ({ removeLocaleCommand: handlers.removeLocale }));
-vi.mock('./add-resource/add-resource', () => ({ addResourceCommand: handlers.addResource }));
-vi.mock('./commands/edit-resource', () => ({ editResourceCommand: handlers.editResource }));
-vi.mock('./commands/delete-resource', () => ({ deleteResourceCommand: handlers.deleteResource }));
-vi.mock('./commands/move', () => ({ moveResourceCommand: handlers.move }));
-vi.mock('./commands/normalize', () => ({ normalizeCommand: handlers.normalize }));
-vi.mock('./commands/translate-locale', () => ({ translateLocaleCommand: handlers.translateLocale }));
-vi.mock('./commands/bundle', () => ({ bundleCommand: handlers.bundle }));
-vi.mock('./commands/export-cmd', () => ({ exportCommand: handlers.export }));
-vi.mock('./commands/import-cmd', () => ({ importCommand: handlers.import }));
-vi.mock('./commands/validate', () => ({ validateCommand: handlers.validate }));
-vi.mock('./commands/find-similar', () => ({ findSimilarCommand: handlers.findSimilar }));
-vi.mock('./commands/glossary', () => ({ glossaryCommand: handlers.glossary }));
-vi.mock('./commands/edit-collection', () => ({ editCollectionCommand: handlers.editCollection }));
-vi.mock('./commands/protected-terms', () => ({ protectedTermsCommand: handlers.protectedTerms }));
-vi.mock('./commands/preferred-terminology', () => ({ preferredTerminologyCommand: handlers.preferredTerminology }));
-vi.mock('./commands/install-skill', () => ({ installSkillCommand: handlers.installSkill }));
-
-type Handler = (typeof handlers)[keyof typeof handlers];
 interface Case {
   name: string;
-  handler: Handler;
   fullArgv: string[];
   fullCall: unknown[];
   defaultArgv?: string[];
@@ -62,7 +15,6 @@ interface Case {
 const cases: Case[] = [
   {
     name: 'init',
-    handler: handlers.init,
     fullArgv: [
       '--collection-name',
       'app',
@@ -118,7 +70,6 @@ const cases: Case[] = [
   },
   {
     name: 'add-collection',
-    handler: handlers.addCollection,
     fullArgv: [
       '--collection-name',
       'app',
@@ -150,28 +101,24 @@ const cases: Case[] = [
   },
   {
     name: 'delete-collection',
-    handler: handlers.deleteCollection,
     fullArgv: ['--collection-name', 'app', '--yes'],
     fullCall: [{ collectionName: 'app', yes: true }],
     defaultCall: [{}],
   },
   {
     name: 'add-locale',
-    handler: handlers.addLocale,
     fullArgv: ['--collection', 'app', '--locale', 'fr'],
     fullCall: [{ collection: 'app', locale: 'fr' }],
     defaultCall: [{}],
   },
   {
     name: 'remove-locale',
-    handler: handlers.removeLocale,
     fullArgv: ['--collection', 'app', '--locale', 'fr'],
     fullCall: [{ collection: 'app', locale: 'fr' }],
     defaultCall: [{}],
   },
   {
     name: 'add-resource',
-    handler: handlers.addResource,
     fullArgv: [
       '--collection',
       'app',
@@ -205,7 +152,6 @@ const cases: Case[] = [
   },
   {
     name: 'edit-resource',
-    handler: handlers.editResource,
     fullArgv: [
       '--collection',
       'app',
@@ -240,35 +186,30 @@ const cases: Case[] = [
   },
   {
     name: 'delete-resource',
-    handler: handlers.deleteResource,
     fullArgv: ['--collection', 'app', '--key', 'a.b', '--yes'],
     fullCall: [{ collection: 'app', key: ['a.b'], yes: true }],
     defaultCall: [{}],
   },
   {
     name: 'move',
-    handler: handlers.move,
     fullArgv: ['--collection', 'app', '--source', 'a.b', '--dest', 'c.d', '--dest-collection', 'other', '--override'],
     fullCall: [{ collection: 'app', source: 'a.b', dest: 'c.d', destCollection: 'other', override: true }],
     defaultCall: [{}],
   },
   {
     name: 'normalize',
-    handler: handlers.normalize,
     fullArgv: ['--collection', 'app', '--all', '--dry-run', '--json', '--yes'],
     fullCall: [{ collection: 'app', all: true, dryRun: true, json: true, yes: true }],
     defaultCall: [{}],
   },
   {
     name: 'translate-locale',
-    handler: handlers.translateLocale,
     fullArgv: ['--collection', 'app', '--locale', 'fr', '--verbose'],
     fullCall: [{ collection: 'app', locale: 'fr', verbose: true }],
     defaultCall: [{}],
   },
   {
     name: 'bundle',
-    handler: handlers.bundle,
     fullArgv: [
       '--name',
       'core',
@@ -300,7 +241,6 @@ const cases: Case[] = [
   },
   {
     name: 'export',
-    handler: handlers.export,
     fullArgv: [
       '--format',
       'json',
@@ -360,7 +300,6 @@ const cases: Case[] = [
   },
   {
     name: 'import',
-    handler: handlers.import,
     fullArgv: [
       '--format',
       'xliff',
@@ -405,7 +344,6 @@ const cases: Case[] = [
   },
   {
     name: 'validate',
-    handler: handlers.validate,
     fullArgv: [
       '--allow-translated',
       '--skip-locales',
@@ -437,14 +375,12 @@ const cases: Case[] = [
   },
   {
     name: 'find-similar',
-    handler: handlers.findSimilar,
     fullArgv: ['--collection', 'app', '--value', 'Hello', '--max-results', '8'],
     fullCall: [{ collection: 'app', value: 'Hello', maxResults: 8 }],
     defaultCall: [{}],
   },
   {
     name: 'glossary',
-    handler: handlers.glossary,
     fullArgv: [
       '--text',
       'Hello',
@@ -477,7 +413,6 @@ const cases: Case[] = [
   },
   {
     name: 'edit-collection',
-    handler: handlers.editCollection,
     fullArgv: ['app', '--add-tag', 'one', '--add-tag', 'two', '--remove-tag', 'old', '--set-tags', 'ui,common'],
     fullCall: [{ name: 'app', addTag: ['one', 'two'], removeTag: ['old'], setTags: ['ui', 'common'] }],
     defaultArgv: ['app'],
@@ -485,7 +420,6 @@ const cases: Case[] = [
   },
   {
     name: 'protected-terms',
-    handler: handlers.protectedTerms,
     fullArgv: [
       '--collection',
       'app',
@@ -515,14 +449,12 @@ const cases: Case[] = [
   },
   {
     name: 'preferred-terminology',
-    handler: handlers.preferredTerminology,
     fullArgv: ['--list', '--add', 'bad', '--preferred', 'good', '--reason', 'style', '--remove', 'old'],
     fullCall: [{ list: true, add: 'bad', preferred: 'good', reason: 'style', remove: 'old' }],
     defaultCall: [{}],
   },
   {
     name: 'install-skill',
-    handler: handlers.installSkill,
     fullArgv: [
       '--collection',
       'app:bundle:Tokens:path',
@@ -540,8 +472,10 @@ const cases: Case[] = [
   },
 ];
 
+const { handlers, recordingManifest, handler } = createRecordingManifest();
+
 async function invoke(name: string, argv: string[]): Promise<void> {
-  await createCli().parseAsync([name, ...argv], { from: 'user' });
+  await createCli(recordingManifest).parseAsync([name, ...argv], { from: 'user' });
 }
 
 describe('every CLI handler registration', () => {
@@ -549,23 +483,25 @@ describe('every CLI handler registration', () => {
     vi.clearAllMocks();
   });
 
-  it('matches every manifest loader to the mocked handler and argv case', async () => {
+  it('matches every manifest entry to a recording loader and argv case', async () => {
     expect(cases.map((entry) => entry.name)).toEqual(commandManifest.map((entry) => entry.name));
-    const loadedHandlers = await Promise.all(commandManifest.map((entry) => entry.load()));
-    expect(loadedHandlers).toEqual(cases.map((entry) => entry.handler));
-    expect(new Set(loadedHandlers)).toEqual(new Set(Object.values(handlers)));
+    const loadedHandlers = await Promise.all(recordingManifest.map((entry) => entry.load()));
+    expect(loadedHandlers).toEqual(cases.map((entry) => handler(entry.name)));
+    expect(new Set(loadedHandlers)).toEqual(new Set(handlers.values()));
   });
 
   it('covers every registered command and every record key with parsed handler values', async () => {
-    expect(commandManifest.map((entry) => entry.name)).toEqual(createCli().commands.map((command) => command.name()));
+    expect(commandManifest.map((entry) => entry.name)).toEqual(
+      createCli(recordingManifest).commands.map((command) => command.name()),
+    );
     for (const registration of commandManifest) {
       const entry = cases.find((entry) => entry.name === registration.name);
       expect(entry).toBeDefined();
       if (!entry) throw new Error(`Missing argv case for ${registration.name}`);
-      const program = createCli();
+      const program = createCli(recordingManifest);
       await program.parseAsync([entry.name, ...entry.fullArgv], { from: 'user' });
       const command = program.commands.find((command) => command.name() === entry.name);
-      const options = entry.handler.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+      const options = handler(entry.name)?.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
       for (const [key, record] of Object.entries(registration.flags)) {
         if ('flags' in record) {
           const attribute = new Option(record.flags).attributeName();
@@ -580,12 +516,12 @@ describe('every CLI handler registration', () => {
   for (const entry of cases) {
     it(`${entry.name} passes parsed full argv to its handler`, async () => {
       await invoke(entry.name, entry.fullArgv);
-      expect(entry.handler).toHaveBeenCalledWith(...entry.fullCall);
+      expect(handler(entry.name)).toHaveBeenCalledWith(...entry.fullCall);
     });
 
     it(`${entry.name} passes parsed defaults to its handler`, async () => {
       await invoke(entry.name, entry.defaultArgv ?? []);
-      expect(entry.handler).toHaveBeenCalledWith(...entry.defaultCall);
+      expect(handler(entry.name)).toHaveBeenCalledWith(...entry.defaultCall);
     });
   }
 });

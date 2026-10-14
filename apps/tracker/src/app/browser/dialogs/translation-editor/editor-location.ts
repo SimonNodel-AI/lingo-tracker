@@ -2,6 +2,7 @@ import { computed, type Signal, signal } from '@angular/core';
 import type { FolderNodeDto, ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { folderPathSegments } from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
+import { createRestartableDelay } from '../../../shared/timed-transients';
 import {
   absorbDottedKey,
   type ContextTreeNode,
@@ -27,11 +28,19 @@ export interface EditorLocationOptions {
   browserFolderPath: Signal<string>;
   browserEntries: Signal<ResourceSummaryDto[]>;
   peek: EditorLocationPeek;
+  absorbedLabel: (folderPath: string) => string;
   moreLabel: (hidden: number) => string;
 }
 
 /** Folder selection, dotted-key continuation, and the target folder's known entries. */
 export class EditorLocation {
+  readonly #absorbedFlash = signal(false);
+  readonly absorbedFlash = this.#absorbedFlash.asReadonly();
+  readonly #absorbedMessage = signal('');
+  readonly absorbedMessage = this.#absorbedMessage.asReadonly();
+  readonly #absorptionDelay = createRestartableDelay(900);
+  #animationFrame = 0;
+  #destroyed = false;
   readonly selectedFolderPath = signal('');
   readonly #key = signal('');
   #folderFromKey: string | null = null;
@@ -81,6 +90,7 @@ export class EditorLocation {
     if (absorbed?.folder !== undefined) {
       this.#folderFromKey = absorbed.folder;
       this.#select(absorbed.folder);
+      this.#announceAbsorbed(absorbed.folder);
     }
     return absorbed;
   }
@@ -91,7 +101,26 @@ export class EditorLocation {
   }
 
   destroy(): void {
+    this.#destroyed = true;
+    cancelAnimationFrame(this.#animationFrame);
+    this.#absorptionDelay.destroy();
     this.#reads.unsubscribe();
+  }
+
+  /**
+   * The prefix leaves the field the user is looking at and lands in a pill above
+   * it, so say so twice: a highlight for the eye, a live region for the reader.
+   */
+  #announceAbsorbed(folderPath: string): void {
+    this.#absorbedMessage.set(this.#options.absorbedLabel(folderPath));
+
+    this.#absorbedFlash.set(false);
+    // Let the class drop for a frame so a second paste re-runs the animation.
+    cancelAnimationFrame(this.#animationFrame);
+    this.#animationFrame = requestAnimationFrame(() => {
+      if (!this.#destroyed) this.#absorbedFlash.set(true);
+    });
+    this.#absorptionDelay.schedule(() => this.#absorbedFlash.set(false));
   }
 
   #ownKey(): string | undefined {

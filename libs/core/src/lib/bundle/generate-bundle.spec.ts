@@ -10,9 +10,9 @@ import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors/i
 import {
   type BundleProgressEvent,
   type BundleTypeOutcome,
+  type GenerateBundleResult,
   bundleTypeOutcomeDetail,
   type GenerateBundleParams,
-  generateBundle as generateBundleByName,
   generatePreparedBundle,
 } from './generate-bundle';
 import { prepareBundleRun, validateBundleLocales } from './prepare-bundle-run';
@@ -44,15 +44,25 @@ describe('bundleTypeOutcomeDetail', () => {
   });
 });
 
-async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
-  const { bundleDefinition, ...request } = params;
-  return generateBundleByName({
-    ...request,
-    config: { ...request.config, bundles: { ...request.config.bundles, [request.bundleKey]: bundleDefinition } },
-  });
+function generationWarnings(result: GenerateBundleResult): string[] {
+  return result.warnings.filter((warning) => warning.origin === 'generation').map((warning) => warning.message);
 }
 
-describe('generateBundle (real fs)', () => {
+async function generateBundleByName(params: GenerateBundleParams) {
+  return generatePreparedBundle(prepareBundleRun({ ...params, source: 'saved' }), params);
+}
+
+async function generateBundle(params: GenerateBundleParams & { bundleDefinition: BundleDefinition }) {
+  const { bundleDefinition, ...request } = params;
+  const prepared = prepareBundleRun({
+    ...request,
+    source: 'saved',
+    config: { ...request.config, bundles: { ...request.config.bundles, [request.bundleKey]: bundleDefinition } },
+  });
+  return generatePreparedBundle(prepared, request);
+}
+
+describe('generatePreparedBundle (real fs)', () => {
   const root = useTempDir('bundle-generate-');
 
   afterEach(() => vi.restoreAllMocks());
@@ -157,7 +167,7 @@ describe('generateBundle (real fs)', () => {
     expect(result.filesGenerated).toBe(3);
     expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/fr.json', 'dist/bundles/es.json']);
     expect(result.localesProcessed).toEqual(['en', 'fr', 'es']);
-    expect(result.warnings).toEqual([]);
+    expect(generationWarnings(result)).toEqual([]);
   });
 
   it('generates from the prepared bundle key and root', async () => {
@@ -204,9 +214,9 @@ describe('generateBundle (real fs)', () => {
     });
 
     expect(result.filesGenerated).toBe(0);
-    expect(result.warnings).toContain("Bundle 'main' for locale 'en' is empty");
-    expect(result.warnings).toContain("Bundle 'main' for locale 'fr' is empty");
-    expect(result.warnings).toContain("Bundle 'main' for locale 'es' is empty");
+    expect(generationWarnings(result)).toContain("Bundle 'main' for locale 'en' is empty");
+    expect(generationWarnings(result)).toContain("Bundle 'main' for locale 'fr' is empty");
+    expect(generationWarnings(result)).toContain("Bundle 'main' for locale 'es' is empty");
   });
 
   it('warns for a missing collection once per run and writes the remaining files', async () => {
@@ -225,7 +235,7 @@ describe('generateBundle (real fs)', () => {
       cwd: root(),
     });
     expect(
-      result.warnings.filter((warning) => warning === "Collection 'nonexistent' not found in config"),
+      generationWarnings(result).filter((warning) => warning === "Collection 'nonexistent' not found in config"),
     ).toHaveLength(1);
     expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/fr.json']);
     expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ welcome: 'Welcome' });
@@ -354,7 +364,7 @@ describe('generateBundle (real fs)', () => {
   });
 
   describe('type generation', () => {
-    it('separates config warnings from ordered run warnings for every type status', async () => {
+    it('carries ordered warnings with origins for every type status', async () => {
       for (const legacy of [false, true]) {
         for (const status of ['written', 'skipped', 'failed', 'not-configured'] as const) {
           const name = `${status}-${legacy}`;
@@ -392,9 +402,11 @@ describe('generateBundle (real fs)', () => {
                   ]
                 : [];
           expect(result.typeOutcome.status).toBe(status);
-          expect(result.configWarning).toBe(legacy ? preparedWarning : undefined);
-          expect(result.warnings).toEqual(ordinary);
-          expect(result.typeWarning).toBe(outcomeWarning[0]);
+          expect(result.warnings).toEqual([
+            ...ordinary.map((message) => ({ origin: 'generation', message })),
+            ...(legacy ? [{ origin: 'config', message: preparedWarning }] : []),
+            ...outcomeWarning.map((message) => ({ origin: 'type', message })),
+          ]);
         }
       }
     });
@@ -442,8 +454,10 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(result.configWarning).toContain("'typeDist' is deprecated");
-      expect(result.warnings).toEqual([]);
+      expect(result.warnings.find((warning) => warning.origin === 'config')?.message).toContain(
+        "'typeDist' is deprecated",
+      );
+      expect(generationWarnings(result)).toEqual([]);
       expect(warn).not.toHaveBeenCalled();
     });
 
@@ -494,8 +508,10 @@ describe('generateBundle (real fs)', () => {
 
       expect(result.typeOutcome).toMatchObject({ status: 'failed' });
       expect(result.outcome).toBe('failed');
-      expect(result.warnings).toEqual([]);
-      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
+      expect(generationWarnings(result)).toEqual([]);
+      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toMatch(
+        /^Type generation failed for 'main': /,
+      );
     });
 
     it('describes a rejected type file path as a failed outcome', async () => {
@@ -509,8 +525,10 @@ describe('generateBundle (real fs)', () => {
       });
       expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
       expect(result.outcome).toBe('failed');
-      expect(result.warnings).toEqual([]);
-      expect(result.typeWarning).toMatch(/^Type generation failed for 'main': /);
+      expect(generationWarnings(result)).toEqual([]);
+      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toMatch(
+        /^Type generation failed for 'main': /,
+      );
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });
 
@@ -542,8 +560,10 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
-      expect(result.warnings).toEqual([]);
-      expect(result.typeWarning).toBe("Type generation skipped for 'main': bundle is empty");
+      expect(generationWarnings(result)).toEqual([]);
+      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toBe(
+        "Type generation skipped for 'main': bundle is empty",
+      );
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
@@ -758,7 +778,7 @@ describe('generateBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.warnings).toContain("Bundle 'main' debug bundle is empty");
+      expect(generationWarnings(result)).toContain("Bundle 'main' debug bundle is empty");
       expect(result.filesGenerated).toBe(0);
       expect(existsSync(join(root(), 'dist/bundles/99.json'))).toBe(false);
     });
@@ -776,7 +796,7 @@ describe('generateBundle (real fs)', () => {
       });
 
       expect(readJson(join(root(), 'dist/bundles/99.json'))).toEqual({ greeting: 'greeting' });
-      expect(result.warnings.some((warning) => warning.includes("Key 'greeting'"))).toBe(true);
+      expect(generationWarnings(result).some((warning) => warning.includes("Key 'greeting'"))).toBe(true);
     });
   });
 
@@ -859,7 +879,7 @@ describe('generateBundle (real fs)', () => {
 
     it('warns once for a format-carrying branch body', async () => {
       const result = await bundleValue('itemCount', UNBUNDLABLE_VALUE);
-      const reported = branchBodyWarnings(result.warnings);
+      const reported = branchBodyWarnings(generationWarnings(result));
 
       expect(reported).toHaveLength(1);
       expect(reported[0]).toContain("Key 'itemCount':");
@@ -878,7 +898,9 @@ describe('generateBundle (real fs)', () => {
       ]) {
         for (const value of [malformed, `{outer, select, other {${malformed}}}`]) {
           const result = await bundleValue('choice', value);
-          expect(result.warnings).toContain("Key 'choice': value has malformed ICU syntax and was included as-is");
+          expect(generationWarnings(result)).toContain(
+            "Key 'choice': value has malformed ICU syntax and was included as-is",
+          );
           expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ choice: value });
         }
       }
@@ -886,13 +908,15 @@ describe('generateBundle (real fs)', () => {
 
     it('warns for a double-brace branch run that is not a parameter name', async () => {
       const result = await bundleValue('choice', UNRESOLVABLE_NAME_VALUE);
-      const reported = branchBodyWarnings(result.warnings);
+      const reported = branchBodyWarnings(generationWarnings(result));
 
       expect(reported).toHaveLength(1);
       expect(reported[0]).toContain("Key 'choice':");
       expect(reported[0]).toContain('a run that is no parameter name');
       expect(reported[0]).toContain(`value: ${UNRESOLVABLE_NAME_VALUE}`);
-      expect(result.warnings).toContain("Key 'choice': value has malformed ICU syntax and was included as-is");
+      expect(generationWarnings(result)).toContain(
+        "Key 'choice': value has malformed ICU syntax and was included as-is",
+      );
       expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ choice: UNRESOLVABLE_NAME_VALUE });
     });
 
@@ -902,7 +926,7 @@ describe('generateBundle (real fs)', () => {
         locales: ['en', 'fr'],
       });
 
-      expect(branchBodyWarnings(result.warnings)).toHaveLength(2);
+      expect(branchBodyWarnings(generationWarnings(result))).toHaveLength(2);
     });
 
     it('bundles the emitted value and still generates the file', async () => {
@@ -914,13 +938,13 @@ describe('generateBundle (real fs)', () => {
 
     it('does not warn when ICU transformation is disabled', async () => {
       const result = await bundleValue('itemCount', UNBUNDLABLE_VALUE, { transform: false });
-      expect(branchBodyWarnings(result.warnings)).toHaveLength(0);
+      expect(branchBodyWarnings(generationWarnings(result))).toHaveLength(0);
     });
 
     it('bundles a bare-argument branch body as the triple', async () => {
       const result = await bundleValue('deleteConfirm', EXPANDED_VALUE);
 
-      expect(branchBodyWarnings(result.warnings)).toHaveLength(0);
+      expect(branchBodyWarnings(generationWarnings(result))).toHaveLength(0);
       expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ deleteConfirm: EXPANDED_OUTPUT });
     });
 
@@ -928,7 +952,7 @@ describe('generateBundle (real fs)', () => {
       it(`bundles ${description}`, async () => {
         const result = await bundleValue('rank', stored);
 
-        expect(branchBodyWarnings(result.warnings)).toHaveLength(0);
+        expect(branchBodyWarnings(generationWarnings(result))).toHaveLength(0);
         expect(readJson(join(root(), 'dist/bundles/en.json'))).toEqual({ rank: emitted });
       });
     }
@@ -936,7 +960,7 @@ describe('generateBundle (real fs)', () => {
     for (const value of SAFE_VALUES) {
       it(`does not warn for ${value}`, async () => {
         const result = await bundleValue('safe', value);
-        expect(branchBodyWarnings(result.warnings)).toHaveLength(0);
+        expect(branchBodyWarnings(generationWarnings(result))).toHaveLength(0);
       });
     }
   });
@@ -1004,7 +1028,7 @@ describe('generateBundle (real fs)', () => {
       expect(result.filesGenerated).toBe(1);
       return {
         emitted: flattenBundle(readJson(join(root(), 'fixture-bundles', `${locale}.json`))),
-        warnings: result.warnings,
+        warnings: generationWarnings(result),
       };
     }
 

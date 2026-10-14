@@ -1,13 +1,8 @@
 import type { Collection } from '../config/open-collection';
-import {
-  type EditResourceChanges,
-  type EditResourceResult,
-  type EntryWriteOptions,
-  writeEntry,
-} from './resource-entry';
+import { type EditResourceChanges, type EditResourceResult, type EntryWriteOptions, editEntry } from './resource-entry';
 
 export type { EditResourceChanges, EditResourceResult } from './resource-entry';
-export interface EditResourceOptions extends EntryWriteOptions {}
+export type EditResourceOptions = EntryWriteOptions;
 
 /**
  * Edits an existing resource entry of a collection.
@@ -41,8 +36,7 @@ export async function editResource(
   changes: EditResourceChanges,
   options: EditResourceOptions = {},
 ): Promise<EditResourceResult> {
-  const outcome = await writeEntry(collection, key, { kind: 'edit', changes }, options);
-  const result = outcome.result;
+  const result = await editEntry(collection, key, changes, options);
   if (!result.updated) {
     return { resolvedKey: result.resolvedKey, updated: false, message: result.message };
   }

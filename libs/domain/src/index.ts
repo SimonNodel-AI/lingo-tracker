@@ -1,8 +1,8 @@
 // The public surface of @simoncodes-ca/domain: browser-safe rules shared by core, the API, the CLI and the Tracker.
-// Only names with a consumer outside this library are listed; everything else is a module-level detail.
+// Runtime names need a non-test consumer in apps/*/src or another library, including core.
+// index.spec.ts scans consumers and pins runtime values. Type-only exports are excluded.
 
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
-export { type BracedPlaceholder, describeBracedPlaceholder, findBracedPlaceholders } from './lib/braced-placeholders';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,
@@ -19,8 +19,6 @@ export {
   hasTypeDistConfigured,
   isTypeScriptFile,
   normalizeBundleDefinition,
-  validateBundleDefinition,
-  validateBundleKey,
 } from './lib/bundle-definition';
 export {
   checkTranslatedValue,
@@ -28,9 +26,8 @@ export {
   type TranslatedValueViolation,
   type ValueCheckOptions,
 } from './lib/check-translated-value';
-export { type CollapsedCaseBody, findCollapsedCaseBodies } from './lib/collapsed-case-bodies';
 // Collection settings: shared inheritance and base-locale default
-export { DEFAULT_BASE_LOCALE, findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
+export { findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
 // Tags
 export { effectiveTags } from './lib/effective-tags';
 // Presence-aware optional entry details
@@ -49,16 +46,9 @@ export {
   parentFolderPath,
   rebaseFolderPath,
 } from './lib/folder-path';
-export { type ArgumentMismatch, compareIcuArguments } from './lib/icu-arguments';
-export {
-  hasICUPlaceholders,
-  hasQuotedInterpolationDelimiter,
-  hasTranslocoPlaceholders,
-  type ICUAutoFixResult,
-  validateICUSyntax,
-} from './lib/icu-auto-fixer';
+export type { ArgumentMismatch } from './lib/icu-arguments';
+export { hasQuotedInterpolationDelimiter, type ICUAutoFixResult, validateICUSyntax } from './lib/icu-auto-fixer';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
-export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
 export { hasUnbundlableBranchBody, icuToTransloco } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission
 export { canImportLocale, importableLocales } from './lib/import-rules';
@@ -74,18 +64,12 @@ export {
   resolveImportStatus,
 } from './lib/import-strategy-policy';
 // Keys: resource keys and generated-token identifiers
-export {
-  isJavaScriptReservedWord,
-  isValidJavaScriptIdentifier,
-  JS_IDENTIFIER_PATTERN,
-  validateJavaScriptIdentifier,
-} from './lib/js-identifier';
+export { isValidJavaScriptIdentifier, validateJavaScriptIdentifier } from './lib/js-identifier';
 export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';
 export {
   assertStringArray,
   type ListEdit,
   type ListEditProblem,
-  listEditProblem,
   mergeListEdit,
   validateListEdit,
 } from './lib/list-edit';
@@ -96,7 +80,6 @@ export { normalizeTag, normalizeTags } from './lib/normalize-tags';
 // Terminology: protected terms, preferred terminology and similarity
 export { normalizedLevenshtein } from './lib/normalized-levenshtein';
 export { type PlaceholderRepair, repairPlaceholders } from './lib/placeholder-repair';
-export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';
 export {
   applyPreferredTerm,
   findPreferredTermFindings,
@@ -116,12 +99,7 @@ export {
   DEFAULT_CONFIG,
   DEFAULT_TYPE_DIST_FILE,
 } from './lib/project-defaults';
-export {
-  effectiveProtectedTerms,
-  findProtectedTerms,
-  findProtectedTermViolations,
-  normalizeProtectedTerms,
-} from './lib/protected-terms';
+export { effectiveProtectedTerms, findProtectedTerms, normalizeProtectedTerms } from './lib/protected-terms';
 // References: resolving `{{t('other.key')}}` references across a key set
 export { type KeyedValue, resolveAllReferences } from './lib/reference-resolver';
 export {
@@ -149,6 +127,15 @@ export {
   needsTranslation,
   recordTranslation,
 } from './lib/staleness';
+export {
+  CONVERSION_SAFETY_RULES,
+  checkStoredValue,
+  describeStoredValueFinding,
+  isIcuLocaleSupported,
+  type StoredValueCheckOptions,
+  type StoredValueFinding,
+  type StoredValueRule,
+} from './lib/stored-value-check';
 export type { TokenCasing } from './lib/token-casing';
 // Locale seeding input
 export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';

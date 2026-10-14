@@ -24,5 +24,5 @@ export const PROVIDER_ERROR_CODES = definitions.PROVIDER_ERROR_CATALOGUE.codes;
 export type KnownProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
 export type ProviderErrorCode = KnownProviderErrorCode | (string & {});
 
-/** Closed set the API table must cover. */
+/** Valid keys for adapter override tables. */
 export type ErrorCode = DomainErrorCode | KnownProviderErrorCode;

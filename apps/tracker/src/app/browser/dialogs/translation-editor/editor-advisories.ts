@@ -1,6 +1,6 @@
 import { computed, type Signal, signal } from '@angular/core';
 import type { FormControl } from '@angular/forms';
-import type { LingoTrackerConfigDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
+import type { LingoTrackerConfigDto, ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
 import { applyPreferredTerm, findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
@@ -68,6 +68,19 @@ export class EditorAdvisories {
   destroy(): void {
     this.#subscriptions.unsubscribe();
   }
+}
+
+/** Tags used in the current collection, sorted and narrowed by the entry and typed text. */
+export function suggestTags(input: {
+  entries: Signal<readonly ResourceSummaryDto[]>;
+  inputText: Signal<string>;
+  tags: Signal<readonly string[]>;
+  inheritedTags: Signal<readonly string[]>;
+}): Signal<string[]> {
+  const suggestions = computed(() => [...new Set(input.entries().flatMap((resource) => resource.tags))].sort());
+  return computed(() =>
+    filteredEditorTagSuggestions(input.inputText(), input.tags(), input.inheritedTags(), suggestions()),
+  );
 }
 
 export function exactSimilarMatch(value: string, results: readonly SearchResultDto[]): SearchResultDto | undefined {

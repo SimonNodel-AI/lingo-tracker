@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { type TranslateExistingResourceResult, writeEntry } from '../resource/resource-entry';
+import { type TranslateExistingResourceResult, translateEntry } from '../resource/resource-entry';
 
 import type { TranslationRunOptions } from './translation-run';
 
@@ -22,13 +22,12 @@ export type { TranslateExistingResourceResult } from '../resource/resource-entry
  * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
  * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
-export interface TranslateExistingResourceOptions extends Omit<TranslationRunOptions, 'delay'> {}
+export type TranslateExistingResourceOptions = Omit<TranslationRunOptions, 'delay'>;
 
 export async function translateExistingResource(
   collection: Collection,
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const outcome = await writeEntry(collection, key, { kind: 'translate' }, options);
-  return outcome.result;
+  return translateEntry(collection, key, options);
 }
