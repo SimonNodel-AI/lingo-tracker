@@ -92,9 +92,11 @@ function validateAddChanges(collection: Collection, changes: EntryAddChanges): v
     (changes.translations ?? []).map(({ locale }) => locale),
   );
   assertNoBracedPlaceholders(collection.baseLocale, changes.baseValue);
+  for (const translation of changes.translations ?? []) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
   for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
     assertNoBracedPlaceholders(translation.locale, translation.value);
-    if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
 }
 
@@ -459,10 +461,13 @@ async function editEntry(
   if (changes.baseValue !== undefined && changes.baseValue !== current.entry.source) {
     assertNoBracedPlaceholders(baseLocale, changes.baseValue);
   }
-  const translations = Object.entries(changes.translations ?? {}).filter(([locale]) => locale !== baseLocale);
+  const requestedTranslations = Object.entries(changes.translations ?? {});
+  for (const [, translation] of requestedTranslations) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
+  const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
   for (const [locale, translation] of translations) {
     if (translation.value !== current.entry[locale]) assertNoBracedPlaceholders(locale, translation.value);
-    if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
   assertCollectionLocales(
     collection,

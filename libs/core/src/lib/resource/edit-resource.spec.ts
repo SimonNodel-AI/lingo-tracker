@@ -384,6 +384,23 @@ describe('editResource (real fs)', () => {
       });
     });
 
+    it('rejects an unknown base-locale translation status without changing files', async () => {
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+        join(root, 'translations', 'common', file),
+      );
+      const before = paths.map((path) => readFileSync(path));
+      await expect(
+        editResource(
+          collection(),
+          'common.save',
+          { comment: 'Changed', translations: { en: { value: 'x', status: 'bogus' as never } } },
+          { onMutation },
+        ),
+      ).rejects.toThrow(InvalidTranslationStatusError);
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+      expect(collected).toEqual([]);
+    });
+
     it('rejects an unknown status before changing the resource', async () => {
       await expect(
         editResource(

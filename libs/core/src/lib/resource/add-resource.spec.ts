@@ -339,6 +339,18 @@ describe('addResource (real fs)', () => {
       expect(read('tracker_meta.json').ok.fr.status).toBe('translated');
     });
 
+    it('rejects an unknown base-locale translation status before writing', async () => {
+      await expect(
+        addResource(
+          collection(),
+          { key: 'ok', baseValue: 'OK', translations: [{ locale: 'en', value: 'x', status: 'bogus' as never }] },
+          { onMutation },
+        ),
+      ).rejects.toThrow(InvalidTranslationStatusError);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+      expect(collected).toEqual([]);
+    });
+
     it('rejects an unknown translation status before writing', async () => {
       await expect(
         addResource(
