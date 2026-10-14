@@ -173,6 +173,30 @@ describe('EditorSession', () => {
       expect(session.form.controls.baseValue.hasError('required')).toBe(true);
     });
 
+    it('should show a braced-placeholder error on the base value once touched', () => {
+      session.form.controls.baseValue.setValue('Hi {{{name}}}');
+      expect(session.showBaseValueError()).toBe(false);
+
+      session.form.controls.baseValue.markAsTouched();
+      session.form.controls.baseValue.setValue('Hi {{{name}}} ');
+      expect(session.form.controls.baseValue.hasError('bracedPlaceholder')).toBe(true);
+      expect(session.showBaseValueError()).toBe(true);
+    });
+
+    it('should show a locale value error once touched or after a submit attempt', () => {
+      openSession(createMockData('edit', summary('common.buttons.ok', 'OK')));
+      const value = session.getLocaleFormGroup(0).controls.value;
+
+      value.setValue('Salut {{{name}}}');
+      expect(session.showLocaleValueError(0)).toBe(false);
+      value.markAsTouched();
+      value.setValue('Salut {{{name}}} ');
+      expect(session.showLocaleValueError(0)).toBe(true);
+
+      value.setValue('Salut {{name}}');
+      expect(session.showLocaleValueError(0)).toBe(false);
+    });
+
     it('should accept non-empty base value', () => {
       session.form.controls.baseValue.setValue('Test translation');
       expect(session.form.controls.baseValue.valid).toBe(true);

@@ -438,5 +438,15 @@
     "ru": "Пустые локали заполняются автоматическим переводом после сохранения. Защищённые термины и плейсхолдеры ICU остаются без изменений.",
     "ja": "空のロケールは保存後に自動翻訳で補完されます。保護された用語と ICU プレースホルダーは変更されません。",
     "de": "Leere Sprachen werden nach dem Speichern automatisch übersetzt. Geschützte Begriffe und ICU-Platzhalter bleiben unverändert."
+  },
+  "bracedPlaceholderX": {
+    "source": "{placeholder} is inside literal braces and would lose a brace on save. Quote the braces instead: {example}.",
+    "comment": "Error under a value field; placeholder is a Transloco interpolation such as {{name}} and example is the same with its outer braces quoted",
+    "tags": ["browser"],
+    "es": "{placeholder} está dentro de llaves literales y perdería una llave al guardar. Cita las llaves en su lugar: {example}.",
+    "fr-ca": "{placeholder} se trouve entre des accolades littérales et perdrait une accolade à l’enregistrement. Mettez plutôt les accolades entre apostrophes : {example}.",
+    "ru": "{placeholder} находится внутри буквальных фигурных скобок, и при сохранении одна скобка будет потеряна. Вместо этого заключите скобки в кавычки: {example}.",
+    "ja": "{placeholder} はリテラルの波括弧の内側にあり、保存時に波括弧が 1 つ失われます。代わりに波括弧を引用符で囲んでください: {example}。",
+    "de": "{placeholder} steht in literalen geschweiften Klammern und würde beim Speichern eine Klammer verlieren. Setzen Sie die Klammern stattdessen in Anführungszeichen: {example}."
   }
 }

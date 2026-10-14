@@ -41,6 +41,19 @@ describe('EditorEntryForm', () => {
     expect(form.form.controls.comment.valid).toBe(true);
   });
 
+  it('should reject a braced placeholder in the base value and in a translation, but not an empty one', () => {
+    form.seed(['en', 'fr'], 'en', undefined, '');
+    const value = form.form.controls.translations.at(0).controls.value;
+
+    form.form.controls.baseValue.setValue('Hi {{{name}}}');
+    value.setValue('Salut {{{name}}}');
+    expect(form.form.controls.baseValue.hasError('bracedPlaceholder')).toBe(true);
+    expect(value.hasError('bracedPlaceholder')).toBe(true);
+
+    value.setValue('');
+    expect(value.valid).toBe(true);
+  });
+
   it('should accept any comment value', () => {
     form.form.controls.comment.setValue('This is a comment for translators');
     expect(form.form.controls.comment.valid).toBe(true);
