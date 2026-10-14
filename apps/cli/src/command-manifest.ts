@@ -1,4 +1,3 @@
-import type { Command } from 'commander';
 import { ADD_COLLECTION_REGISTRATION } from './add-collection/add-collection-flags';
 import { ADD_RESOURCE_REGISTRATION } from './add-resource/add-resource-flags';
 import { ADD_LOCALE_REGISTRATION } from './commands/add-locale-flags';
@@ -20,14 +19,11 @@ import { TRANSLATE_LOCALE_REGISTRATION } from './commands/translate-locale-flags
 import { VALIDATE_REGISTRATION } from './commands/validate-options';
 import { DELETE_COLLECTION_REGISTRATION } from './delete-collection/delete-collection-flags';
 import { INIT_REGISTRATION } from './init/init-flags';
-import { type CommandRegistration, registerCommand } from './runner/register-command';
+import type { CommandRegistration } from './runner/register-command';
 
 /** Keep each handler paired with its option type when registering the mixed command list. */
 function manifestEntry<Options>(registration: CommandRegistration<Options>) {
-  return {
-    ...registration,
-    register: (program: Command) => registerCommand(program, registration),
-  };
+  return registration;
 }
 
 /** Help order and lazy command loaders are defined here once. */
@@ -117,3 +113,5 @@ export const commandManifest = [
     load: () => import('./commands/install-skill').then((module) => module.installSkillCommand),
   }),
 ];
+
+export type CommandManifest = readonly (typeof commandManifest)[number][];
