@@ -204,6 +204,8 @@ The bundle DTOs (`BundleDefinitionDto`, `CollectionBundleDefinitionDto`, `EntryS
 
 Each library's [public surface](glossary.md#public-surface) is its `src/index.ts` barrel. The `domain` and `core` barrels list every export by name and group them with a one-line comment per group. They export only what a caller outside the library uses, plus the types in those names' signatures. Everything else is a module detail: it can stay exported from its own file for the library's specs, but not from the barrel.
 
+See [Core Public Surface](core-library.md#public-surface) for the test-only `@simoncodes-ca/core/testing` entry point and lint checks.
+
 | Library | Barrel | Groups |
 |---|---|---|
 | `domain` | `libs/domain/src/index.ts` (69 names) | shared types, keys, staleness, status summary, ICU/Transloco, validation, terminology, references, tags, utilities. `index.spec.ts` pins the runtime export list. |

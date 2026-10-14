@@ -22,7 +22,7 @@ export type { TranslateExistingResourceResult } from '../resource/resource-entry
  * @throws {TranslationError} Some locale needs work and the API key is not set, or the provider failed.
  * @throws {ProtectedTermsFileError} Some locale needs work and a protected-terms file is malformed.
  */
-export interface TranslateExistingResourceOptions extends Omit<TranslationRunOptions, 'delay'> {}
+export type TranslateExistingResourceOptions = Omit<TranslationRunOptions, 'delay'>;
 
 export async function translateExistingResource(
   collection: Collection,

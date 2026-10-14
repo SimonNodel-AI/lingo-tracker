@@ -15,14 +15,14 @@ jest.mock('@simoncodes-ca/core', () => {
   const actual = jest.requireActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
   return {
     ...actual,
-    generatePreparedBundle: jest.fn(() => new Promise<void>(() => {})),
+    generatePreparedBundle: jest.fn(() => new Promise<void>(() => undefined)),
     prepareTranslationRun: (...args: Parameters<typeof actual.prepareTranslationRun>) => {
       const run = actual.prepareTranslationRun(...args);
       return {
         ...run,
         forLocale: (locale: string) => ({
           ...run.forLocale(locale),
-          execute: jest.fn(() => new Promise<never>(() => {})),
+          execute: jest.fn(() => new Promise<never>(() => undefined)),
         }),
       };
     },

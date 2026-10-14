@@ -2,7 +2,7 @@ import type { Collection } from '../config/open-collection';
 import { type EditResourceChanges, type EditResourceResult, type EntryWriteOptions, editEntry } from './resource-entry';
 
 export type { EditResourceChanges, EditResourceResult } from './resource-entry';
-export interface EditResourceOptions extends EntryWriteOptions {}
+export type EditResourceOptions = EntryWriteOptions;
 
 /**
  * Edits an existing resource entry of a collection.

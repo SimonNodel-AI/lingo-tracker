@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { addLocaleToCollection, ConfigNotFoundError, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as internalErrors from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import { internalErrors } from '@simoncodes-ca/core/testing';
 import { isInteractiveTerminal } from '../runner/terminal';
 import { type AddLocaleOptions, addLocaleCommand } from './add-locale';
 

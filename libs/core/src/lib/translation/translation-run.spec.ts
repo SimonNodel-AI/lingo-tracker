@@ -40,7 +40,7 @@ const executeLocale = async (
   params: TranslationRunOptions & TranslationRunExecutionOptions & { targetLocale: string },
 ) => {
   const { targetLocale, onProgress, ...options } = params;
-  return prepareTranslationRun(collection, { ...options, delay: async () => {} })
+  return prepareTranslationRun(collection, { ...options, delay: async () => undefined })
     .forLocale(targetLocale)
     .execute({ onProgress });
 };
@@ -133,7 +133,7 @@ describe('Translation Run', () => {
     seedResources(target, { 'a.one': { source: 'One' }, 'b.two': { source: 'Two' }, 'c.three': { source: 'Three' } });
     const result = await prepareTranslationRun(target, {
       provider: new InMemoryTranslationProvider(),
-      delay: async () => {},
+      delay: async () => undefined,
     })
       .forLocale('fr')
       .execute();
@@ -190,7 +190,7 @@ describe('Translation Run', () => {
 
   it('prepares availability before a prompt and selects the final locale afterward', async () => {
     const target = collection();
-    const prepared = prepareTranslationRun(target, { delay: async () => {} });
+    const prepared = prepareTranslationRun(target, { delay: async () => undefined });
     expect(prepared.targetLocales).toEqual(['fr']);
     expect(prepared).not.toHaveProperty('targetLocale');
     expect(prepared).not.toHaveProperty('collection');
@@ -214,7 +214,7 @@ describe('Translation Run', () => {
         return `[fr] ${text}`;
       }),
       onMutation,
-      delay: async () => {},
+      delay: async () => undefined,
     })
       .forLocale('fr')
       .execute({ onProgress: (event) => progress.push(event) });

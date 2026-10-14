@@ -1,7 +1,6 @@
 import { editCollectionTags, loadConfig } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-// eslint-disable-next-line @nx/enforce-module-boundaries -- Private error fixture; root ESLint does not load the app allow-list.
-import { InvalidCollectionError } from '../../../../libs/core/src/lib/errors/internal';
+import { InvalidCollectionError } from '@simoncodes-ca/core/testing';
 import { createCli } from '../program';
 import { editCollectionCommand } from './edit-collection';
 

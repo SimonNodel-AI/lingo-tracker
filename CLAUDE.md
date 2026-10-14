@@ -62,6 +62,7 @@ Use the `/playwright-cli` skill for browser automation, UI testing, screenshots,
 ### Other Commands
 
 ```bash
+pnpm run lint          # Biome and cached ESLint checks for all six projects
 pnpm run commit        # Interactive conventional commit
 pnpm run test:release  # Dry-run semantic release
 pnpm nx                # Direct Nx CLI access
@@ -171,6 +172,7 @@ export class ExampleComponent implements OnInit {
 
 - **Domain Logic** (`@simoncodes-ca/domain`): Pure business logic with **zero Node.js dependencies** — importable by all apps including the browser-based Tracker UI. This is where platform-agnostic logic belongs: key validation/parsing, translation status helpers, ICU↔Transloco format conversion, validation utilities (locale, key length, duplicates, hierarchical conflicts), and shared types (`TranslationStatus`, `LocaleMetadata`).
 - **Core Logic** (`@simoncodes-ca/core`): Node.js-dependent business logic — file I/O, checksums (crypto), directory traversal, bundle generation, import/export. Core depends on domain; **domain must never depend on core**.
+- **Core test helpers** (`@simoncodes-ca/core/testing`): Test-only error fixtures and internal module access for app specs and test helpers (`testing/`, `*.spec-helpers.ts`). ESLint prevents production imports; these names do not extend the public barrel.
 - **DTOs** (`@simoncodes-ca/data-transfer`): API contracts shared between API/CLI/UI
 - **Validation**: Request shape is checked at the edge in `apps/api/src/app/validation/`; rules live in domain/core.
 - **Mappers**: Convert between domain models and DTOs in API layer

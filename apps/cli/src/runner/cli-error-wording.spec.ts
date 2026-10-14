@@ -6,9 +6,12 @@ import type {
   ProtectedTermsEditProblem,
 } from '@simoncodes-ca/core';
 import { describe, expect, it, vi } from 'vitest';
-import { errorAdapterFixtures } from '../../../../libs/core/src/lib/errors/error-adapter-fixtures.spec-helpers';
-import { ERROR_CODES, PROVIDER_ERROR_CODES } from '../../../../libs/core/src/lib/errors/error-codes';
-import * as core from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import {
+  errorAdapterFixtures,
+  ERROR_CODES,
+  PROVIDER_ERROR_CODES,
+  internalErrors as core,
+} from '@simoncodes-ca/core/testing';
 import {
   ADD_RESOURCE_COMMAND_NAME,
   CLI_BY_CODE,

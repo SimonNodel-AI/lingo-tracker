@@ -643,7 +643,7 @@ describe('ResourcesController HTTP (real project)', () => {
       expect((await tree()).status).toBe(200);
     });
     it('should return 202 when the index is indexing', async () => {
-      jest.spyOn(ResourceTreeIndex.prototype, 'load').mockImplementation(() => {});
+      jest.spyOn(ResourceTreeIndex.prototype, 'load').mockImplementation(() => undefined);
       await tree();
       expect(await tree()).toEqual({
         status: 202,

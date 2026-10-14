@@ -94,9 +94,6 @@
         "buildTarget": "tracker:build"
       }
     },
-    "lint": {
-      "executor": "@nx/eslint:lint"
-    },
     "typecheck": {
       "dependsOn": ["^typecheck", "typecheck-spec"]
     },

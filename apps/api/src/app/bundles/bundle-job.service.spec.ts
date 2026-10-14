@@ -130,7 +130,7 @@ describe('BundleJobService', () => {
   });
 
   it('startJob returns the pending snapshot', () => {
-    mockGenerateBundle.mockReturnValue(new Promise(() => {}));
+    mockGenerateBundle.mockReturnValue(new Promise(() => undefined));
 
     const job = service.startJob(makeParams());
     const jobId = job.jobId;
@@ -223,7 +223,7 @@ describe('BundleJobService', () => {
     let capturedProgress: ((event: BundleProgressEvent) => void) | undefined;
     mockGenerateBundle.mockImplementation((_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {
       capturedProgress = options.onProgress;
-      return new Promise(() => {});
+      return new Promise(() => undefined);
     });
 
     const { jobId } = service.startJob(makeParams());
@@ -377,7 +377,7 @@ describe('BundleJobService', () => {
     });
 
     it('never evicts a job that has not finished', async () => {
-      mockGenerateBundle.mockReturnValue(new Promise(() => {}));
+      mockGenerateBundle.mockReturnValue(new Promise(() => undefined));
 
       const { jobId: stuckId } = service.startJob(makeParams());
       await jest.advanceTimersByTimeAsync(0);

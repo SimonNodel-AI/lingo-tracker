@@ -55,7 +55,7 @@ describe('TranslationJobService', () => {
   });
 
   it('executes the bound run on the opened collection for the target locale', async () => {
-    mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
+    mockTranslateLocale.mockReturnValue(new Promise(() => undefined)); // never resolves
 
     startJob(service);
     await flush();
@@ -68,7 +68,7 @@ describe('TranslationJobService', () => {
   });
 
   it('startJob returns the pending snapshot', () => {
-    mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
+    mockTranslateLocale.mockReturnValue(new Promise(() => undefined)); // never resolves
 
     const job = service.startJob(prepareRun());
 
@@ -99,7 +99,7 @@ describe('TranslationJobService', () => {
   });
 
   it('getJob returns a running job immediately after startJob (before async completes)', () => {
-    mockTranslateLocale.mockReturnValue(new Promise(() => {})); // never resolves
+    mockTranslateLocale.mockReturnValue(new Promise(() => undefined)); // never resolves
 
     const jobId = startJob(service);
     const job = service.getJob(jobId, collection.name);

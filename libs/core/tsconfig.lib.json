@@ -9,6 +9,7 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": [
+    "src/testing.ts",
     "vite.config.ts",
     "vite.config.mts",
     "vitest.config.ts",

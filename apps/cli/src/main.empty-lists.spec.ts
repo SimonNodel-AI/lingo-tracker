@@ -56,8 +56,8 @@ function askedNames(): unknown[] {
 describe('registered empty optional lists', () => {
   // Pay cold module loading in the suite hook, before any action's test timeout starts.
   beforeAll(async () => {
-    // Resolve the async partial core mock before commands bind its exports.
-    await import('@simoncodes-ca/core');
+    // vi.importMock resolves the partial core mock before commands bind its exports.
+    await vi.importMock('@simoncodes-ca/core');
     await Promise.all([
       import('./commands/bundle'),
       import('./commands/delete-resource'),

@@ -10,7 +10,7 @@ import {
 } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as internalErrors from '../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import { internalErrors } from '@simoncodes-ca/core/testing';
 import { parseListSelection } from '../utils/prompt-utils';
 import { CommandCancelledError } from './command-cancelled-error';
 import { type CollectionNeed, type CommandSpec, defineCommand } from './command-runner';

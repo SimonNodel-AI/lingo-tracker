@@ -9,6 +9,18 @@
     "translationFixtures": ["{workspaceRoot}/sample-translations/**/*", "{workspaceRoot}/.lingo-tracker.json"]
   },
   "targetDefaults": {
+    "lint": {
+      "cache": true,
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/eslint.config.mjs",
+        "{workspaceRoot}/nx.json",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{workspaceRoot}/tools/eslint-rules/**/*",
+        { "externalDependencies": ["eslint", "@nx/eslint-plugin", "typescript-eslint", "angular-eslint"] }
+      ]
+    },
     "test": {
       "cache": true,
       "inputs": ["default", "^default", "translationFixtures"]
@@ -17,17 +29,6 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["default", "^default"]
-    },
-    "@nx/eslint:lint": {
-      "cache": true,
-      "inputs": [
-        "default",
-        "^default",
-        "{workspaceRoot}/.eslintrc.json",
-        "{workspaceRoot}/.eslintignore",
-        "{workspaceRoot}/eslint.config.mjs",
-        "{workspaceRoot}/tools/eslint-rules/**/*"
-      ]
     },
     "@nx/vitest:test": {
       "cache": true,
@@ -75,8 +76,9 @@
     },
     {
       "plugin": "@nx/eslint/plugin",
+      "exclude": ["eslint.config.mjs"],
       "options": {
-        "targetName": "eslint:lint"
+        "targetName": "lint"
       }
     },
     {

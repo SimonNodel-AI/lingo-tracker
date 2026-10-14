@@ -266,6 +266,8 @@ For the entity types (`ResourceEntry`, `TrackerMetadata`, `LocaleMetadata`) that
 
 `libs/core/src/index.ts` is the [public surface](glossary.md#public-surface): runtime names need a non-test consumer outside `libs/core`, a documented public contract, or a listed helper used by app specs. Types needed by callers and operation signatures remain public. The pin spec scans `apps/*/src` and other libraries, excluding `*.spec.ts`, `*.test.ts`, and `testing/` from normal consumption. It recognizes named imports (including type imports and aliases), named re-exports, and namespace members accessed with dot syntax or literal string keys. Type-only exports are erased and excluded from the runtime check.
 
+`@simoncodes-ca/core/testing` is a separate test-only entry point for app adapter fixtures and internal provider spies. It does not add public exports or count as a consumer in the public-surface pin. Root ESLint rejects production imports. `pnpm run lint` runs Biome followed by cached Nx ESLint targets for all six projects.
+
 Core's pin spec records one contract exception: `TranslationError`, which implementers of `TranslationProvider` must throw. Its setup exceptions are `openProjectCollection` and `openResourceFolder`; each must still have an app-spec consumer. Other app-spec imports do not justify a public export. Domain's pin spec checks its own surface without importing core. The barrel does not re-export domain types such as `TranslationStatus`, `TokenCasing`, `ImportStrategy`, or `BundleDefinition`; callers import those from `@simoncodes-ca/domain`.
 
 | Group | What it holds |

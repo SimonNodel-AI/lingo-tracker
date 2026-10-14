@@ -9,12 +9,14 @@ import {
   PreferredTerminologyValidationError,
   TranslationError,
 } from '@simoncodes-ca/core';
-import { errorAdapterFixtures } from '../../../../../libs/core/src/lib/errors/error-adapter-fixtures.spec-helpers';
-import { ERROR_CODES, PROVIDER_ERROR_CODES } from '../../../../../libs/core/src/lib/errors/error-codes';
-// eslint-disable-next-line @nx/enforce-module-boundaries -- Private error fixture; root ESLint does not load the app allow-list.
-import { InvalidCollectionError } from '../../../../../libs/core/src/lib/errors/internal';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
-import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
+import {
+  errorAdapterFixtures,
+  ERROR_CODES,
+  PROVIDER_ERROR_CODES,
+  InvalidCollectionError,
+  internalErrors,
+} from '@simoncodes-ca/core/testing';
 import { JobNotFoundError } from '../jobs/job-not-found.error';
 import { HTTP_BY_CODE, LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
 
