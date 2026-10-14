@@ -220,53 +220,7 @@ export interface EntryEditResult extends EditResourceResult {
   readonly entry: ResourceTreeEntry;
 }
 
-export type EntryWriteIntent =
-  | { readonly kind: 'add'; readonly changes: EntryAddChanges; readonly onExisting: ExistingResourcePolicy }
-  | { readonly kind: 'edit'; readonly changes: EditResourceChanges }
-  | { readonly kind: 'translate' };
-
-export type EntryWriteResult =
-  | { readonly kind: 'add'; readonly result: EntryAddResult }
-  | { readonly kind: 'edit'; readonly result: EntryEditResult }
-  | { readonly kind: 'translate'; readonly result: TranslateExistingResourceResult };
-
 export interface EntryWriteOptions extends OpenTranslatorOptions, MutationSinkOptions {}
-
-export function writeEntry(
-  collection: Collection,
-  resolvedKey: string,
-  intent: Extract<EntryWriteIntent, { kind: 'add' }>,
-  options?: EntryWriteOptions,
-): Promise<Extract<EntryWriteResult, { kind: 'add' }>>;
-export function writeEntry(
-  collection: Collection,
-  resolvedKey: string,
-  intent: Extract<EntryWriteIntent, { kind: 'edit' }>,
-  options?: EntryWriteOptions,
-): Promise<Extract<EntryWriteResult, { kind: 'edit' }>>;
-export function writeEntry(
-  collection: Collection,
-  resolvedKey: string,
-  intent: Extract<EntryWriteIntent, { kind: 'translate' }>,
-  options?: EntryWriteOptions,
-): Promise<Extract<EntryWriteResult, { kind: 'translate' }>>;
-/** Applies one entry intent; the kind identifies its result without mixing sync and async writes. */
-export async function writeEntry(
-  collection: Collection,
-  resolvedKey: string,
-  intent: EntryWriteIntent,
-  options: EntryWriteOptions = {},
-): Promise<EntryWriteResult> {
-  const onMutation = resolveMutationSink(collection, options);
-  switch (intent.kind) {
-    case 'add':
-      return { kind: 'add', result: await addEntry(collection, resolvedKey, intent, options, onMutation) };
-    case 'edit':
-      return { kind: 'edit', result: await editEntry(collection, resolvedKey, intent.changes, options, onMutation) };
-    case 'translate':
-      return { kind: 'translate', result: await translateEntry(collection, resolvedKey, options, onMutation) };
-  }
-}
 
 function saveEntry(
   collection: Collection,
@@ -295,14 +249,15 @@ function requireEntry(
   return entry;
 }
 
-async function addEntry(
+export async function addEntry(
   collection: Collection,
   resolvedKey: string,
-  intent: Extract<EntryWriteIntent, { kind: 'add' }>,
-  options: EntryWriteOptions,
-  onMutation: MutationSink | undefined,
+  changes: EntryAddChanges,
+  onExisting: ExistingResourcePolicy,
+  options: EntryWriteOptions = {},
 ): Promise<EntryAddResult> {
-  const prepared = await prepareAdd(preflightAdd(collection, resolvedKey, intent.changes, intent.onExisting), options);
+  const onMutation = resolveMutationSink(collection, options);
+  const prepared = await prepareAdd(preflightAdd(collection, resolvedKey, changes, onExisting), options);
   return commitPrepared(prepared, onMutation);
 }
 
@@ -395,12 +350,12 @@ function assertAddable(collection: Collection, resolvedKey: string, onExisting: 
   checkWriteConflict(locateResolvedEntry(collection, resolvedKey), onExisting);
 }
 
-async function translateEntry(
+export async function translateEntry(
   collection: Collection,
   key: string,
-  options: EntryWriteOptions,
-  onMutation: MutationSink | undefined,
+  options: EntryWriteOptions = {},
 ): Promise<TranslateExistingResourceResult> {
+  const onMutation = resolveMutationSink(collection, options);
   const config = assertAutoTranslationEnabled(collection);
   const resource = locateEntry(collection, key);
   const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
@@ -450,20 +405,54 @@ function applyEntryAdd(resource: LocatedEntry, changes: EntryAddChanges): Resour
   });
 }
 
-async function editEntry(
+interface EditContext {
+  readonly collection: Collection;
+  readonly resource: LocatedEntry;
+  readonly options: EntryWriteOptions;
+  readonly onMutation?: MutationSink;
+}
+
+type SuppliedEditTranslations = [string, { readonly value: string; readonly status?: TranslationStatus }][];
+
+export async function editEntry(
   collection: Collection,
   key: string,
   changes: EditResourceChanges,
-  options: EntryWriteOptions,
-  onMutation: MutationSink | undefined,
+  options: EntryWriteOptions = {},
 ): Promise<EntryEditResult> {
-  const { baseLocale, translationsFolder } = collection;
-  const resource = locateEntry(collection, key);
-  const { folder } = resource;
-  const current = resource.folder.get(resource.entryKey);
-  if (!current?.meta) {
-    throw new ResourceNotFoundError(resource.resolvedKey);
+  const onMutation = resolveMutationSink(collection, options);
+  const { resource, translations, destination, liveEntry } = validateEntryEdit(collection, key, changes);
+  const context: EditContext = { collection, resource, options, onMutation };
+  const previousBase = liveEntry.source;
+  const base = applyEditBaseAndDetails(resource, changes, previousBase);
+  const translationsChanged = applySuppliedEditTranslations(resource, translations, liveEntry);
+  if (!base.hasChanges && !translationsChanged && !destination) {
+    return {
+      resolvedKey: resource.resolvedKey,
+      updated: false,
+      message: 'No changes detected',
+      entry: requireEntry(resource.folder, resource.entryKey, resource.resolvedKey),
+    };
   }
+
+  // Two-phase write: the edit is saved before auto-translation, so it is kept if the provider fails.
+  if (base.hasChanges || translationsChanged) saveEntry(collection, resource, onMutation);
+  const seeded =
+    base.baseValue !== undefined && base.baseValue !== previousBase
+      ? await seedEditedEntry(context, base.baseValue, previousBase, translations, liveEntry)
+      : undefined;
+  return finishEntryEdit(context, destination, base.baseValue, seeded);
+}
+
+function validateEntryEdit(
+  collection: Collection,
+  key: string,
+  changes: EditResourceChanges,
+): { resource: LocatedEntry; liveEntry: ResourceEntry; translations: SuppliedEditTranslations; destination?: string } {
+  const { baseLocale } = collection;
+  const resource = locateEntry(collection, key);
+  const current = resource.folder.get(resource.entryKey);
+  if (!current?.meta) throw new ResourceNotFoundError(resource.resolvedKey);
 
   if (changes.baseValue !== undefined && changes.baseValue !== current.entry.source) {
     assertConversionSafe(baseLocale, changes.baseValue);
@@ -486,21 +475,19 @@ async function editEntry(
   const destination =
     changes.moveTo === undefined ? undefined : resolveDestination(collection, resource, changes.moveTo);
 
-  const entryKey = resource.entryKey;
   // Live view of the stored entry: it reflects every change made through `folder`.
-  const { entry } = current;
-  const previousBase = entry.source;
-  let hasChanges = false;
+  return { resource, liveEntry: current.entry, translations, destination };
+}
 
+function applyEditBaseAndDetails(resource: LocatedEntry, changes: EditResourceChanges, previousBase: string) {
+  const { folder, entryKey } = resource;
+  let hasChanges = false;
   // setBase applies the Staleness rule to every translation.
   const baseValue =
-    changes.baseValue === undefined
-      ? undefined
-      : changes.baseValue === previousBase
-        ? previousBase
-        : translocoToICU(changes.baseValue);
-  const baseChanged = baseValue !== undefined && baseValue !== previousBase;
-  if (baseChanged) {
+    changes.baseValue === undefined || changes.baseValue === previousBase
+      ? changes.baseValue
+      : translocoToICU(changes.baseValue);
+  if (baseValue !== undefined && baseValue !== previousBase) {
     folder.setBase(entryKey, baseValue);
     hasChanges = true;
   }
@@ -512,8 +499,18 @@ async function editEntry(
     hasChanges = true;
   }
 
+  return { baseValue, hasChanges };
+}
+
+function applySuppliedEditTranslations(
+  resource: LocatedEntry,
+  translations: SuppliedEditTranslations,
+  liveEntry: ResourceEntry,
+): boolean {
+  const { folder, entryKey } = resource;
+  let hasChanges = false;
   for (const [locale, { value, status }] of translations) {
-    if (value !== entry[locale] && translocoToICU(value) !== entry[locale]) {
+    if (value !== liveEntry[locale] && translocoToICU(value) !== liveEntry[locale]) {
       folder.setTranslation(entryKey, locale, value, status);
       hasChanges = true;
     } else {
@@ -525,66 +522,69 @@ async function editEntry(
     }
   }
 
-  if (!hasChanges && !destination) {
-    return {
-      resolvedKey: resource.resolvedKey,
-      updated: false,
-      message: 'No changes detected',
-      entry: requireEntry(folder, entryKey, resource.resolvedKey),
-    };
-  }
+  return hasChanges;
+}
 
-  // Two-phase write: the edit is saved before auto-translation, so it is kept if the provider fails.
-  if (hasChanges) {
-    saveEntry(collection, resource, onMutation);
-  }
-
-  let updatedFolder = folder;
+async function seedEditedEntry(
+  context: EditContext,
+  baseValue: string,
+  previousBase: string,
+  translations: SuppliedEditTranslations,
+  liveEntry: ResourceEntry,
+) {
+  const { collection, resource, options, onMutation } = context;
+  const { folder, entryKey } = resource;
+  const { translationsFolder } = collection;
   let skippedLocales: string[] | undefined;
-  let translatorProblems: readonly string[] | undefined;
-  if (baseChanged) {
-    const snapshots = new Map(
-      collection.targetLocales.map((locale) => [
-        locale,
-        snapshotTranslation(entry.source, folder.get(entryKey)?.meta?.[locale]),
-      ]),
-    );
-    const seeding = await seedLocales(
-      collection,
-      {
-        baseValue,
-        supplied: translations.map(([locale]) => locale),
-        needsWork: (locale) => needsTranslation(folder.get(entryKey)?.meta?.[locale]),
-        // A real translation is kept; no value, or an untranslated copy of the old base, is not.
-        keepsValue: (locale) => {
-          const value = entry[locale];
-          return typeof value === 'string' && !isUntranslatedCopy(value, previousBase);
-        },
+  const snapshots = new Map(
+    collection.targetLocales.map((locale) => [
+      locale,
+      snapshotTranslation(liveEntry.source, folder.get(entryKey)?.meta?.[locale]),
+    ]),
+  );
+  const seeding = await seedLocales(
+    collection,
+    {
+      baseValue,
+      supplied: translations.map(([locale]) => locale),
+      needsWork: (locale) => needsTranslation(folder.get(entryKey)?.meta?.[locale]),
+      // A real translation is kept; no value, or an untranslated copy of the old base, is not.
+      keepsValue: (locale) => {
+        const value = liveEntry[locale];
+        return typeof value === 'string' && !isUntranslatedCopy(value, previousBase);
       },
-      options,
-    );
-    const pending = seeding.translations.flatMap((translation) => {
-      const snapshot = snapshots.get(translation.locale);
-      return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
-    });
-    const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
-      onMutation,
-      saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
-    });
-    updatedFolder = writeBack.folder;
-    if (!updatedFolder.has(entryKey)) {
-      throw new ResourceNotFoundError(resource.resolvedKey);
-    }
-    if (seeding.skippedLocales !== undefined) {
-      const skipped = [...new Set([...seeding.skippedLocales, ...writeBack.skipped.map(({ locale }) => locale)])];
-      if (skipped.length > 0) skippedLocales = skipped;
-    }
-    translatorProblems = seeding.problems;
+    },
+    options,
+  );
+  const pending = seeding.translations.flatMap((translation) => {
+    const snapshot = snapshots.get(translation.locale);
+    return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
+  });
+  const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
+    onMutation,
+    saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
+  });
+  if (!writeBack.folder.has(entryKey)) {
+    throw new ResourceNotFoundError(resource.resolvedKey);
   }
+  if (seeding.skippedLocales !== undefined) {
+    const skipped = [...new Set([...seeding.skippedLocales, ...writeBack.skipped.map(({ locale }) => locale)])];
+    if (skipped.length > 0) skippedLocales = skipped;
+  }
+  return { folder: writeBack.folder, skippedLocales, translatorProblems: seeding.problems };
+}
 
+function finishEntryEdit(
+  context: EditContext,
+  destination: string | undefined,
+  baseValue: string | undefined,
+  seeded: Awaited<ReturnType<typeof seedEditedEntry>> | undefined,
+): EntryEditResult {
+  const { collection, resource, onMutation } = context;
+  const { skippedLocales, translatorProblems } = seeded ?? {};
   const moved = destination ? moveEntry(collection, resource.resolvedKey, destination, onMutation) : undefined;
   const resolvedKey = moved?.resolvedKey ?? resource.resolvedKey;
-  const updatedEntry = moved?.entry ?? updatedFolder.treeEntry(entryKey);
+  const updatedEntry = moved?.entry ?? (seeded?.folder ?? resource.folder).treeEntry(resource.entryKey);
   if (!updatedEntry) {
     throw new ResourceNotFoundError(resolvedKey);
   }

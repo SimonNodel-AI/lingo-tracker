@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { type TranslateExistingResourceResult, writeEntry } from '../resource/resource-entry';
+import { type TranslateExistingResourceResult, translateEntry } from '../resource/resource-entry';
 
 import type { TranslationRunOptions } from './translation-run';
 
@@ -29,6 +29,5 @@ export async function translateExistingResource(
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const outcome = await writeEntry(collection, key, { kind: 'translate' }, options);
-  return outcome.result;
+  return translateEntry(collection, key, options);
 }
