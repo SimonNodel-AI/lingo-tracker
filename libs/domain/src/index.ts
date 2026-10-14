@@ -2,7 +2,6 @@
 // Only names with a consumer outside this library are listed; everything else is a module-level detail.
 
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
-export { type BracedPlaceholder, describeBracedPlaceholder, findBracedPlaceholders } from './lib/braced-placeholders';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,
@@ -28,7 +27,6 @@ export {
   type TranslatedValueViolation,
   type ValueCheckOptions,
 } from './lib/check-translated-value';
-export { type CollapsedCaseBody, findCollapsedCaseBodies } from './lib/collapsed-case-bodies';
 // Collection settings: shared inheritance and base-locale default
 export { DEFAULT_BASE_LOCALE, findCollectionEntry, inheritCollectionSettings } from './lib/collection-settings';
 // Tags
@@ -58,7 +56,6 @@ export {
   validateICUSyntax,
 } from './lib/icu-auto-fixer';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
-export { findIcuCompileError, isIcuLocaleSupported } from './lib/icu-locale-validation';
 export { hasUnbundlableBranchBody, icuToTransloco } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission
 export { canImportLocale, importableLocales } from './lib/import-rules';
@@ -96,7 +93,6 @@ export { normalizeTag, normalizeTags } from './lib/normalize-tags';
 // Terminology: protected terms, preferred terminology and similarity
 export { normalizedLevenshtein } from './lib/normalized-levenshtein';
 export { type PlaceholderRepair, repairPlaceholders } from './lib/placeholder-repair';
-export { findUnportablePluralCases, type UnportablePluralCase } from './lib/portable-plural-categories';
 export {
   applyPreferredTerm,
   findPreferredTermFindings,
@@ -149,6 +145,15 @@ export {
   needsTranslation,
   recordTranslation,
 } from './lib/staleness';
+export {
+  CONVERSION_SAFETY_RULES,
+  checkStoredValue,
+  describeStoredValueFinding,
+  isIcuLocaleSupported,
+  type StoredValueCheckOptions,
+  type StoredValueFinding,
+  type StoredValueRule,
+} from './lib/stored-value-check';
 export type { TokenCasing } from './lib/token-casing';
 // Locale seeding input
 export { parseTranslationInputs, type TranslationInput, type TranslationInputsResult } from './lib/translation-inputs';

@@ -2,7 +2,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   applyBaseChange,
-  findBracedPlaceholders,
+  checkStoredValue,
   isUntranslatedCopy,
   normalizeTags,
   recordTranslation,
@@ -168,7 +168,7 @@ export interface OpenResourceFolderOptions {
 }
 
 function convertStored(value: string): string {
-  return findBracedPlaceholders(value).length > 0 ? value : translocoToICU(value);
+  return checkStoredValue(value).some((finding) => finding.blocksConversion) ? value : translocoToICU(value);
 }
 
 const NON_LOCALE_PROPS: ReadonlySet<string> = new Set(['source', 'comment', 'tags']);

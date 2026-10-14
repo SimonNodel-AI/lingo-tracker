@@ -1,6 +1,6 @@
 import * as fc from 'fast-check';
-import { findBracedPlaceholders } from './braced-placeholders';
 import { icuToTransloco } from './icu-to-transloco';
+import { checkStoredValue } from './stored-value-check';
 import {
   arbitraryMessage,
   gluedSelectorMessage,
@@ -91,7 +91,7 @@ it('is idempotent on arbitrary messages that pass validation', () => {
     fc.property(
       fc.oneof(arbitraryMessage, icuishMessage, quoteStressMessage, unicodeSpacedMessage, icuishCompilationMessage),
       (value) => {
-        fc.pre(findBracedPlaceholders(value).length === 0);
+        fc.pre(checkStoredValue(value).length === 0);
         const once = translocoToICU(value);
         expect(translocoToICU(once)).toBe(once);
       },

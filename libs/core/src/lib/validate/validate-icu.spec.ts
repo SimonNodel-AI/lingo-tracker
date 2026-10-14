@@ -1,4 +1,4 @@
-import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
+import { checkStoredValue, describeStoredValueFinding } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { CollectionSetResource } from '../collection-set/collection-set';
 import { validateIcuValues } from './validate-icu';
@@ -20,7 +20,7 @@ function resource(overrides: Partial<CollectionSetResource> = {}): CollectionSet
 describe('validateIcuValues', () => {
   it('reports braced source and target values instead of compiling them', () => {
     const value = '{{{a}}}';
-    const first = findBracedPlaceholders(value)[0];
+    const first = checkStoredValue(value)[0];
     expect(first).toBeDefined();
     if (!first) throw new Error('Missing finding');
     const result = validateIcuValues([resource({ source: value, translations: { fr: value } })], ['fr'], {
@@ -34,7 +34,7 @@ describe('validateIcuValues', () => {
         key: 'common.count',
         locale,
         collection: 'main',
-        message: describeBracedPlaceholder(first),
+        message: describeStoredValueFinding(first),
       })),
     );
   });
@@ -44,7 +44,7 @@ describe('validateIcuValues', () => {
     true,
   ])('reports braced values independently of compilation and locale support (compileValues=%s)', (compileValues) => {
     const value = '{{{a}}}';
-    const found = findBracedPlaceholders(value)[0];
+    const found = checkStoredValue(value)[0];
     expect(found).toBeDefined();
     if (!found) throw new Error('Missing finding');
     const result = validateIcuValues([resource({ source: value, translations: { fr_CA: value } })], ['fr_CA'], {
@@ -57,7 +57,7 @@ describe('validateIcuValues', () => {
         key: 'common.count',
         collection: 'main',
         locale,
-        message: describeBracedPlaceholder(found),
+        message: describeStoredValueFinding(found),
       })),
     );
     expect(result.unsupportedLocales).toEqual(compileValues ? ['fr_CA'] : []);

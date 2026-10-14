@@ -7,7 +7,7 @@ import {
   type TranslationProvider,
 } from '@simoncodes-ca/core';
 import type { ResourceTreeDto, SearchResultsDto, TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
-import { describeBracedPlaceholder, findBracedPlaceholders } from '@simoncodes-ca/domain';
+import { checkStoredValue, describeStoredValueFinding } from '@simoncodes-ca/domain';
 import { HttpProject } from '../../testing/http-project';
 
 // Inject only the external provider through the public operation options. Each wrapper
@@ -104,10 +104,10 @@ describe('ResourcesController HTTP (real project)', () => {
         (file) => `translations/test/app/button/${file}`,
       );
       const before = paths.map((path) => project.read(path));
-      const found = findBracedPlaceholders('{{{a}}}')[0];
+      const found = checkStoredValue('{{{a}}}')[0];
       expect(found).toBeDefined();
       if (!found) throw new Error('Missing finding');
-      const detail = describeBracedPlaceholder(found);
+      const detail = describeStoredValueFinding(found);
       expect(await request('POST', { ...dto, baseValue: '{{{a}}}' })).toEqual({
         status: 400,
         body: {
@@ -489,10 +489,10 @@ describe('ResourcesController HTTP (real project)', () => {
         (file) => `translations/test/app/button/${file}`,
       );
       const before = paths.map((path) => project.read(path));
-      const found = findBracedPlaceholders('{{{a}}}')[0];
+      const found = checkStoredValue('{{{a}}}')[0];
       expect(found).toBeDefined();
       if (!found) throw new Error('Missing finding');
-      const detail = describeBracedPlaceholder(found);
+      const detail = describeStoredValueFinding(found);
       expect(await request('PATCH', { key: dto.key, ...changes, moveTo: 'shared' })).toEqual({
         status: 400,
         body: {

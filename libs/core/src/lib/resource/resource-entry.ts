@@ -1,4 +1,6 @@
 import {
+  checkStoredValue,
+  describeStoredValueFinding,
   isUntranslatedCopy,
   needsTranslation,
   normalizeTags,
@@ -9,6 +11,7 @@ import {
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
 import {
+  BracedPlaceholderError,
   CoreOperationError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
@@ -49,7 +52,6 @@ import type { ResourceTreeEntry } from './resource-tree-types';
 import { selectTranslationRow, translationBatch } from './translation-batch';
 import { assertTranslationStatus } from './translation-status-input';
 import { snapshotTranslation, writeBackTranslations } from './translation-write-back';
-import { assertNoBracedPlaceholders } from './value-syntax';
 
 interface LocatedEntry {
   readonly resolvedKey: string;
@@ -86,17 +88,22 @@ function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): Loca
   };
 }
 
+function assertConversionSafe(locale: string, value: string): void {
+  const findings = checkStoredValue(value).filter((finding) => finding.blocksConversion);
+  if (findings.length > 0) throw new BracedPlaceholderError(locale, findings.map(describeStoredValueFinding));
+}
+
 function validateAddChanges(collection: Collection, changes: EntryAddChanges): void {
   assertCollectionLocales(
     collection,
     (changes.translations ?? []).map(({ locale }) => locale),
   );
-  assertNoBracedPlaceholders(collection.baseLocale, changes.baseValue);
+  assertConversionSafe(collection.baseLocale, changes.baseValue);
   for (const translation of changes.translations ?? []) {
     if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
   for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
-    assertNoBracedPlaceholders(translation.locale, translation.value);
+    assertConversionSafe(translation.locale, translation.value);
   }
 }
 
@@ -459,7 +466,7 @@ async function editEntry(
   }
 
   if (changes.baseValue !== undefined && changes.baseValue !== current.entry.source) {
-    assertNoBracedPlaceholders(baseLocale, changes.baseValue);
+    assertConversionSafe(baseLocale, changes.baseValue);
   }
   const requestedTranslations = Object.entries(changes.translations ?? {});
   for (const [, translation] of requestedTranslations) {
@@ -467,7 +474,9 @@ async function editEntry(
   }
   const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
   for (const [locale, translation] of translations) {
-    if (translation.value !== current.entry[locale]) assertNoBracedPlaceholders(locale, translation.value);
+    if (translation.value !== current.entry[locale]) {
+      assertConversionSafe(locale, translation.value);
+    }
   }
   assertCollectionLocales(
     collection,
