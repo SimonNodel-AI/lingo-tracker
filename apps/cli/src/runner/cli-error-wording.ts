@@ -107,23 +107,12 @@ function bracedPlaceholderWording(error: LingoTrackerError): CliErrorWording {
   return { message: `Value for locale "${error.locale}" is not valid:`, details: error.details };
 }
 
-/** Explicit even for unchanged messages: a new core/provider code requires a CLI decision. */
-const CLI_BY_CODE = {
+/** Codes default by kind; this table holds only deviations. */
+export const CLI_BY_CODE = {
   AUTO_TRANSLATION_DISABLED: (error) => ({
     message: `${error.message}. Set translation.enabled = true in your configuration`,
   }),
-  BASE_LOCALE_IMMUTABLE: original,
-  BUNDLE_ALREADY_EXISTS: original,
-  BUNDLE_HIERARCHICAL_CONFLICT: original,
   BUNDLE_NOT_FOUND: (error) => ({ message: `${error.message}.` }),
-  CANNOT_TRANSLATE_BASE_LOCALE: original,
-  COLLECTION_ALREADY_EXISTS: original,
-  COLLECTION_BASE_LOCALE_MISMATCH: original,
-  COLLECTION_NOT_FOUND: original,
-  COLLECTION_READ_ONLY: original,
-  COLLECTION_RENAME_BUNDLE_CONFLICT: original,
-  COLLECTION_REQUIRED_BY_BUNDLE: original,
-  CONFIG_CHANGED: original,
   CONFIG_NOT_FOUND: () => ({
     message: `Configuration file ${CONFIG_FILENAME} not found.`,
     hint: 'Run "lingo-tracker init" to initialize a project.',
@@ -131,41 +120,23 @@ const CLI_BY_CODE = {
   CONFIG_PARSE_FAILED: (error) => ({
     message: `Failed to parse configuration file: ${'reason' in error ? String(error.reason) : error.message}`,
   }),
-  CORE_OPERATION_ERROR: original,
-  FOLDER_MOVE_INTO_DESCENDANT: original,
-  FOLDER_NOT_FOUND: original,
   GLOSSARY_EXTRACTOR_ERROR: (error) =>
     'mode' in error && error.mode === 'ai'
       ? {
           message: `The "ai" extractor is not yet implemented. Use ${flagName(GLOSSARY_FLAGS.extractor)} ngram (the default).`,
         }
       : original(error),
-  GLOSSARY_NO_COLLECTIONS: original,
   IMPORT_SOURCE_ERROR: (error) => ({
     message: 'stage' in error && error.stage === 'format' ? error.message : `Import failed: ${error.message}`,
     includeCause: false,
   }),
-  INVALID_BUNDLE_DEFINITION: original,
-  INVALID_BUNDLE_LOCALES: original,
   INVALID_COLLECTION: (error) => problemWording(error, tagProblems),
-  INVALID_COLLECTION_FOLDER: original,
-  INVALID_CONFIG: original,
-  INVALID_FOLDER_PATH: original,
   INVALID_IMPORT_LOCALE: (error) => ({ message: `Import failed: ${error.message}`, includeCause: false }),
-  INVALID_LOCALE: original,
-  INVALID_NAME: original,
   INVALID_PREFERRED_TERMINOLOGY: preferredValidation,
   INVALID_PROJECT_TERMS_EDIT: projectTermsWording,
-  INVALID_PROTECTED_TERMS_FILE: original,
-  INVALID_RESOURCE_KEY: original,
-  INVALID_TRANSLATION_STATUS: original,
-  LOCALE_ALREADY_EXISTS: original,
-  LOCALE_NOT_FOUND: original,
   MULTIPLE_BUNDLE_CONSTANT_NAME: () => ({
     message: `Cannot use ${flagName(BUNDLE_FLAGS.tokenConstantName)} with multiple bundles. Please target a single bundle.`,
   }),
-  NO_TRANSLATION_TARGET_LOCALES: original,
-  PARENT_DIRECTORY_MISSING: original,
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
     message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
@@ -177,18 +148,7 @@ const CLI_BY_CODE = {
           details: [`Use ${flagName(ADD_RESOURCE_FLAGS.override)} to replace it, or edit-resource to change it.`],
         }
       : original(error),
-  RESOURCE_NOT_FOUND: original,
-  TRANSLATION_LOCALE_NOT_CONFIGURED: original,
-  AUTH_ERROR: original,
-  INVALID_REQUEST: original,
-  INVALID_REQUEST_TIMEOUT: original,
-  INVALID_RESPONSE: original,
-  MISSING_API_KEY: original,
-  RATE_LIMIT: original,
-  SERVER_ERROR: original,
-  TIMEOUT: original,
-  UNKNOWN_PROVIDER: original,
-} satisfies Record<ErrorCode, Rule>;
+} satisfies Partial<Record<ErrorCode, Rule>>;
 
 const rules: Readonly<Partial<Record<string, Rule>>> = CLI_BY_CODE;
 
