@@ -3,29 +3,19 @@ import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
 import {
-  AutoTranslationDisabledError,
-  BundleNotFoundError,
   CollectionNotFoundError,
-  ConfigNotFoundError,
-  ConfigParseError,
-  ImportSourceError,
+  type ErrorKind,
   InvalidCollectionError,
-  InvalidConfigError,
-  InvalidProjectTermsEditError,
   LingoTrackerError,
-  MultipleBundleConstantNameError,
   PreferredTerminologyValidationError,
-  ProtectedTermsFileError,
-  ProtectedTermsFileNotSetError,
-  ReadOnlyCollectionError,
-  ResourceAlreadyExistsError,
   TranslationError,
 } from '@simoncodes-ca/core';
+import { errorAdapterFixtures } from '../../../../../libs/core/src/lib/errors/error-adapter-fixtures.spec-helpers';
 import { ERROR_CODES, PROVIDER_ERROR_CODES } from '../../../../../libs/core/src/lib/errors/error-codes';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
 import * as internalErrors from '../../../../../libs/core/src/lib/errors/lingo-tracker-error';
 import { JobNotFoundError } from '../jobs/job-not-found.error';
-import { LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
+import { HTTP_BY_CODE, LingoTrackerExceptionFilter, toHttpException } from './lingo-tracker-exception.filter';
 
 describe('toHttpException', () => {
   const cases = [
@@ -37,113 +27,6 @@ describe('toHttpException', () => {
         error: 'Bad Request',
         statusCode: 400,
         errors: ['braced'],
-      },
-    ],
-    [
-      new internalErrors.BundleHierarchicalConflictError('main', ['a.b']),
-      400,
-      {
-        message:
-          "Hierarchical conflicts in bundle 'main': a.b. Remove the entry or its children from bundle 'main'; for token collisions, rename one of the keys.",
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new internalErrors.InvalidNameError(),
-      400,
-      { message: 'name must be a non-empty string', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new CollectionNotFoundError('app'),
-      404,
-      { message: 'Collection "app" not found', error: 'Not Found', statusCode: 404 },
-    ],
-    [
-      new internalErrors.ResourceNotFoundError('a.b'),
-      404,
-      { message: 'Resource not found: a.b', error: 'Not Found', statusCode: 404 },
-    ],
-    [
-      new internalErrors.FolderNotFoundError('apps.missing'),
-      404,
-      { message: 'Folder not found: apps.missing', error: 'Not Found', statusCode: 404 },
-    ],
-    [new BundleNotFoundError('main'), 404, { message: 'Bundle "main" not found', error: 'Not Found', statusCode: 404 }],
-    [
-      new JobNotFoundError('missing-job', 'Translation'),
-      404,
-      { message: 'Translation job "missing-job" not found', error: 'Not Found', statusCode: 404 },
-    ],
-    [
-      new internalErrors.ConfigChangedError(),
-      409,
-      {
-        message: 'The configuration file changed after it was read; run the command again',
-        error: 'Conflict',
-        statusCode: 409,
-      },
-    ],
-    [
-      new internalErrors.InvalidBundleLocalesError('Unknown locale "xx": must be defined in the project locales'),
-      400,
-      {
-        message: 'Unknown locale "xx": must be defined in the project locales',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new ReadOnlyCollectionError('vendor'),
-      403,
-      {
-        message: 'Collection "vendor" is read-only. Its resources cannot be modified.',
-        error: 'Forbidden',
-        statusCode: 403,
-      },
-    ],
-    [
-      new internalErrors.BundleAlreadyExistsError('main'),
-      409,
-      { message: 'Bundle "main" already exists', error: 'Conflict', statusCode: 409 },
-    ],
-    [
-      new ResourceAlreadyExistsError('apps.ok'),
-      409,
-      { message: 'Resource already exists: apps.ok', error: 'Conflict', statusCode: 409 },
-    ],
-    [
-      new internalErrors.CollectionAlreadyExistsError('app'),
-      409,
-      { message: 'Collection "app" already exists', error: 'Conflict', statusCode: 409 },
-    ],
-    [
-      new internalErrors.CollectionRequiredByBundleError('app', ['main', 'other']),
-      409,
-      {
-        message:
-          'Collection "app" is the only collection of bundle(s) "main", "other". Remove it from those bundles or delete them first.',
-        error: 'Conflict',
-        statusCode: 409,
-      },
-    ],
-    [
-      new internalErrors.CollectionRenameBundleConflictError('app', 'legacy', ['main', 'other']),
-      409,
-      {
-        message:
-          'Cannot rename collection "app" to "legacy": bundle(s) "main", "other" already reference "legacy". Remove those references first.',
-        error: 'Conflict',
-        statusCode: 409,
-      },
-    ],
-    [
-      new AutoTranslationDisabledError('app'),
-      422,
-      {
-        message: 'Auto-translation is not enabled for collection "app"',
-        error: 'Unprocessable Entity',
-        statusCode: 422,
       },
     ],
     [
@@ -165,59 +48,6 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new internalErrors.InvalidResourceKeyError('a..b', 'Key validation: bad'),
-      400,
-      { message: 'Key validation: bad', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.InvalidTranslationStatusError('verifed'),
-      400,
-      {
-        message: 'Invalid translation status "verifed". Valid statuses: new, translated, stale, verified',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new internalErrors.InvalidLocaleError('x!', 'Invalid locale format: "x!"'),
-      400,
-      { message: 'Invalid locale format: "x!"', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.LocaleNotFoundError('ja', 'app'),
-      400,
-      { message: 'Locale "ja" not found in collection "app"', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.LocaleAlreadyExistsError('fr', 'app'),
-      400,
-      { message: 'Locale "fr" already exists in collection "app"', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.BaseLocaleImmutableError('en'),
-      400,
-      { message: 'Cannot add or remove the base locale "en"', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.NoTranslationTargetLocalesError('en'),
-      400,
-      {
-        message: 'No target locales configured. Add locales other than the base locale "en".',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new internalErrors.CannotTranslateBaseLocaleError('en'),
-      400,
-      { message: 'Cannot translate to the base locale "en".', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new internalErrors.TranslationLocaleNotConfiguredError('ja', ['en', 'fr']),
-      400,
-      { message: 'Locale "ja" is not configured. Available locales: en, fr', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
       new internalErrors.InvalidBundleDefinitionError(['a', 'b']),
       400,
       { message: 'Invalid bundle definition', error: 'Bad Request', statusCode: 400, errors: ['a', 'b'] },
@@ -233,154 +63,12 @@ describe('toHttpException', () => {
       },
     ],
     [
-      new internalErrors.InvalidCollectionFolderError({
-        kind: 'unreadable',
-        folderPath: 'link',
-        absolutePath: '/translations/link',
-        message: 'This folder is a symbolic link and is not part of the collection',
-      }),
-      400,
-      {
-        message: "Cannot access folder 'link': This folder is a symbolic link and is not part of the collection",
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new InvalidCollectionError('translationsFolder is required'),
-      400,
-      { message: 'translationsFolder is required', error: 'Bad Request', statusCode: 400 },
-    ],
-    [
-      new InvalidProjectTermsEditError(
-        'Only one preferred terminology edit can be applied at a time',
-        'preferred-conflict',
-      ),
-      400,
-      {
-        message: 'Only one preferred terminology edit can be applied at a time',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new ProtectedTermsFileNotSetError('app'),
-      400,
-      {
-        message: 'Collection "app" has no protected terms file. Set a file path first.',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new internalErrors.ParentDirectoryMissingError('protected terms file', '/p/terms.json', '/p'),
-      400,
-      {
-        message: 'Cannot write protected terms file — directory does not exist: /p',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new ProtectedTermsFileError('/p/terms.json', 'Protected terms file is not valid JSON: /p/terms.json'),
-      500,
-      {
-        message: 'Protected terms file is not valid JSON: /p/terms.json',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    // Any other typed error is a 500 that keeps its message.
-    [
-      new InvalidConfigError('"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)'),
-      500,
-      {
-        message: '"preferredTerminologyFile" in .lingo-tracker.json must be a string path (got number)',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new ConfigNotFoundError('/p/.lingo-tracker.json'),
-      500,
-      {
-        message: 'LingoTracker configuration file (.lingo-tracker.json) not found: /p/.lingo-tracker.json',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new ConfigParseError('/p/.lingo-tracker.json', 'bad JSON'),
-      500,
-      {
-        message: 'Failed to parse JSON file /p/.lingo-tracker.json: bad JSON',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new ImportSourceError('Source file not found: /p/source.json'),
-      500,
-      { message: 'Source file not found: /p/source.json', error: 'Internal Server Error', statusCode: 500 },
-    ],
-    [
-      new MultipleBundleConstantNameError(),
-      500,
-      {
-        message: 'A token constant name override needs exactly one bundle.',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new internalErrors.InvalidImportLocaleError('en', 'translation-service'),
-      500,
-      {
-        message:
-          'Cannot import into base locale "en" with strategy "translation-service". Only "migration" strategy supports base locale imports.',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new internalErrors.CollectionBaseLocaleMismatchError([
-        { name: 'a', baseLocale: 'en' },
-        { name: 'b', baseLocale: 'fr' },
-      ]),
-      400,
-      {
-        message: 'Cannot combine collections with different base locales (a: en, b: fr). Run them separately.',
-        error: 'Bad Request',
-        statusCode: 400,
-      },
-    ],
-    [
-      new internalErrors.GlossaryNoCollectionsError(),
-      500,
-      { message: 'Cannot build a glossary without collections.', error: 'Internal Server Error', statusCode: 500 },
-    ],
-    [
-      new internalErrors.GlossaryExtractorError('ai'),
-      500,
-      {
-        message: 'The "ai" extractor is not yet implemented; use the "ngram" extractor (the default).',
-        error: 'Internal Server Error',
-        statusCode: 500,
-      },
-    ],
-    [
-      new internalErrors.CoreOperationError('Failed to read file /private/config.json'),
-      500,
-      { error: 'Internal Server Error', statusCode: 500 },
-    ],
-    [
       new (class UnmappedError extends LingoTrackerError {
         readonly kind = 'internal' as const;
       })('Unmapped', 'UNMAPPED'),
       500,
       { message: 'Unmapped', error: 'Internal Server Error', statusCode: 500 },
     ],
-    // Not typed: nothing about it is safe to disclose, so the body carries no message at all.
     [new Error('Disk write failure'), 500, { error: 'Internal Server Error', statusCode: 500 }],
     ['not an error', 500, { error: 'Internal Server Error', statusCode: 500 }],
   ] as const;
@@ -414,47 +102,23 @@ describe('toHttpException', () => {
     });
   });
 
-  it('pins every public and internal core error subclass', () => {
-    const errorExports = [...Object.entries(core), ...Object.entries(internalErrors)];
+  it('covers every public and internal core error subclass through the catalogue', () => {
     const exported = [
       ...new Set(
-        errorExports
+        [...Object.entries(core), ...Object.entries(internalErrors)]
           .filter(([, value]) => typeof value === 'function' && value.prototype instanceof LingoTrackerError)
           .map(([name]) => name),
       ),
     ].sort();
-    const pinned = cases
-      .map(([error]) => error)
-      .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
-      .map((error) => error.constructor.name)
-      .filter((name) => ['UnmappedError', 'JobNotFoundError'].includes(name) === false)
-      // Its code-dependent responses are pinned in the TranslationError table below.
-      .concat('TranslationError')
-      .sort();
-    expect(pinned).toEqual(exported);
-    for (const name of exported) {
-      if (name === 'TranslationError') {
-        expect(new TranslationError('Provider said no', 'SERVER_ERROR', false).kind).toBe('upstream');
-        continue;
-      }
-      const instance = cases.map(([error]) => error).find((error) => error?.constructor.name === name);
-      expect(instance).toBeInstanceOf(LingoTrackerError);
-      expect((instance as LingoTrackerError).kind).toMatch(
-        /^(not-found|conflict|invalid|forbidden|unavailable|upstream|internal)$/,
-      );
-    }
+    expect([...new Set(errorAdapterFixtures().map((error) => error.constructor.name))].sort()).toEqual(exported);
   });
 
   const translationCases = [
     ['INVALID_REQUEST', 400, 'Bad Request'],
-    ['INVALID_REQUEST_TIMEOUT', 502, 'Bad Gateway'],
-    ['INVALID_RESPONSE', 502, 'Bad Gateway'],
-    ['TIMEOUT', 502, 'Bad Gateway'],
     ['MISSING_API_KEY', 500, 'Internal Server Error'],
     ['UNKNOWN_PROVIDER', 500, 'Internal Server Error'],
     ['AUTH_ERROR', 500, 'Internal Server Error'],
     ['RATE_LIMIT', 429, 'Too Many Requests'],
-    ['SERVER_ERROR', 502, 'Bad Gateway'],
     ['SOMETHING_NEW', 502, 'Bad Gateway'],
   ] as const;
 
@@ -469,22 +133,81 @@ describe('toHttpException', () => {
     });
   });
 
-  it('pins every core, provider, and API job error code', () => {
-    const expectedCodes = [...Object.keys(ERROR_CODES), ...PROVIDER_ERROR_CODES, 'JOB_NOT_FOUND'].sort();
-    const caseCodes = cases
-      .map(([error]) => error)
-      .filter((error): error is LingoTrackerError => error instanceof LingoTrackerError)
-      .map((error) => error.code);
-    const providerCodes = translationCases.map(([code]) => code);
-    const pinnedCodes = [
-      ...new Set(
-        [...caseCodes, ...providerCodes]
-          // These synthetic codes pin fallback behavior, rather than errors raised at HEAD.
-          .filter((code) => ['UNMAPPED', 'SOMETHING_NEW'].includes(code) === false),
-      ),
-    ].sort();
+  const defaults = {
+    'not-found': [404, 'Not Found'],
+    conflict: [409, 'Conflict'],
+    invalid: [400, 'Bad Request'],
+    forbidden: [403, 'Forbidden'],
+    unavailable: [422, 'Unprocessable Entity'],
+    upstream: [502, 'Bad Gateway'],
+    internal: [500, 'Internal Server Error'],
+  } as const satisfies Record<ErrorKind, readonly [number, string]>;
 
-    expect(pinnedCodes).toEqual(expectedCodes);
+  it.each(Object.entries(defaults))('defaults a new %s code by kind', (kind, [statusCode, label]) => {
+    class NewError extends LingoTrackerError {
+      readonly kind = kind as ErrorKind;
+    }
+    const http = toHttpException(new NewError('Original message', 'NEW_CODE'));
+    expect(http.getStatus()).toBe(statusCode);
+    expect(http.getResponse()).toEqual({
+      statusCode,
+      error: label,
+      message: kind === 'upstream' ? 'Translation provider error: Original message' : 'Original message',
+    });
+  });
+
+  it('maps every catalogue code and the API job code using defaults and only expected overrides', () => {
+    const errors = [...errorAdapterFixtures(), new JobNotFoundError('missing-job', 'Translation')];
+    expect(errors.map((error) => error.code).sort()).toEqual(
+      [...Object.keys(ERROR_CODES), ...PROVIDER_ERROR_CODES, 'JOB_NOT_FOUND'].sort(),
+    );
+    const statuses: Readonly<Partial<Record<string, readonly [number, string]>>> = {
+      INVALID_REQUEST: [400, 'Bad Request'],
+      MISSING_API_KEY: [500, 'Internal Server Error'],
+      UNKNOWN_PROVIDER: [500, 'Internal Server Error'],
+      AUTH_ERROR: [500, 'Internal Server Error'],
+      RATE_LIMIT: [429, 'Too Many Requests'],
+    };
+    for (const error of errors) {
+      const [statusCode, label] = statuses[error.code] ?? defaults[error.kind];
+      let message = error.kind === 'upstream' ? `Translation provider error: ${error.message}` : error.message;
+      if (error.code === 'INVALID_COLLECTION') message = `collection.${error.message}`;
+      if (['INVALID_FOLDER_PATH', 'FOLDER_MOVE_INTO_DESCENDANT'].includes(error.code))
+        message = `Validation error: ${error.message}`;
+      if (error.code === 'INVALID_BUNDLE_DEFINITION') message = 'Invalid bundle definition';
+      if (error.code === 'INVALID_PREFERRED_TERMINOLOGY') message = 'Invalid preferred terminology rules';
+      const body = error.exposeMessage
+        ? {
+            message,
+            error: label,
+            statusCode,
+            ...(['BRACED_PLACEHOLDER', 'INVALID_BUNDLE_DEFINITION', 'INVALID_PREFERRED_TERMINOLOGY'].includes(
+              error.code,
+            )
+              ? { errors: error.details }
+              : {}),
+          }
+        : { statusCode: 500, error: 'Internal Server Error' };
+      const http = toHttpException(error);
+      expect(http.getStatus()).toBe(statusCode);
+      expect(JSON.stringify(http.getResponse())).toBe(JSON.stringify(body));
+    }
+  });
+
+  it.each(Object.keys(HTTP_BY_CODE))('has no redundant HTTP override for %s', (code) => {
+    const error = errorAdapterFixtures().find((error) => error.code === code);
+    expect(error).toBeDefined();
+    if (!error) throw new Error(`Missing override fixture for ${code}`);
+    const defaultError = Object.create(
+      Object.getPrototypeOf(error),
+      Object.getOwnPropertyDescriptors(error),
+    ) as LingoTrackerError;
+    Object.defineProperty(defaultError, 'code', { value: 'DEFAULT_CODE' });
+    const actual = toHttpException(error);
+    const fallback = toHttpException(defaultError);
+    expect(JSON.stringify({ status: actual.getStatus(), body: actual.getResponse() })).not.toBe(
+      JSON.stringify({ status: fallback.getStatus(), body: fallback.getResponse() }),
+    );
   });
 
   it('returns an HttpException unchanged', () => {
@@ -540,6 +263,19 @@ describe('toHttpException', () => {
       error: 'Bad Request',
       statusCode: 400,
       errors: ['first problem'],
+    });
+  });
+
+  it('uses the plain kind default when an override code arrives with a different kind', () => {
+    class LocalError extends LingoTrackerError {
+      readonly kind = 'not-found' as const;
+    }
+    const http = toHttpException(new LocalError('Local request not found', 'INVALID_REQUEST'));
+    expect(http.getStatus()).toBe(404);
+    expect(http.getResponse()).toEqual({
+      message: 'Local request not found',
+      error: 'Not Found',
+      statusCode: 404,
     });
   });
 
