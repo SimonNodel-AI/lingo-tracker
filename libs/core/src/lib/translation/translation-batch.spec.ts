@@ -119,7 +119,7 @@ describe('Translation Run rows × locales', () => {
     const throwFirst = new InMemoryTranslationProvider(() => {
       throw cause;
     });
-    const delay = vi.fn(async () => {});
+    const delay = vi.fn(async () => undefined);
     await expect(
       executeTranslationRun({
         collection,
