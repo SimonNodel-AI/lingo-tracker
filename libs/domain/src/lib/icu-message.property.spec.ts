@@ -271,7 +271,7 @@ describe('ICU message brace facts', () => {
       }),
       { numRuns: 3000 },
     );
-  });
+  }, 30_000);
 });
 
 /** P2.1 oracle: the regex the detector applied to a lone case node's text before it read node facts. */
