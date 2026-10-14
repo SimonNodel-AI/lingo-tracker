@@ -1,6 +1,6 @@
 // The normalize module: one operation that repairs entries, metadata and empty folders across a collection.
 
-export { type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
+export { type NormalizeFinding, type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
 export {
   type CollectionNormalizeResult,
   emptyNormalizeCollectionsResult,

@@ -128,6 +128,7 @@ export type {
   CollectionNormalizeResult,
   NormalizeCollectionsOptions,
   NormalizeCollectionsResult,
+  NormalizeFinding,
   NormalizeOptions,
   NormalizeResult,
 } from './lib/normalize';

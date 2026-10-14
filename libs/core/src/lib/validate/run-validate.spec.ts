@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import type { Collection } from '../config/open-collection';
 import { runValidate } from './run-validate';
 
@@ -356,6 +356,21 @@ describe('runValidate', () => {
       expect.objectContaining({ key: 'items', locale: 'en', collection: 'main' }),
     ]);
     expect(result.validation.icu?.valuesChecked).toBe(1);
+  });
+
+  it('reports braced values when ICU compilation is skipped', () => {
+    const main = collection('main', { locales: ['en', 'fr'], targetLocales: ['fr'] });
+    writeFolderFiles(main.translationsFolder, '', { entries: { hello: { source: 'Hi', fr: '{{{a}}}' } } });
+    const result = complete([main], { skipIcu: true });
+    expect(result.validation.icu?.failures).toEqual([
+      expect.objectContaining({
+        key: 'hello',
+        locale: 'fr',
+        message: expect.stringContaining('inside literal braces'),
+      }),
+    ]);
+    expect(result.outcome).toBe('failed');
+    expect(result.summary).toContain('inside literal braces');
   });
 
   it('omits ICU checking entirely when skipped without portability', () => {

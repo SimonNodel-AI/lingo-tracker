@@ -1,4 +1,9 @@
-import { importStrategyPolicy, resolveAllReferences } from '@simoncodes-ca/domain';
+import {
+  describeBracedPlaceholder,
+  findBracedPlaceholders,
+  importStrategyPolicy,
+  resolveAllReferences,
+} from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { groupByFolder } from '../resource/folder-batch';
 import { assertTranslationStatus } from '../resource/translation-status-input';
@@ -46,6 +51,20 @@ export function importResources(
     onProgress?.('Resolving Transloco-style references...');
     prepared = resolveAllReferences(prepared, true, session.warnings);
   }
+
+  prepared = prepared.filter((resource) => {
+    const descriptions = [
+      ...findBracedPlaceholders(resource.value).map((found) => `Value: ${describeBracedPlaceholder(found)}`),
+      ...(resource.baseValue === undefined
+        ? []
+        : findBracedPlaceholders(resource.baseValue).map((found) => `Base value: ${describeBracedPlaceholder(found)}`)),
+    ];
+    if (descriptions.length === 0) return true;
+    const message = descriptions.join('\n');
+    session.errors.push(`Braced placeholder: "${resource.key}": ${message}`);
+    session.changes.push({ key: resource.key, type: 'failed', reason: message });
+    return false;
+  });
 
   // Before any ICU parsing or auto-fixing, so later steps see one placeholder syntax.
   prepared = normalizeTranslocoSyntaxInResources(prepared);

@@ -122,11 +122,15 @@ export function validateResources(
 
     // ICU compilation is a separate question from translation status: it asks
     // whether the stored value renders at all, not whether anyone approved it.
-    if (options.icu) {
-      icuResults.push(
-        validateIcuValues(resources, targetLocales, { ...options.icu, baseLocale: collection.baseLocale }),
-      );
-    }
+    // Braced placeholders are checked even when locale-dependent compilation is off.
+    icuResults.push(
+      validateIcuValues(resources, targetLocales, {
+        compileValues: false,
+        requirePortablePlurals: false,
+        ...options.icu,
+        baseLocale: collection.baseLocale,
+      }),
+    );
 
     const terms = termsByCollection.get(collection);
     if (!terms) throw new Error(`Project Terms were not supplied for collection '${collection.name}'`);
@@ -146,7 +150,8 @@ export function validateResources(
     }
   }
 
-  const icu = options.icu ? mergeIcuResults(icuResults) : undefined;
+  const icu =
+    options.icu || icuResults.some((result) => result.failures.length > 0) ? mergeIcuResults(icuResults) : undefined;
   const placeholders = options.placeholders ? mergePlaceholderResults(placeholderResults) : undefined;
 
   const protectedTerms =

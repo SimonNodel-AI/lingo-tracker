@@ -2,6 +2,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   applyBaseChange,
+  findBracedPlaceholders,
   isUntranslatedCopy,
   normalizeTags,
   recordTranslation,
@@ -164,6 +165,10 @@ export interface OpenResourceFolderOptions {
   readonly translationsFolder?: string;
   /** Base locale of the collection. Needed to find the base checksum in metadata. */
   readonly baseLocale: string;
+}
+
+function convertStored(value: string): string {
+  return findBracedPlaceholders(value).length > 0 ? value : translocoToICU(value);
 }
 
 const NON_LOCALE_PROPS: ReadonlySet<string> = new Set(['source', 'comment', 'tags']);
@@ -366,7 +371,7 @@ class FileResourceFolder implements ResourceFolder {
 
     // Conversion changes syntax, not meaning. Keep a copied status and update only the
     // checksums that referred to a converted value.
-    const normalizedBase = translocoToICU(entry.source);
+    const normalizedBase = convertStored(entry.source);
     if (normalizedBase !== entry.source) {
       stored.source = normalizedBase;
       const baseMeta = storedMeta[this.baseLocale];
@@ -380,7 +385,7 @@ class FileResourceFolder implements ResourceFolder {
     for (const locale of translationLocales(stored)) {
       const value = stored[locale];
       if (typeof value !== 'string') continue;
-      const normalized = translocoToICU(value);
+      const normalized = convertStored(value);
       if (normalized === value) continue;
       stored[locale] = normalized;
       const localeMeta = locale === this.baseLocale ? undefined : storedMeta[locale];
@@ -409,7 +414,7 @@ class FileResourceFolder implements ResourceFolder {
     for (const prop of ['source', ...translationLocales(entry)]) {
       const value = entry[prop];
       if (typeof value !== 'string') continue;
-      const converted = translocoToICU(value);
+      const converted = convertStored(value);
       if (converted !== value) {
         entry[prop] = converted;
         valuesConverted++;
@@ -525,7 +530,7 @@ class FileResourceFolder implements ResourceFolder {
     if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') return false;
     if (locale === this.baseLocale || typeof entry[locale] === 'string') return false;
 
-    this.setTranslationICU(key, locale, normalizedBase ?? translocoToICU(entry.source), 'new');
+    this.setTranslationICU(key, locale, normalizedBase ?? convertStored(entry.source), 'new');
     return true;
   }
 

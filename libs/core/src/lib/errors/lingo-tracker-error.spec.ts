@@ -5,6 +5,7 @@ import * as errorClasses from './internal';
 import {
   AutoTranslationDisabledError,
   BaseLocaleImmutableError,
+  BracedPlaceholderError,
   BundleAlreadyExistsError,
   BundleHierarchicalConflictError,
   BundleNotFoundError,
@@ -60,6 +61,12 @@ describe('LingoTrackerError subclasses', () => {
   });
 
   const cases: ReadonlyArray<{ error: LingoTrackerError; name: string; code: string; message: string }> = [
+    {
+      error: new BracedPlaceholderError('en', ['braced']),
+      name: 'BracedPlaceholderError',
+      code: 'BRACED_PLACEHOLDER',
+      message: 'Value for locale "en" is not valid: braced',
+    },
     {
       error: new BundleHierarchicalConflictError('main', ['a.b']),
       name: 'BundleHierarchicalConflictError',
@@ -392,6 +399,7 @@ describe('LingoTrackerError subclasses', () => {
       LocaleNotFoundError: 'invalid',
       LocaleAlreadyExistsError: 'invalid',
       BaseLocaleImmutableError: 'invalid',
+      BracedPlaceholderError: 'invalid',
       InvalidResourceKeyError: 'invalid',
       ResourceNotFoundError: 'not-found',
       ResourceAlreadyExistsError: 'conflict',

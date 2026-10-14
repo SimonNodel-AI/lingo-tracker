@@ -5,6 +5,7 @@ export type { DomainErrorCode, ErrorCode, KnownProviderErrorCode, ProviderErrorC
 // Core errors declare domain kinds and details; adapters own presentation.
 export {
   AutoTranslationDisabledError,
+  BracedPlaceholderError,
   BundleNotFoundError,
   CollectionNotFoundError,
   type CollectionTagEditProblem,

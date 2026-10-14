@@ -1,4 +1,10 @@
-import { findIcuCompileError, findUnportablePluralCases, isIcuLocaleSupported } from '@simoncodes-ca/domain';
+import {
+  describeBracedPlaceholder,
+  findBracedPlaceholders,
+  findIcuCompileError,
+  findUnportablePluralCases,
+  isIcuLocaleSupported,
+} from '@simoncodes-ca/domain';
 import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { IcuValidationDetail, IcuValidationOptions, IcuValidationResult } from './types';
 
@@ -40,11 +46,10 @@ export function validateIcuValues(
 
   // The base locale carries the source value that is copied into every
   // translation slot, so it is checked first and never checked twice.
-  const localesToCompile = !options.compileValues
-    ? []
-    : baseLocale
-      ? [baseLocale, ...targetLocales.filter((locale) => locale !== baseLocale)]
-      : [...targetLocales];
+  const localesToCheck = baseLocale
+    ? [baseLocale, ...targetLocales.filter((locale) => locale !== baseLocale)]
+    : [...targetLocales];
+  const localesToCompile = options.compileValues ? localesToCheck : [];
 
   const checkableLocales: string[] = [];
   const unsupportedLocales: string[] = [];
@@ -57,12 +62,24 @@ export function validateIcuValues(
   let valuesChecked = 0;
 
   for (const resource of resources) {
-    for (const locale of checkableLocales) {
+    for (const locale of localesToCheck) {
       const value = valueForLocale(resource, locale, baseLocale);
       if (value === undefined) continue;
 
-      valuesChecked++;
+      const compileValue = checkableLocales.includes(locale);
+      if (compileValue) valuesChecked++;
 
+      const first = findBracedPlaceholders(value)[0];
+      if (first) {
+        failures.push({
+          key: resource.fullKey,
+          locale,
+          collection: resource.collection,
+          message: describeBracedPlaceholder(first),
+        });
+        continue;
+      }
+      if (!compileValue) continue;
       const message = findIcuCompileError(value, locale);
       if (message !== undefined) {
         failures.push({ key: resource.fullKey, locale, collection: resource.collection, message });

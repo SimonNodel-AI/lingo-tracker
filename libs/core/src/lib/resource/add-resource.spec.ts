@@ -8,6 +8,7 @@ import type { TranslationConfig } from '../../config/translation-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../config/protected-terms-file';
 import {
+  BracedPlaceholderError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LocaleNotFoundError,
@@ -64,6 +65,60 @@ describe('addResource (real fs)', () => {
   });
 
   describe('locale seeding', () => {
+    it.each([
+      { baseValue: '{{{a}}}' },
+      { baseValue: 'OK', translations: [{ locale: 'fr', value: '{{{a}}}' }] },
+    ])('rejects braced supplied values before writing: %j', async (changes) => {
+      await expect(addResource(collection(), { key: 'common.ok', ...changes }, { onMutation })).rejects.toThrow(
+        BracedPlaceholderError,
+      );
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+      expect(collected).toEqual([]);
+      await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+        join(root, 'translations', 'common', file),
+      );
+      const before = paths.map((path) => readFileSync(path));
+      await expect(
+        addResource(collection(), { key: 'common.ok', ...changes }, { onExisting: 'replace', onMutation }),
+      ).rejects.toThrow(BracedPlaceholderError);
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+      expect(collected).toEqual([]);
+    });
+
+    it.each([
+      ['{n, plural, other {{{a}}}}', '{n, plural, other {{a}}}'],
+      ['{ {{a}} }', '{ {a} }'],
+      ["'{'{{a}}'}'", "'{'{a}'}'"],
+    ])('accepts stable brace shapes: %s', async (baseValue, storedValue) => {
+      await addResource(collection(), { key: 'common.ok', baseValue });
+      expect(read('resource_entries.json', 'common')).toEqual({
+        ok: { source: storedValue, fr: storedValue, de: storedValue },
+      });
+      expect(read('tracker_meta.json', 'common')).toEqual({
+        ok: {
+          en: { checksum: md5(storedValue) },
+          fr: { checksum: md5(storedValue), baseChecksum: md5(storedValue), status: 'new' },
+          de: { checksum: md5(storedValue), baseChecksum: md5(storedValue), status: 'new' },
+        },
+      });
+    });
+    it('ignores a braced supplied translation for the base locale', async () => {
+      await addResource(collection(), {
+        key: 'common.ok',
+        baseValue: 'Hi',
+        translations: [{ locale: 'en', value: '{{{ignored}}}' }],
+      });
+      expect(read('resource_entries.json', 'common')).toEqual({ ok: { source: 'Hi', fr: 'Hi', de: 'Hi' } });
+      expect(read('tracker_meta.json', 'common')).toEqual({
+        ok: {
+          en: { checksum: md5('Hi') },
+          fr: { checksum: md5('Hi'), baseChecksum: md5('Hi'), status: 'new' },
+          de: { checksum: md5('Hi'), baseChecksum: md5('Hi'), status: 'new' },
+        },
+      });
+    });
+
     it('copies the base value as `new` into every target locale when auto-translation is off', async () => {
       const provider = new InMemoryTranslationProvider();
 

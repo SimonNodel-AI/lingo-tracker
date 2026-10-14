@@ -368,6 +368,17 @@ export class BaseLocaleImmutableError extends defineError('BASE_LOCALE_IMMUTABLE
 
 // --- Resources and folders ---------------------------------------------------
 
+/** A supplied value wraps a placeholder in literal braces. Details contain every diagnostic. */
+export class BracedPlaceholderError extends defineError(
+  'BRACED_PLACEHOLDER',
+  'invalid',
+  (locale: string, descriptions: readonly string[]) => ({
+    message: `Value for locale "${locale}" is not valid: ${descriptions[0]}`,
+    locale,
+    details: descriptions,
+  }),
+) {}
+
 /** The resource key (or its target folder) is malformed. The message is the domain validator's text. */
 export class InvalidResourceKeyError extends defineError(
   'INVALID_RESOURCE_KEY',
