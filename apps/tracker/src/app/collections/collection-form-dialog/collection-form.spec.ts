@@ -276,18 +276,18 @@ describe('CollectionForm — create mode', () => {
 
   it('clears a refusal on the next edit of a field, a locale or read-only, but not of tags', () => {
     const form = build();
-    form.submitError.set('nope');
+    form.attempt.fail(['nope']);
     form.addTag('ui');
     expect(form.submitError()).toBe('nope');
 
     form.form.controls.translationsFolder.setValue('./other');
     expect(form.submitError()).toBeNull();
 
-    form.submitError.set('nope');
+    form.attempt.fail(['nope']);
     addLocale(form, 'en');
     expect(form.submitError()).toBeNull();
 
-    form.submitError.set('nope');
+    form.attempt.fail(['nope']);
     form.setReadOnly(true);
     expect(form.submitError()).toBeNull();
   });
@@ -486,7 +486,7 @@ describe('CollectionForm — submit', () => {
   ])('prepares removed locales with confirmation=%s and an explicit error reset', async (confirmed) => {
     const { form, env, update, submit } = setup(editData);
     form.removeLocale(1);
-    form.submitError.set('previous refusal');
+    form.attempt.fail(['previous refusal']);
     const result = vi.spyOn(form, 'result');
     let answer: (value: boolean) => void = () => undefined;
     const confirm = vi.fn(
@@ -514,7 +514,7 @@ describe('CollectionForm — submit', () => {
 
   it('builds a result without clearing refusal rendering data', () => {
     const { form } = setup();
-    form.submitError.set('previous refusal');
+    form.attempt.fail(['previous refusal']);
     form.result();
     expect(form.submitError()).toBe('previous refusal');
   });
