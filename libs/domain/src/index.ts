@@ -34,6 +34,8 @@ export { effectiveTags } from './lib/effective-tags';
 export { type EntryChange, entryChange } from './lib/entry-change';
 // Utilities
 export { escapeRegExp } from './lib/escape-regexp';
+// Shared export values used by core and CLI metadata
+export { DEFAULT_EXPORT_BASE_PROPERTY_NAME } from './lib/export-defaults';
 // Folder paths
 export {
   collectAncestorPaths,
