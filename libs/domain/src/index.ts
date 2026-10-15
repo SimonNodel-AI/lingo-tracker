@@ -166,3 +166,6 @@ export {
   validateImportKey,
   validateLocale,
 } from './lib/validation-utils';
+
+// Stored translation acceptance, with caller-specific policies
+export { admitValue } from './lib/value-admission';

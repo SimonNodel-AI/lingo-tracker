@@ -2,7 +2,7 @@ import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   applyBaseChange,
-  checkStoredValue,
+  admitValue,
   type ImportStrategy,
   importStrategyPolicy,
   type LocaleMetadata,
@@ -176,7 +176,7 @@ export interface OpenResourceFolderOptions {
 }
 
 function convertStored(value: string): string {
-  return checkStoredValue(value).some((finding) => finding.blocksConversion) ? value : translocoToICU(value);
+  return admitValue(undefined, value, { name: 'stored-entry' }).admitted ? translocoToICU(value) : value;
 }
 
 const NON_LOCALE_PROPS: ReadonlySet<string> = new Set(['source', 'comment', 'tags']);

@@ -1,6 +1,5 @@
 import {
-  checkTranslatedValue,
-  describeValueViolation,
+  admitValue,
   honouredImportSourceStatus,
   importStrategyPolicy,
   resolveImportStatus,
@@ -248,17 +247,16 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
   const ctx: GroupContext = { locale: options.locale, baseLocale, options, folder, dataModified: false };
 
   function failedValueCheck(source: string | undefined, resource: ImportedResource): boolean {
-    // Without a source there is no value contract to check.
-    if (!source) return false;
-
-    // Value Check is the backstop after ICU auto-fix. Migration keeps unresolved
-    // references as literal placeholders, so only protected terms apply there.
-    const violations = checkTranslatedValue(source, resource.value, {
+    // Value Admission remains the backstop after ICU auto-fix. Reference imports
+    // retain their exception for unresolved placeholders.
+    const admission = admitValue(source, resource.value, {
+      name: 'import',
+      referencesResolved: resolvesReferences,
       protectedTerms: terms.protectedTerms,
-    }).filter((violation) => violation.kind !== 'argument-mismatch' || !resolvesReferences);
-    if (violations.length === 0) return false;
+    });
+    if (admission.admitted === true) return false;
 
-    const reason = violations.map(describeValueViolation).join('; ');
+    const reason = admission.violations.map((violation) => violation.description).join('; ');
     recordImportIssues(session, { key: resource.key, type: 'failed', reason, error: `"${resource.key}" ${reason}` });
     return true;
   }

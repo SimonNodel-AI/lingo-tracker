@@ -93,6 +93,7 @@ describe('domain public surface', () => {
       'NEEDS_WORK_STATUSES',
       'STATUS_PRECEDENCE',
       'TRANSLATION_STATUSES',
+      'admitValue',
       'applyBaseChange',
       'applyPreferredTerm',
       'assertStringArray',

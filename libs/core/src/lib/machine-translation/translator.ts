@@ -21,7 +21,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { checkStoredValue, checkTranslatedValue, classifyICUContent, translocoToICU } from '@simoncodes-ca/domain';
+import { admitValue, classifyICUContent } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -206,31 +206,26 @@ async function translateForLocale(
       continue;
     }
 
-    const restored = restorePlaceholders(results[next++].translatedText, item.placeholders);
-    if (!restored.success || checkStoredValue(restored.value).some((finding) => finding.blocksConversion)) {
+    const candidate = results[next++].translatedText;
+    const restored = restorePlaceholders(candidate, item.placeholders);
+    if (!restored.success) {
       skipped.push({ key, locale: targetLocale, reason: 'placeholder-mismatch' });
       continue;
     }
-
-    const value = translocoToICU(restored.value);
-    const violations = checkTranslatedValue(source, value, { protectedTerms });
-    if (violations.length > 0) {
-      // Preserve the protected-term reason when the value also has an argument mismatch.
-      const protectedTermViolation = violations.find((violation) => violation.kind === 'protected-term-dropped');
+    const admission = admitValue(source, restored.value, {
+      name: 'machine-translation',
+      protectedTerms,
+    });
+    if (admission.admitted === false) {
       skipped.push(
-        protectedTermViolation
-          ? {
-              key,
-              locale: targetLocale,
-              reason: 'protected-term',
-              terms: protectedTermViolation.terms,
-            }
+        admission.reason.kind === 'protected-term-dropped'
+          ? { key, locale: targetLocale, reason: 'protected-term', terms: admission.reason.terms }
           : { key, locale: targetLocale, reason: 'placeholder-mismatch' },
       );
       continue;
     }
 
-    values.push({ key, locale: targetLocale, value });
+    values.push({ key, locale: targetLocale, value: admission.value });
   }
   return { values, skipped };
 }
