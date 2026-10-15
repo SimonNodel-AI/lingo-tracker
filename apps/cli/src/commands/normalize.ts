@@ -7,7 +7,7 @@ import {
 import { cliErrorWording } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, reportRun } from '../utils';
 import { NORMALIZE_FLAGS, NORMALIZE_SELECTION_ERROR } from './normalize-flags';
 
 export interface NormalizeOptions {
@@ -75,33 +75,47 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
       });
     } catch (error) {
       if (!(error instanceof ReadOnlyCollectionError)) throw error;
-      return reportNormalize(
-        emptyNormalizeCollectionsResult(),
-        0,
-        answers,
-        [],
-        [cliErrorWording(error)?.message ?? error.message],
-        'failed',
-      );
+      return reportNormalize({
+        result: emptyNormalizeCollectionsResult(),
+        collectionCount: 0,
+        options: answers,
+        warnings: [],
+        errors: [cliErrorWording(error)?.message ?? error.message],
+        outcome: 'failed',
+      });
     }
     const errors = result.errors.map(
       ({ name, error }) =>
         `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`,
     );
-    return reportNormalize(result, collections.length, answers, result.warnings, errors, result.outcome);
+    return reportNormalize({
+      result,
+      collectionCount: collections.length,
+      options: answers,
+      warnings: result.warnings,
+      errors,
+      outcome: result.outcome,
+    });
   },
 });
 
-function reportNormalize(
-  result: NormalizeCollectionsResult,
-  collectionCount: number,
-  options: NormalizeOptions,
-  warnings: readonly string[],
-  errors: readonly string[],
-  outcome: NormalizeCollectionsResult['outcome'],
-) {
+function reportNormalize({
+  result,
+  collectionCount,
+  options,
+  warnings,
+  errors,
+  outcome,
+}: {
+  result: NormalizeCollectionsResult;
+  collectionCount: number;
+  options: NormalizeOptions;
+  warnings: readonly string[];
+  errors: readonly string[];
+  outcome: NormalizeCollectionsResult['outcome'];
+}) {
   const summary = result.totals;
-  return printRunReport({
+  return reportRun({
     presentation: options.json
       ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
       : { kind: 'text' },

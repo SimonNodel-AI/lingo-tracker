@@ -1,7 +1,7 @@
 import { deleteResource } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, confirmOrCancel, printRunReport } from '../utils';
+import { ConsoleFormatter, confirmOrCancel, reportRun } from '../utils';
 import { DELETE_RESOURCE_FLAGS } from './delete-resource-flags';
 
 export interface DeleteResourceOptions {
@@ -39,7 +39,7 @@ export const deleteResourceCommand = defineCommand<DeleteResourceOptions>()({
       ConsoleFormatter.success(`Deleted ${result.entriesDeleted} resource(s)`);
     }
 
-    return printRunReport({
+    return reportRun({
       warnings: result.warnings ?? [],
       errors: (result.errors ?? []).map((error) => `${error.key}: ${error.error}`),
       outcome: result.outcome,
