@@ -23,6 +23,29 @@ describe('import-cmd (real project)', () => {
     project.cleanup();
   });
 
+  it('prints applicability advisories to stderr and retains supplied switches', async () => {
+    const message = '--update-tags has no effect with the default --strategy translation-service.';
+    const result = await run({ ...flags, updateTags: false });
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(`⚠️  ${message}\n`);
+    expect(result.stdout).not.toContain(message);
+    expect(stored()).toMatchObject({ ok: { fr: 'Bonjour' } });
+  });
+  it.each([
+    { strategy: undefined, description: 'the default --strategy translation-service' },
+    { strategy: 'translation-service', description: '--strategy translation-service' },
+    { strategy: 'verification', description: '--strategy verification' },
+    { strategy: 'update', description: '--strategy update' },
+  ] as const)('wires import advisories to stderr for $description', async ({ strategy, description }) => {
+    const result = await run({ ...flags, strategy, updateComments: true, updateTags: true, createMissing: true });
+    expect(result.exitCode).toBe(0);
+    for (const flag of ['--update-comments', '--update-tags', '--create-missing']) {
+      const message = `${flag} has no effect with ${description}.`;
+      expect(result.stderr).toContain(`⚠️  ${message}\n`);
+      expect(result.stdout).not.toContain(message);
+      expect(result.stderr.split(message)).toHaveLength(2);
+    }
+  });
   it('should load configuration from .lingo-tracker.json', async () => {
     const result = await run();
     expect(result.exitCode).toBe(0);

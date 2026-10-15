@@ -12,7 +12,6 @@ import type prompts from 'prompts';
 import { importHelpText } from '../runner/help-text';
 import { flagName, resolveFlag, type OrderedResolvingFlagRecords } from '../runner/flag-record';
 import type { ImportCommandOptions, ImportOptionsContext } from './import-options';
-import { mergeRunOptions } from './run-option-defaults';
 
 type ImportAnswers = ImportCommandOptions & Readonly<Record<string, unknown>>;
 export interface ImportPromptContext extends ImportOptionsContext {
@@ -29,19 +28,24 @@ type ImportOptionResults = {
 };
 
 const strategyDefaults = importStrategyPolicy(DEFAULT_IMPORT_STRATEGY).defaults;
+const migration = (values: ImportCommandOptions) => resolveStrategy(values.strategy) === 'migration';
+const migrationAdvice = (flag: string) => (values: ImportCommandOptions) => {
+  if (migration(values)) return undefined;
+  const strategy = resolveStrategy(values.strategy);
+  return values.strategy === undefined
+    ? `${flag} has no effect with the default --strategy ${strategy}.`
+    : `${flag} has no effect with --strategy ${strategy}.`;
+};
 const migrationDefaults = importStrategyPolicy('migration').defaults;
 /** Strategy drives locale choices and migration-only prompt visibility. */
 function importOptionState(
-  flags: ImportCommandOptions,
-  answers: ImportAnswers,
+  values: ImportCommandOptions,
   context: Pick<ImportOptionsContext, 'configuredLocales' | 'baseLocale'>,
 ) {
-  const values = mergeRunOptions(flags, answers);
   const strategy = resolveStrategy(values.strategy);
   return {
     strategy,
     locales: importableLocales(context.configuredLocales, context.baseLocale, strategy),
-    migration: strategy === 'migration',
   };
 }
 
@@ -60,15 +64,14 @@ export const IMPORT_FLAGS: OrderedResolvingFlagRecords<ImportCommandOptions, Imp
       flags: '-f, --format <format>',
       description: 'Import format (xliff | json) - auto-detected from file extension if omitted',
       promptOrder: 1,
+      mergePromptAnswers: true,
       prompt: (options, context) => {
         const questions: prompts.PromptObject[] = [];
         if (!options.format) {
           questions.push({
             // Keep format unset for core when the source extension is sufficient.
-            type: (_prev: unknown, values: Record<string, unknown>) => {
-              return context.sourceFormat(mergeRunOptions<ImportCommandOptions>(options, values).source ?? '')
-                ? null
-                : 'select';
+            type: (_prev: unknown, values: ImportAnswers) => {
+              return context.sourceFormat(values.source ?? '') ? null : 'select';
             },
             name: 'format',
             message: 'Select import format:',
@@ -115,11 +118,11 @@ export const IMPORT_FLAGS: OrderedResolvingFlagRecords<ImportCommandOptions, Imp
       flags: '-l, --locale <locale>',
       description: 'Target locale for import (e.g., es, fr-ca)',
       promptOrder: 3,
+      mergePromptAnswers: true,
       prompt: (options, context) => {
         const { configuredLocales, baseLocale } = context;
         const questions: prompts.PromptObject[] = [];
-        const stateOf = (answers: ImportAnswers) =>
-          importOptionState(options, answers, { configuredLocales, baseLocale });
+        const stateOf = (answers: ImportAnswers) => importOptionState(answers, { configuredLocales, baseLocale });
         if (!options.locale) {
           questions.push({
             type: (_prev: unknown, values: ImportAnswers) => (stateOf(values).locales.length > 0 ? 'select' : null),
@@ -198,18 +201,16 @@ export const IMPORT_FLAGS: OrderedResolvingFlagRecords<ImportCommandOptions, Imp
       description: `Update resource comments from import data (migration: ${migrationDefaults.updateComments})`,
       helpDefault: strategyDefaults.updateComments,
       promptOrder: 4,
-      prompt: (options, context) =>
-        options.updateComments !== undefined
-          ? []
-          : [
-              {
-                type: (_prev: unknown, values: ImportAnswers) =>
-                  importOptionState(options, values, context).migration ? 'confirm' : null,
-                name: 'updateComments',
-                message: 'Update comments from import data?',
-                initial: migrationDefaults.updateComments,
-              },
-            ],
+      appliesWhen: migration,
+      inapplicableMessage: migrationAdvice('--update-comments'),
+      prompt: () => [
+        {
+          type: 'confirm',
+          name: 'updateComments',
+          message: 'Update comments from import data?',
+          initial: migrationDefaults.updateComments,
+        },
+      ],
       resolve: (values) => ({ updateComments: values.updateComments }),
     },
     updateTags: {
@@ -217,18 +218,16 @@ export const IMPORT_FLAGS: OrderedResolvingFlagRecords<ImportCommandOptions, Imp
       description: `Update resource tags from rich JSON (migration: ${migrationDefaults.updateTags})`,
       helpDefault: strategyDefaults.updateTags,
       promptOrder: 5,
-      prompt: (options, context) =>
-        options.updateTags !== undefined
-          ? []
-          : [
-              {
-                type: (_prev: unknown, values: ImportAnswers) =>
-                  importOptionState(options, values, context).migration ? 'confirm' : null,
-                name: 'updateTags',
-                message: 'Update tags from import data?',
-                initial: migrationDefaults.updateTags,
-              },
-            ],
+      appliesWhen: migration,
+      inapplicableMessage: migrationAdvice('--update-tags'),
+      prompt: () => [
+        {
+          type: 'confirm',
+          name: 'updateTags',
+          message: 'Update tags from import data?',
+          initial: migrationDefaults.updateTags,
+        },
+      ],
       resolve: (values) => ({ updateTags: values.updateTags }),
     },
     preserveStatus: {
@@ -242,18 +241,16 @@ export const IMPORT_FLAGS: OrderedResolvingFlagRecords<ImportCommandOptions, Imp
       description: `Create new resources if they don't exist (migration: ${migrationDefaults.createMissing})`,
       helpDefault: strategyDefaults.createMissing,
       promptOrder: 6,
-      prompt: (options, context) =>
-        options.createMissing !== undefined
-          ? []
-          : [
-              {
-                type: (_prev: unknown, values: ImportAnswers) =>
-                  importOptionState(options, values, context).migration ? 'confirm' : null,
-                name: 'createMissing',
-                message: 'Create missing resources?',
-                initial: migrationDefaults.createMissing,
-              },
-            ],
+      appliesWhen: migration,
+      inapplicableMessage: migrationAdvice('--create-missing'),
+      prompt: () => [
+        {
+          type: 'confirm',
+          name: 'createMissing',
+          message: 'Create missing resources?',
+          initial: migrationDefaults.createMissing,
+        },
+      ],
       resolve: (values) => ({ createMissing: values.createMissing }),
     },
     validateBase: {

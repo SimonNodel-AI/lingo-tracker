@@ -204,6 +204,19 @@ describe('registered import and export options reaching core', () => {
     expect(runExport).toHaveBeenCalledWith(expect.any(Array), expect.objectContaining(expected));
   });
 
+  it('warns about inapplicable export flags on stderr while passing their values to core', async () => {
+    await invoke('export', '--format', 'xliff', '--include-base');
+    expect(console.error).toHaveBeenCalledWith('⚠️  --include-base has no effect with --format xliff.');
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('--include-base has no effect'));
+    expect(runExport).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        format: 'xliff',
+        includeBase: true,
+      }),
+    );
+  });
+
   it('offers unset export options with the same defaults used for resolution', async () => {
     vi.mocked(isInteractiveTerminal).mockReturnValue(true);
     vi.mocked(prompts).mockResolvedValue({

@@ -2,7 +2,7 @@ import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } 
 import * as fs from 'fs';
 import * as path from 'path';
 import { cliErrorWording } from '../runner/cli-error-wording';
-import { withoutFlagPrompts } from '../runner/flag-record';
+import { flagAdvisories, withoutFlagPrompts } from '../runner/flag-record';
 import { CommandOutput } from '../runner/command-output';
 import { type CommandResult, defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
@@ -24,6 +24,8 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
   required: ['source', 'locale'],
   run: async ({ cwd, collection, answers, summaryDirectory }) => {
     const options = resolveImportOptions(answers);
+    for (const message of flagAdvisories<ImportCommandOptions>(IMPORT_FLAGS, answers))
+      ConsoleFormatter.warning(message);
     const { source, locale } = answers;
     const runOptions: ImportRunOptions = {
       ...options,

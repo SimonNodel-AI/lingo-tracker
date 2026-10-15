@@ -38,6 +38,12 @@ export type FlagRecords<Options, Context = never, PromptAnswers = Options> = {
     readonly selection?: SelectionRecord<Options, PromptAnswers>;
     readonly prompt?: PromptFactory<Options, Context>;
     readonly promptOrder?: number;
+    /** Gates questions; diagnostic factories can also reuse this predicate. */
+    readonly appliesWhen?: (values: Options) => boolean;
+    /** Diagnostic for a supplied value; may cover more cases than the prompt gate. */
+    readonly inapplicableMessage?: (values: Options) => string | undefined;
+    /** Opt dynamic type/choices callbacks into flag-over-answer precedence. */
+    readonly mergePromptAnswers?: true;
   };
 };
 
@@ -83,19 +89,66 @@ export function defineFlags<Options, Context = never, PromptAnswers = Options>()
   ): Records => records;
 }
 
+/** Preserve record key types at the object enumeration boundary. */
+function flagEntries<Options, Context, PromptAnswers>(records: FlagRecords<Options, Context, PromptAnswers>) {
+  const entries = [];
+  for (const key in records) {
+    if (Object.getOwnPropertyDescriptor(records, key)) entries.push({ key, record: records[key] });
+  }
+  return entries;
+}
+
 export function flagQuestions<Options, Context>(
   records: FlagRecords<Options, Context, Record<string, unknown>>,
   options: Options,
   context: Context,
 ): prompts.PromptObject[] {
-  const fields: readonly (FlagRecord & {
-    readonly prompt?: PromptFactory<Options, Context>;
-    readonly promptOrder?: number;
-  })[] = Object.values(records);
-  return fields
-    .map((record, index) => ({ record, order: record.promptOrder ?? index }))
+  const supplied = Object.fromEntries(Object.entries(options as object).filter(([, value]) => value !== undefined));
+  const merged = (answers: object): Options => ({ ...answers, ...supplied }) as Options;
+  return flagEntries(records)
+    .map(({ key, record }, index) => ({ key, record, order: record.promptOrder ?? index }))
     .sort((left, right) => left.order - right.order)
-    .flatMap(({ record }) => record.prompt?.(options, context, flagDefault(record)) ?? []);
+    .flatMap(({ key, record }) => {
+      if (record.appliesWhen && key in supplied) return [];
+      const questions = record.prompt?.(options, context, flagDefault(record)) ?? [];
+      if (record.appliesWhen === undefined && record.mergePromptAnswers !== true) return questions;
+      return questions.map((question) => {
+        const type = question.type;
+        const choices = question.choices;
+        return {
+          ...question,
+          ...(record.appliesWhen || typeof type === 'function'
+            ? {
+                type: (prev: unknown, answers: object, prompt: prompts.PromptObject) => {
+                  const values = merged(answers);
+                  if (record.appliesWhen && record.appliesWhen(values) === false) return null;
+                  return typeof type === 'function' ? type(prev, values, prompt) : type;
+                },
+              }
+            : {}),
+          ...(typeof choices === 'function'
+            ? {
+                choices: (prev: unknown, answers: object, prompt: prompts.PromptObject) =>
+                  choices(prev, merged(answers), prompt),
+              }
+            : {}),
+        };
+      });
+    });
+}
+
+/** Supplied values remain intact; applicability only adds diagnostics. */
+export function flagAdvisories<Options>(
+  records: FlagRecords<Options, never, Record<string, unknown>>,
+  values: NoInfer<Options>,
+): string[] {
+  const advisories: string[] = [];
+  for (const { key, record } of flagEntries(records)) {
+    if (values[key] === undefined) continue;
+    const message = record.inapplicableMessage?.(values);
+    if (message) advisories.push(message);
+  }
+  return advisories;
 }
 
 type PromptFree<Record> = Record extends unknown ? Omit<Record, 'prompt' | 'promptOrder'> : never;

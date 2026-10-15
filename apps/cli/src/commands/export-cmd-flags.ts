@@ -5,7 +5,6 @@ import { flagName, resolveFlag, type ResolvingFlagRecords } from '../runner/flag
 import type { selectionPrompt } from '../utils/prompt-utils';
 import { parseCommaSeparatedList } from '../utils/string-parsers';
 import type { ExportCommandOptions, ExportOptionsContext } from './export-options';
-import { mergeRunOptions } from './run-option-defaults';
 
 export type ExportAnswers = ExportCommandOptions & {
   readonly collections?: unknown;
@@ -43,6 +42,14 @@ type ExportOptionResults = {
 
 const json = (options: ExportCommandOptions) => options.format === 'json';
 const richJson = (options: ExportCommandOptions) => json(options) && Boolean(options.rich);
+const jsonAdvice =
+  (flag: string, appliesWhen = richJson) =>
+  (values: ExportCommandOptions) => {
+    if (appliesWhen(values)) return undefined;
+    if (json(values)) return `${flag} has no effect without --rich.`;
+    if (values.format === 'xliff') return `${flag} has no effect with --format xliff.`;
+    return `${flag} applies only to JSON exports.`;
+  };
 const toggle = (message: string): Partial<prompts.PromptObject> => ({ message, active: 'Yes', inactive: 'No' });
 const BASE_PROPERTY_INITIAL = 'baseValue';
 const STATUS_TITLES: Record<TranslationStatus, string> = {
@@ -213,30 +220,20 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
     flags: '--structure <type>',
     description: 'JSON structure (flat | hierarchical)',
     helpDefault: 'hierarchical',
-    prompt: (options, _context, defaultValue) => {
-      if (options.structure !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: json,
-        type: 'select' as const,
+    appliesWhen: json,
+    inapplicableMessage: jsonAdvice('--structure', json),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        message: 'JSON structure type',
+        choices: [
+          { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
+          { title: 'Flat (dot-delimited keys)', value: 'flat' },
+        ],
+        name: 'structure',
+        type: 'select',
         initial: defaultValue === 'hierarchical' ? 0 : 1,
-        prompt: {
-          message: 'JSON structure type',
-          choices: [
-            { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
-            { title: 'Flat (dot-delimited keys)', value: 'flat' },
-          ],
-        },
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'structure',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: rule.initial,
-        },
-      ];
-    },
+      },
+    ],
     resolve: (values, defaultValue) => ({
       jsonStructure: values.structure ?? (defaultValue === 'flat' ? 'flat' : 'hierarchical'),
     }),
@@ -245,115 +242,80 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
     flags: '--rich',
     description: 'Include metadata in JSON objects',
     helpDefault: false,
-    prompt: (options, _context, defaultValue) => {
-      if (options.rich !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: json,
-        type: 'toggle' as const,
-        prompt: toggle('Use rich JSON objects (include metadata)?'),
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'rich',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: defaultValue,
-        },
-      ];
-    },
+    appliesWhen: json,
+    inapplicableMessage: jsonAdvice('--rich', json),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        ...toggle('Use rich JSON objects (include metadata)?'),
+        name: 'rich',
+        type: 'toggle',
+        initial: defaultValue,
+      },
+    ],
     resolve: (values, defaultValue) => ({ richJson: values.rich ?? Boolean(defaultValue) }),
   },
   includeBase: {
     flags: '--include-base',
     description: 'Include base locale value (JSON only)',
     helpDefault: false,
-    prompt: (options, _context, defaultValue) => {
-      if (options.includeBase !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: richJson,
-        type: 'toggle' as const,
-        prompt: toggle('Include base locale value in rich objects?'),
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'includeBase',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: defaultValue,
-        },
-      ];
-    },
+    appliesWhen: richJson,
+    inapplicableMessage: jsonAdvice('--include-base'),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        ...toggle('Include base locale value in rich objects?'),
+        name: 'includeBase',
+        type: 'toggle',
+        initial: defaultValue,
+      },
+    ],
     resolve: (values, defaultValue) => ({ includeBase: values.includeBase ?? Boolean(defaultValue) }),
   },
   includeStatus: {
     flags: '--include-status',
     description: 'Include translation status (JSON only)',
     helpDefault: false,
-    prompt: (options, _context, defaultValue) => {
-      if (options.includeStatus !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: richJson,
-        type: 'toggle' as const,
-        prompt: toggle('Include translation status in rich objects?'),
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'includeStatus',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: defaultValue,
-        },
-      ];
-    },
+    appliesWhen: richJson,
+    inapplicableMessage: jsonAdvice('--include-status'),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        ...toggle('Include translation status in rich objects?'),
+        name: 'includeStatus',
+        type: 'toggle',
+        initial: defaultValue,
+      },
+    ],
     resolve: (values, defaultValue) => ({ includeStatus: values.includeStatus ?? Boolean(defaultValue) }),
   },
   includeComment: {
     flags: '--include-comment',
     description: 'Include comment (JSON only)',
     helpDefault: false,
-    prompt: (options, _context, defaultValue) => {
-      if (options.includeComment !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: richJson,
-        type: 'toggle' as const,
-        prompt: toggle('Include comments?'),
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'includeComment',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: defaultValue,
-        },
-      ];
-    },
+    appliesWhen: richJson,
+    inapplicableMessage: jsonAdvice('--include-comment'),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        ...toggle('Include comments?'),
+        name: 'includeComment',
+        type: 'toggle',
+        initial: defaultValue,
+      },
+    ],
     resolve: (values, defaultValue) => ({ includeComment: values.includeComment ?? Boolean(defaultValue) }),
   },
   includeTags: {
     flags: '--include-tags',
     description: 'Include tags array (JSON only)',
     helpDefault: false,
-    prompt: (options, _context, defaultValue) => {
-      if (options.includeTags !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: richJson,
-        type: 'toggle' as const,
-        prompt: toggle('Include tags array in rich objects?'),
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'includeTags',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: defaultValue,
-        },
-      ];
-    },
+    appliesWhen: richJson,
+    inapplicableMessage: jsonAdvice('--include-tags'),
+    prompt: (_options, _context, defaultValue) => [
+      {
+        ...toggle('Include tags array in rich objects?'),
+        name: 'includeTags',
+        type: 'toggle',
+        initial: defaultValue,
+      },
+    ],
     resolve: (values, defaultValue) => ({ includeTags: values.includeTags ?? Boolean(defaultValue) }),
   },
   protectNotes: {
@@ -366,24 +328,20 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   basePropertyName: {
     flags: '--base-property-name <name>',
     description: `Property name for base locale value in JSON output (default: ${BASE_PROPERTY_INITIAL})`,
-    prompt: (options) => {
-      if (options.basePropertyName !== undefined || (options.format && options.format !== 'json')) return [];
-      const rule = {
-        visible: (options: ExportCommandOptions) => json(options) && Boolean(options.includeBase),
-        type: 'text' as const,
-        initial: BASE_PROPERTY_INITIAL,
-        prompt: { message: 'Property name for base locale value' },
-      };
-      return [
-        {
-          ...rule.prompt,
-          name: 'basePropertyName',
-          type: (_prev: unknown, answers: ExportAnswers) =>
-            rule.visible(mergeRunOptions(options, answers)) ? rule.type : null,
-          initial: rule.initial,
-        },
-      ];
+    appliesWhen: (options) => json(options) && Boolean(options.includeBase),
+    inapplicableMessage: (values) => {
+      if (values.basePropertyName === '' || values.basePropertyName === undefined) return undefined;
+      if (values.includeBase) return jsonAdvice('--base-property-name')(values);
+      return '--base-property-name has no effect without --include-base.';
     },
+    prompt: () => [
+      {
+        message: 'Property name for base locale value',
+        name: 'basePropertyName',
+        type: 'text',
+        initial: BASE_PROPERTY_INITIAL,
+      },
+    ],
     resolve: (values) => ({ basePropertyName: values.basePropertyName || undefined }),
   },
   filename: {
