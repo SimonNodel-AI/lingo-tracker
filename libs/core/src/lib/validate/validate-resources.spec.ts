@@ -8,6 +8,7 @@ import {
   useTempDir,
   writeFolderFiles,
 } from '../../testing/temp-dir.spec-helpers';
+import { readCollectionSet } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
 import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
 import { validateResources } from './validate-resources';
@@ -168,7 +169,12 @@ describe('validateResources (real fs)', () => {
       const main = collection();
       seedResources(main, { ok: withStatus('OK', { es: 'verified', fr: 'new' }) });
 
-      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['fr'] }, termsByCollection);
+      const result = validateResources(
+        [main],
+        { allowTranslated: false },
+        termsByCollection,
+        readCollectionSet([main], { scope: 'validation', skippedLocales: ['fr'] }),
+      );
 
       expect(result.passed).toBe(true);
       expect(result.localesValidated).toBe(1);
@@ -179,7 +185,12 @@ describe('validateResources (real fs)', () => {
       const main = collection('main', { locales: ['en', 'es'] });
       seedResources(main, { ok: withStatus('OK', { es: 'new' }) });
 
-      const result = validateResources([main], { allowTranslated: false, skippedLocales: ['es'] }, termsByCollection);
+      const result = validateResources(
+        [main],
+        { allowTranslated: false },
+        termsByCollection,
+        readCollectionSet([main], { scope: 'validation', skippedLocales: ['es'] }),
+      );
 
       expect(result.passed).toBe(true);
       expect(result.totalResourcesValidated).toBe(0);

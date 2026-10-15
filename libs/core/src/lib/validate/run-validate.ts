@@ -1,6 +1,7 @@
-import { collectionSetTargetLocales } from '../collection-set/collection-set';
+import type { PreferredTermRule } from '@simoncodes-ca/domain';
+import { readCollectionSet } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
-import { readProjectTerms } from '../config/project-terms';
+import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
 import type { RunOutcome } from '../run-outcome';
 import { generateValidationSummary } from './generate-validation-summary';
 import type { ResourceValidationResult, ValidationOptions } from './types';
@@ -46,7 +47,9 @@ export type ValidateRunResult =
  * return alongside the outcome; no warning is printed by core.
  */
 export function runValidate(collections: readonly Collection[], options: ValidateRunOptions = {}): ValidateRunResult {
-  if (collections.length === 0) {
+  const scope = readCollectionSet(collections, { scope: 'validation', skippedLocales: options.skipLocales });
+  const warnings = [...scope.warnings];
+  if (scope.outcome === 'no-collections') {
     return {
       status: 'failed',
       outcome: 'failed',
@@ -57,8 +60,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
   }
 
   // Each collection is validated against its own target locales: its locales without its base locale.
-  const targetLocales = collectionSetTargetLocales(collections);
-  if (targetLocales.length === 0) {
+  if (scope.outcome === 'no-targets') {
     return {
       status: 'failed',
       outcome: 'failed',
@@ -68,22 +70,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
     };
   }
 
-  const baseLocales = new Set(collections.map((collection) => collection.baseLocale));
-  const effectiveSkipped: string[] = [];
-  const warnings: string[] = [];
-  for (const locale of options.skipLocales ?? []) {
-    if (targetLocales.includes(locale)) {
-      effectiveSkipped.push(locale);
-      continue;
-    }
-    if (baseLocales.has(locale)) {
-      // A base locale is never a target here, so there is nothing to skip: silently ignore it.
-      continue;
-    }
-    warnings.push(`Skipping unknown locale '${locale}' — not in configured locales`);
-  }
-
-  if (targetLocales.every((locale) => effectiveSkipped.includes(locale))) {
+  if (scope.outcome === 'all-skipped') {
     return {
       status: 'failed',
       outcome: 'failed',
@@ -101,14 +88,11 @@ export function runValidate(collections: readonly Collection[], options: Validat
   const views = projectTerms.map((terms) => terms.forValidation());
   warnings.push(...new Set(views.flatMap((view) => view.warnings)));
   const ruleFileError = views.find((view) => view.loadError !== undefined)?.loadError;
-  // Preferred terminology is one file for the project. The first collection with rules wins;
-  // later rule lists are not checked for agreement. An empty first read cannot hide later rules.
-  const rules = [...(projectTerms.find((terms) => terms.preferredTerminology.length > 0)?.preferredTerminology ?? [])];
+  const rules = terminologyRules(projectTerms);
   const compileValues = !options.skipIcu;
   const requirePortablePlurals = options.requirePortablePlurals ?? false;
   const validationOptions: ValidationOptions = {
     allowTranslated: options.allowTranslated ?? false,
-    skippedLocales: effectiveSkipped,
     // Portability is a static parse, so an explicit request runs even alongside skipIcu.
     // Base values are checked alongside targets because they are copied into every translation slot.
     icu: compileValues || requirePortablePlurals ? { compileValues, requirePortablePlurals } : undefined,
@@ -118,12 +102,18 @@ export function runValidate(collections: readonly Collection[], options: Validat
     // Without rules or a load error, omit the check and its summary output entirely.
     terminology: rules.length > 0 || ruleFileError !== undefined ? { rules, loadError: ruleFileError } : undefined,
   };
-  const validation = validateResources(collections, validationOptions, termsByCollection);
+  const validation = validateResources(collections, validationOptions, termsByCollection, scope);
   return {
     status: 'complete',
     outcome: validation.passed ? 'succeeded' : 'failed',
     validation,
-    summary: generateValidationSummary(validation, validationOptions),
+    summary: generateValidationSummary(validation, validationOptions, scope.skippedLocales),
     warnings,
   };
+}
+
+/** Preferred terminology is one file for the project. The first collection with rules wins;
+ * later rule lists are not checked for agreement. An empty first read cannot hide later rules. */
+function terminologyRules(terms: readonly ProjectTerms[]): PreferredTermRule[] {
+  return [...(terms.find((term) => term.preferredTerminology.length > 0)?.preferredTerminology ?? [])];
 }
