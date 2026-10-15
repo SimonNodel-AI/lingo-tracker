@@ -27,10 +27,11 @@ function notNull(value: unknown, path: string): void {
   if (value === null) fail(path, 'not be null');
 }
 
-export function string(): Schema<string> {
+export function string(minLength = 0): Schema<string> {
   return (value, path) => {
     notNull(value, path);
     if (typeof value !== 'string') fail(path, 'be a string');
+    if (value.length < minLength) fail(path, `have at least ${minLength} character(s)`);
     return value;
   };
 }

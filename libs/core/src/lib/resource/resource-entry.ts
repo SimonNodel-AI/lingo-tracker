@@ -15,6 +15,7 @@ import {
   CoreOperationError,
   FolderNotFoundError,
   InvalidCollectionFolderError,
+  InvalidBaseValueError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
@@ -292,6 +293,10 @@ function validateAddChanges(collection: Collection, changes: EntryAddChanges): v
   }
 }
 
+function assertBaseValue(key: string, baseValue: string): void {
+  if (baseValue.trim() === '') throw new InvalidBaseValueError(key);
+}
+
 /**
  * Adds a resource entry to a collection. With `onExisting: 'replace'`, an existing
  * entry's previous translations and metadata are dropped. Creates the folders it needs.
@@ -308,6 +313,7 @@ function validateAddChanges(collection: Collection, changes: EntryAddChanges): v
  * @param options - Existence policy and optional `provider` / `protectedTerms` overrides (see `openTranslator`).
  * @throws {ResourceAlreadyExistsError} The resolved key already exists and the policy is `fail`.
  * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
+ * @throws {InvalidBaseValueError} The base value is empty or contains only whitespace.
  * @throws {LocaleNotFoundError} A supplied translation names a locale the collection does not have.
  * @throws {TranslationError} The translation provider failed.
  * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
@@ -334,6 +340,7 @@ function preflightAdd(
   onExisting: ExistingResourcePolicy,
 ): AddPreflight {
   const paths = resolveResolvedResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
+  assertBaseValue(resolvedKey, changes.baseValue);
   validateAddChanges(collection, changes);
   checkWriteConflict(openEntryAt(collection, paths), onExisting);
   return {
@@ -443,6 +450,8 @@ function applyEntryAdd(resource: LocatedEntry, changes: EntryAddChanges): Resour
  * `resource_entries.json` without `tracker_meta.json`. There is no rollback or result on
  * failure. Every earlier item's `upsert` was already delivered through `onMutation`;
  * the failing folder delivers a `reindex` if its save started.
+ *
+ * @throws {InvalidBaseValueError} Any item has an empty or whitespace-only base value (before translation or writes).
  */
 export async function addResources(
   collection: Collection,
@@ -540,6 +549,7 @@ export async function translateEntry(
  * @param key - The entry's full, existing key.
  * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
  * @throws {InvalidResourceKeyError} `key` or `moveTo` is malformed.
+ * @throws {InvalidBaseValueError} A supplied base value is empty or contains only whitespace.
  * @throws {ResourceNotFoundError} No entry exists at `key`.
  * @throws {ResourceAlreadyExistsError} The destination folder already has an entry with this entry key
  *   (checked before the edit, and again, on fresh disk state, just before the move).
@@ -582,6 +592,7 @@ function validateEntryEdit(
   changes: EditResourceChanges,
 ): { resource: LocatedEntry; liveEntry: ResourceEntry; translations: SuppliedEditTranslations; destination?: string } {
   const { baseLocale } = collection;
+  if (changes.baseValue !== undefined) assertBaseValue(key, changes.baseValue);
   const resource = locateEntry(collection, key);
   const current = resource.folder.get(resource.entryKey);
   if (!current?.meta) throw new ResourceNotFoundError(resource.resolvedKey);

@@ -104,7 +104,7 @@ export const addLocaleBody: Schema<AddLocaleDto> = object<AddLocaleDto>({ locale
 export const translateResourceBody: Schema<TranslateResourceDto> = object<TranslateResourceDto>({ key: string() });
 export const createResource: Schema<CreateResourceDto> = object<CreateResourceDto>({
   key: string(),
-  baseValue: string(),
+  baseValue: string(1),
   comment: optional(string()),
   tags: optional(array(string())),
   targetFolder: optional(string()),
@@ -135,7 +135,7 @@ export const moveResourcesBody: Schema<MoveResourceDto> = object<MoveResourceDto
 export const updateResourceBody: Schema<UpdateResourceDto> = object<UpdateResourceDto>({
   key: string(),
   moveTo: optional(string()),
-  baseValue: optional(string()),
+  baseValue: optional(string(1)),
   comment: optional(string()),
   tags: optional(array(string())),
   locales: optional(

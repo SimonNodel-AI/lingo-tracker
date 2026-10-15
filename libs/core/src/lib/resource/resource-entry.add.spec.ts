@@ -9,6 +9,7 @@ import { type Collection, openCollection } from '../config/open-collection';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../config/protected-terms-file';
 import {
   BracedPlaceholderError,
+  InvalidBaseValueError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LocaleNotFoundError,
@@ -62,6 +63,33 @@ describe('addResource (real fs)', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('rejects empty and whitespace-only base values before creating folders or translating', async () => {
+    const provider = new InMemoryTranslationProvider();
+    for (const baseValue of ['', '   ', '\t\n']) {
+      await expect(
+        addResource(collection({ translation: AUTO }), { key: 'common.ok', baseValue }, { provider, onMutation }),
+      ).rejects.toThrow(InvalidBaseValueError);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+    }
+    await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+      join(root, 'translations', 'common', file),
+    );
+    const before = paths.map((path) => readFileSync(path));
+    for (const baseValue of ['', '   ']) {
+      await expect(
+        addResource(
+          collection({ translation: AUTO }),
+          { key: 'common.ok', baseValue },
+          { provider, onMutation, onExisting: 'replace' },
+        ),
+      ).rejects.toThrow('Base value must not be empty.');
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    }
+    expect(provider.calls).toEqual([]);
+    expect(collected).toEqual([]);
   });
 
   describe('locale seeding', () => {

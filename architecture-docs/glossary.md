@@ -967,7 +967,7 @@ Explained in context: [`frontend.md`](frontend.md#protected-terms-in-the-ui)
 
 ### Prepared Add
 
-An add whose values and advice are ready before any resource file is written. Core's `libs/core/src/lib/resource/resource-entry.ts` owns the phases: `preflightAdd` → `prepareAdd` → `commitPrepared`. `preflightAdd` resolves the folder, validates supplied locales and statuses, then checks the [Existence Policy](#existence-policy). The functions and their `AddPreflight` and `PreparedAdd` types are module-private. Single and batch adds use them internally, so callers only submit complete operations.
+An add whose values and advice are ready before any resource file is written. Core's `libs/core/src/lib/resource/resource-entry.ts` owns the phases: `preflightAdd` → `prepareAdd` → `commitPrepared`. `preflightAdd` resolves the folder, validates a non-empty base value and supplied locales and statuses, then checks the [Existence Policy](#existence-policy). The functions and their `AddPreflight` and `PreparedAdd` types are module-private. Single and batch adds use them internally, so callers only submit complete operations.
 
 The Prepared Add contains the collection, resolved key, existence policy, ICU base value, supplied and seeded translations, details, skipped locales when auto-translation ran, and [Project Terms](#project-terms) findings with Translator problems. Preparation uses [Locale Seeding](#locale-seeding) once. Commit reopens fresh state, rechecks existence and writes the captured values through the [Resource Folder](#resource-folder), reporting through the [Mutation Sink](#mutation-sink). Single and batch adds share these phases and retain their result shapes.
 

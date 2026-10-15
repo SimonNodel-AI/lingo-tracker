@@ -15,6 +15,20 @@ describe('addResourceCommand (real project)', () => {
     project.cleanup();
   });
 
+  it('reports an explicit empty value through the required-options error path with exit 1', async () => {
+    const result = await project.run(addResourceCommand, { ...flags, value: '' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('❌ Missing required options in non-interactive mode: --value\n');
+    expect(project.exists('translations/main/buttons')).toBe(false);
+  });
+
+  it('reports a whitespace-only value through the core error path with exit 1', async () => {
+    const result = await project.run(addResourceCommand, { ...flags, value: '   ' });
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe('❌ Base value must not be empty.\n');
+    expect(project.exists('translations/main/buttons')).toBe(false);
+  });
+
   it('prints the braced-placeholder diagnostic and exits 1 before writing', async () => {
     const value = '{{{a}}}';
     const found = checkStoredValue(value)[0];

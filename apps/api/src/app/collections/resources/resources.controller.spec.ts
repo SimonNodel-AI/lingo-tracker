@@ -98,6 +98,19 @@ describe('ResourcesController HTTP (real project)', () => {
   });
 
   describe('createResources', () => {
+    it('rejects empty and whitespace-only base values with 400 before creating anything', async () => {
+      enable();
+      for (const baseValue of ['', '   ']) {
+        const response = await request('POST', { ...dto, baseValue });
+        expect(response.status).toBe(400);
+        expect(response.body).toMatchObject({
+          message: baseValue === '' ? 'baseValue must have at least 1 character(s)' : 'Base value must not be empty.',
+        });
+        expect(project.exists('translations/test/app')).toBe(false);
+      }
+      expect(mockProvider.calls).toEqual([]);
+    });
+
     it('rejects a braced value with a 400 message and details before writing', async () => {
       await project.seed('app.button.existing');
       const paths = ['resource_entries.json', 'tracker_meta.json'].map(
@@ -511,15 +524,30 @@ describe('ResourcesController HTTP (real project)', () => {
         await request('PATCH', { key: dto.key, locales: { 'fr-ca': { value: 'Oui', status: 'verifed' } } }),
       ).toMatchObject({ status: 400, body: { message: expect.stringContaining('verifed') } });
     });
-    it('stores an empty base value on PATCH', async () => {
-      const response = await request('PATCH', { key: dto.key, baseValue: '' });
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        resolvedKey: dto.key,
-        updated: true,
-        resource: { base: { locale: 'en', value: '' } },
+    it('rejects an empty base value on PATCH with 400 and keeps the stored entry', async () => {
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map(
+        (file) => `translations/test/app/button/${file}`,
+      );
+      const before = paths.map((path) => project.read(path));
+      expect(await request('PATCH', { key: dto.key, baseValue: '' })).toMatchObject({
+        status: 400,
+        body: { message: 'baseValue must have at least 1 character(s)' },
       });
-      expect(entries()).toHaveProperty('ok.source', '');
+      expect(paths.map((path) => project.read(path))).toEqual(before);
+      expect(mockProvider.calls).toEqual([]);
+    });
+    it('rejects a whitespace-only base value on PATCH in core without writing', async () => {
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map(
+        (file) => `translations/test/app/button/${file}`,
+      );
+      const before = paths.map((path) => project.read(path));
+      expect(await request('PATCH', { key: dto.key, baseValue: '   ', moveTo: 'shared' })).toMatchObject({
+        status: 400,
+        body: { message: 'Base value must not be empty.' },
+      });
+      expect(paths.map((path) => project.read(path))).toEqual(before);
+      expect(project.exists('translations/test/shared')).toBe(false);
+      expect(mockProvider.calls).toEqual([]);
     });
     it('should successfully update a resource', async () => {
       const response = await request('PATCH', { key: dto.key, baseValue: 'OK Updated' });

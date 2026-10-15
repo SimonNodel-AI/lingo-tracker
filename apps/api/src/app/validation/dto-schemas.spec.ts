@@ -389,7 +389,7 @@ const additionalRejected: Array<{ name: string; schema: Schema<unknown>; payload
   {
     name: 'resource tags',
     schema: schemas.createResourcesBody,
-    payload: { key: 'a', baseValue: '', tags: 'x' },
+    payload: { key: 'a', baseValue: 'A', tags: 'x' },
     message: 'tags must be an array',
   },
   {
@@ -425,6 +425,17 @@ const additionalRejected: Array<{ name: string; schema: Schema<unknown>; payload
 ];
 
 describe('DTO shape schemas', () => {
+  it('requires at least one base-value character while leaving whitespace validation to core', () => {
+    for (const schema of [schemas.createResource, schemas.updateResourceBody]) {
+      expect(() => new SchemaPipe<unknown>(schema, 'request body').transform({ key: 'ok', baseValue: '' })).toThrow(
+        exactMessage('baseValue must have at least 1 character(s)'),
+      );
+      const payload = { key: 'ok', baseValue: '   ' };
+      expect(schema(payload, '')).toBe(payload);
+    }
+    expect(schemas.updateResourceBody({ key: 'ok' }, '')).toEqual({ key: 'ok' });
+  });
+
   it.each(accepted)('accepts $name tracker payload unchanged', ({ schema, payload }) => {
     expect(schema(payload, '')).toBe(payload);
   });

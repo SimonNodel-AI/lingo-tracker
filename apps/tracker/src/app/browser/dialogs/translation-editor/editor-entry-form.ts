@@ -4,6 +4,7 @@ import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-
 import { DEFAULT_MISSING_METADATA_STATUS, isNeedsWorkStatus, summaryTarget } from '@simoncodes-ca/domain';
 import { merge, type Subscription } from 'rxjs';
 import { bracedPlaceholderValidator } from '../../../shared/validators/braced-placeholder.validator';
+import { nonBlankValidator } from '../../../shared/validators/non-blank.validator';
 import { segmentValidator } from '../../../shared/validators/segment.validator';
 import {
   addTag as addDraftTag,
@@ -21,7 +22,7 @@ export class EditorEntryForm {
       nonNullable: true,
     }),
     baseValue: new FormControl<string>('', {
-      validators: [Validators.required, bracedPlaceholderValidator],
+      validators: [nonBlankValidator, bracedPlaceholderValidator],
       nonNullable: true,
     }),
     comment: new FormControl<string>('', { nonNullable: true }),

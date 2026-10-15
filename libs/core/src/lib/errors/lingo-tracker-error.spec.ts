@@ -34,6 +34,7 @@ import {
   InvalidLocaleError,
   InvalidNameError,
   InvalidProjectTermsEditError,
+  InvalidBaseValueError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LingoTrackerError,
@@ -174,6 +175,12 @@ describe('LingoTrackerError subclasses', () => {
       message: 'Key validation: Invalid key format "a..b"',
     },
     {
+      error: new InvalidBaseValueError('common.ok'),
+      name: 'InvalidBaseValueError',
+      code: 'INVALID_BASE_VALUE',
+      message: 'Base value must not be empty.',
+    },
+    {
       error: new InvalidTranslationStatusError('verifed'),
       name: 'InvalidTranslationStatusError',
       code: 'INVALID_TRANSLATION_STATUS',
@@ -289,6 +296,10 @@ describe('LingoTrackerError subclasses', () => {
     new CoreOperationError('operation failed'),
   ];
 
+  it('carries the resource key for an invalid base value', () => {
+    expect(new InvalidBaseValueError('common.ok')).toMatchObject({ key: 'common.ok' });
+  });
+
   it('covers every declared domain code with a known subclass code', () => {
     const instances = [...cases.map(({ error }) => error), ...additional];
     const domainCodes: readonly string[] = Object.keys(ERROR_CODES);
@@ -401,6 +412,7 @@ describe('LingoTrackerError subclasses', () => {
       BaseLocaleImmutableError: 'invalid',
       BracedPlaceholderError: 'invalid',
       InvalidResourceKeyError: 'invalid',
+      InvalidBaseValueError: 'invalid',
       ResourceNotFoundError: 'not-found',
       ResourceAlreadyExistsError: 'conflict',
       FolderNotFoundError: 'not-found',

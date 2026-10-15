@@ -10,6 +10,7 @@ export {
   ConfigNotFoundError,
   ConfigParseError,
   type ErrorKind,
+  InvalidBaseValueError,
   InvalidConfigError,
   InvalidProjectTermsEditError,
   isPreferredTerminologyEditProblem,

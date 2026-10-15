@@ -6,6 +6,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { openCollection } from '../config/open-collection';
 import {
   BracedPlaceholderError,
+  InvalidBaseValueError,
   InvalidResourceKeyError,
   LocaleNotFoundError,
   ResourceAlreadyExistsError,
@@ -51,6 +52,38 @@ describe('addResources (real fs)', () => {
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('preflights every base value before any batch writes or translation', async () => {
+    const provider = new InMemoryTranslationProvider();
+    const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
+    for (const baseValue of ['', '   ']) {
+      const items = [
+        { key: 'common.ok', baseValue: 'OK' },
+        { key: 'new.bad', baseValue },
+      ];
+      await expect(addResources(target, items, { provider, onMutation })).rejects.toThrow(InvalidBaseValueError);
+      expect(existsSync(join(root, 'translations'))).toBe(false);
+    }
+    await addResource(collection(), { key: 'common.existing', baseValue: 'Existing' });
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((name) =>
+      join(root, 'translations', 'common', name),
+    );
+    const before = paths.map((path) => readFileSync(path));
+    await expect(
+      addResources(
+        target,
+        [
+          { key: 'common.ok', baseValue: 'OK' },
+          { key: 'new.bad', baseValue: '   ' },
+        ],
+        { provider, onMutation },
+      ),
+    ).rejects.toThrow('Base value must not be empty.');
+    expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    expect(existsSync(join(root, 'translations', 'new'))).toBe(false);
+    expect(provider.calls).toEqual([]);
+    expect(collected).toEqual([]);
   });
 
   it('rejects a braced value in a later batch item before any writes', async () => {
