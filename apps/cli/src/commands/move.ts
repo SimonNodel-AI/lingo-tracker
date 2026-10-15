@@ -1,6 +1,6 @@
 import { executeMove } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, printRunReport } from '../utils';
+import { ConsoleFormatter, reportRun } from '../utils';
 import { MOVE_FLAGS } from './move-flags';
 
 export interface MoveResourceOptions {
@@ -30,6 +30,10 @@ export const moveResourceCommand = defineCommand<MoveResourceOptions>()({
       ConsoleFormatter.warning('No resources were moved.');
     }
 
-    return printRunReport(result);
+    return reportRun({
+      warnings: result.warnings,
+      errors: result.errors,
+      outcome: result.outcome,
+    });
   },
 });
