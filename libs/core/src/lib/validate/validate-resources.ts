@@ -2,6 +2,7 @@ import {
   type CollectionSetResource,
   collectionResourceStatus,
   readCollectionSet,
+  type ValidationCollectionSet,
 } from '../collection-set/collection-set';
 import type { Collection } from '../config/open-collection';
 import type { ProjectTerms } from '../config/project-terms';
@@ -23,7 +24,7 @@ import { validateTranslatedValues } from './validate-translated-values';
  * Validates translation resources collection by collection.
  *
  * Each collection is read through the Collection Reader and validated with its own
- * base locale and target locales (minus `options.skippedLocales`). A key present in
+ * base locale and the resolved scope's target locales. A key present in
  * two collections is validated in both.
  *
  * Status validation, per resource and target locale:
@@ -64,20 +65,33 @@ import { validateTranslatedValues } from './validate-translated-values';
  * ```typescript
  * const collections = Object.keys(config.collections).map((name) => openCollection(config, name, { cwd }));
  * const terms = new Map(collections.map((collection) => [collection, readProjectTerms(collection)]));
- * const result = validateResources(collections, { allowTranslated: false, skippedLocales: ['de'] }, terms);
+ * const scope = readCollectionSet(collections, { scope: 'validation', skippedLocales: ['de'] });
+ * const result = validateResources(collections, { allowTranslated: false }, terms, scope);
  *
  * if (!result.passed) {
  *   console.error(`Validation failed: ${result.failures.length} failures`);
  * }
  * ```
  */
+/** Without an explicit scope, validate all configured targets. */
 export function validateResources(
   collections: readonly Collection[],
   options: ValidationOptions,
   termsByCollection: ReadonlyMap<Collection, ProjectTerms>,
+): ResourceValidationResult;
+/** Use only the supplied scope's resolved locales, including skips. */
+export function validateResources(
+  collections: readonly Collection[],
+  options: ValidationOptions,
+  termsByCollection: ReadonlyMap<Collection, ProjectTerms>,
+  scope: ValidationCollectionSet,
+): ResourceValidationResult;
+export function validateResources(
+  collections: readonly Collection[],
+  options: ValidationOptions,
+  termsByCollection: ReadonlyMap<Collection, ProjectTerms>,
+  scope: ValidationCollectionSet = readCollectionSet(collections, { scope: 'validation' }),
 ): ResourceValidationResult {
-  const skipped = new Set(options.skippedLocales ?? []);
-
   // Initialize result accumulators
   const failures: ResourceValidationDetail[] = [];
   const warnings: ResourceValidationDetail[] = [];
@@ -86,7 +100,7 @@ export function validateResources(
   const icuResults: IcuValidationResult[] = [];
   const placeholderResults: PlaceholderValidationResult[] = [];
   const protectedTermResults: ProtectedTermValidationResult[] = [];
-  const set = readCollectionSet(collections, { allowDifferentBaseLocales: true });
+  const set = scope.read();
   const allResources = set.resources;
   const validatedLocales = new Set<string>();
 
@@ -101,7 +115,7 @@ export function validateResources(
 
   for (const collection of collections) {
     const resources = set.resources.filter((resource) => resource.collection === collection.name);
-    const targetLocales = collection.targetLocales.filter((locale) => !skipped.has(locale));
+    const targetLocales = scope.localesByCollection.get(collection) ?? [];
     for (const locale of targetLocales) validatedLocales.add(locale);
     unreadableFolders.push(
       ...set.readProblems

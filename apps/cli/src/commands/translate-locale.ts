@@ -1,7 +1,7 @@
 import { prepareTranslationRun, type TranslationRunOptions } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, printRunReport } from '../utils';
+import { ConsoleFormatter, reportRun } from '../utils';
 import { TRANSLATE_LOCALE_FLAGS } from './translate-locale-flags';
 
 export interface TranslateLocaleOptions {
@@ -57,7 +57,7 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
       ConsoleFormatter.keyValue('Skipped (needs human translation)', result.skippedCount);
       ConsoleFormatter.keyValue('Failed', result.failedCount);
 
-      return printRunReport({
+      return reportRun({
         warnings: result.warnings,
         errors: result.failures.map((failure) => `${failure.key}: ${failure.error}`),
         outcome: result.outcome,

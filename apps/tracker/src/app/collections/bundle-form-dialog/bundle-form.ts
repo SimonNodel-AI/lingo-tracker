@@ -30,7 +30,8 @@ import { catchError, debounceTime, map, type Observable, of, Subscription, start
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
-import { type FormSubmitEnv, NamedEntrySubmit, type NamedEntryWrite } from '../store/dialog-config-submit';
+import type { FormSubmitEnv, NamedEntryWrite } from '../store/dialog-config-submit';
+import { detailsElseMessage, FormSubmitAttempt } from '../store/form-submit-attempt';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
 
@@ -67,7 +68,7 @@ const TOKEN_SEPARATORS = /(?<=[._])/;
 /** Typed bundle editing and preview state, independent of the dialog DOM. */
 export class BundleForm {
   readonly #changes = new Subscription();
-  readonly #entrySubmit: NamedEntrySubmit<BundleFormResult>;
+  readonly #attempt: FormSubmitAttempt<BundleFormResult>;
   /** True from submit until the server has answered. */
   readonly saving: Signal<boolean>;
   readonly form: FormGroup<{
@@ -94,13 +95,13 @@ export class BundleForm {
   });
 
   readonly activeSection = signal<BundleSection>('output');
-  readonly submitAttempted = signal(false);
+  readonly submitAttempted: Signal<boolean>;
   /**
    * What stopped the last submit: messages from the domain Bundle Definition rules that the
    * control validators did not catch, or the server's refusal (its rule messages, else its
    * one message). Cleared on the next edit.
    */
-  readonly submitErrors = signal<readonly string[]>([]);
+  readonly submitErrors: Signal<readonly string[]>;
 
   readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
   readonly previewStatus = signal<PreviewStatus>('waiting');
@@ -162,8 +163,7 @@ export class BundleForm {
   /** Sections whose fields are invalid and worth flagging in the rail. */
   readonly sectionErrors = computed<ReadonlySet<BundleSection>>(() => {
     this.#formTick();
-    const flag = (control: AbstractControl): boolean =>
-      control.invalid && (control.touched || control.dirty || this.submitAttempted());
+    const flag = (control: AbstractControl): boolean => control.invalid && this.#attempt.reveals(control);
     const errors = new Set<BundleSection>();
     const controls = this.form.controls;
 
@@ -234,7 +234,7 @@ export class BundleForm {
   });
 
   constructor(private readonly options: BundleFormOptions) {
-    this.#entrySubmit = new NamedEntrySubmit({
+    this.#attempt = new FormSubmitAttempt({
       nameControl: () => this.form.controls.name,
       normalizeName: (value) => String(value ?? '').trim(),
       fallbackTokens: {
@@ -242,8 +242,15 @@ export class BundleForm {
         update: TRACKER_TOKENS.BUNDLES.TOAST.UPDATEFAILED,
       },
       env: options.env,
+      entry: options.data,
+      prepare: () => this.submitResult(),
+      refusalMessages: detailsElseMessage,
+      onNameConflict: () => this.activate('output'),
+      reveal: 'touched-dirty-attempted',
     });
-    this.saving = this.#entrySubmit.saving;
+    this.saving = this.#attempt.saving;
+    this.submitAttempted = this.#attempt.attempted;
+    this.submitErrors = this.#attempt.errors;
     this.form = new FormGroup({
       name: new FormControl<string>('', {
         nonNullable: true,
@@ -267,7 +274,7 @@ export class BundleForm {
     this.#changes.add(this.form.events.subscribe(() => this.#formTick.set(Symbol())));
     this.#wireDependentValidation();
     this.#wireDryRun();
-    this.#changes.add(this.form.valueChanges.subscribe(() => this.submitErrors.set([])));
+    this.#changes.add(this.#attempt.clearOnEdit(this.form));
     options.env.destroyRef.onDestroy(() => this.destroy());
   }
 
@@ -384,24 +391,21 @@ export class BundleForm {
   // ───────────────────────────── errors ─────────────────────────────
 
   showError(control: AbstractControl, error?: string): boolean {
-    if (!(control.touched || control.dirty || this.submitAttempted())) return false;
-    return error ? control.hasError(error) : control.invalid;
+    return this.#attempt.showError(control, error);
   }
 
   // ───────────────────────────── submit ─────────────────────────────
 
   /** Validate an attempted submit and reveal the first invalid section. */
   submitResult(): BundleFormResult | undefined {
-    this.submitAttempted.set(true);
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
+    if (!this.#attempt.check(this.form)) {
       const first = this.firstInvalidSection();
       if (first) this.activate(first);
       return undefined;
     }
     const result = this.buildResult();
     const errors = this.#domainErrors(result);
-    this.submitErrors.set(errors);
+    this.#attempt.fail(errors);
     return errors.length > 0 ? undefined : result;
   }
 
@@ -411,20 +415,7 @@ export class BundleForm {
    * Ignored while a write is in flight.
    */
   submit(options: NamedEntryWrite<BundleFormResult>): Promise<void> {
-    return this.#entrySubmit.submit({
-      ...options,
-      entry: this.options.data,
-      prepare: () => this.submitResult(),
-      onRefusal: (refusal) => {
-        if (refusal.kind === 'name-conflict') {
-          this.activate('output');
-          return;
-        }
-        // Server rule messages take precedence over the general refusal message.
-        const details = refusal.details.filter((item): item is string => typeof item === 'string');
-        this.submitErrors.set(details.length > 0 ? details : [refusal.message]);
-      },
-    });
+    return this.#attempt.submit(options);
   }
 
   // ───────────────────────────── private ─────────────────────────────
@@ -495,7 +486,7 @@ export class BundleForm {
       const value = String(control.value ?? '').trim();
       if (!value) return null;
       return (
-        this.#entrySubmit.nameValidator(control) ??
+        this.#attempt.nameValidator(control) ??
         (this.options.bundleNames().includes(value) ? { nameExists: { name: value } } : null)
       );
     };

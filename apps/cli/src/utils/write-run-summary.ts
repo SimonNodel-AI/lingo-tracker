@@ -62,8 +62,3 @@ export function saveRunSummary(
     };
   }
 }
-
-/** Saves a run's summary and announces it at once. */
-export function reportRunSummary(...args: Parameters<typeof saveRunSummary>): void {
-  saveRunSummary(...args).announce();
-}

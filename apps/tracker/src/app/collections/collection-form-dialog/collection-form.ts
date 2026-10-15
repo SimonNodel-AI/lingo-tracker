@@ -3,7 +3,8 @@ import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
 import { Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { type FormSubmitEnv, NamedEntrySubmit, type NamedEntryWrite } from '../store/dialog-config-submit';
+import type { FormSubmitEnv, NamedEntryWrite } from '../store/dialog-config-submit';
+import { FormSubmitAttempt } from '../store/form-submit-attempt';
 import {
   type CollectionDraft,
   type CollectionDraftResult,
@@ -28,12 +29,13 @@ import type { CollectionFormDialogData } from './collection-form-dialog-data';
  * The collection dialog's form model, independent of the dialog DOM. The Collection Draft is the
  * one copy of the collection's values; every edit goes through its rules. The typed form holds
  * only the two text inputs the user types into, and feeds each change into the draft. It supplies
- * validation and refusal rendering to Dialog Config Submit, which owns the attempt.
+ * validation and refusal rendering to its Form Submit Attempt, which owns the attempt.
  */
 export class CollectionForm {
   readonly #changes = new Subscription();
   readonly #draft: WritableSignal<CollectionDraft>;
-  readonly #entrySubmit: NamedEntrySubmit<CollectionDraftResult>;
+  /** Owns the attempted submit: validation, refusal messages and when errors show. */
+  readonly attempt: FormSubmitAttempt<CollectionDraftResult>;
 
   /** True from submit until the server has answered. */
   readonly saving: Signal<boolean>;
@@ -42,7 +44,7 @@ export class CollectionForm {
   readonly addLocaleInput = new FormControl<string>('', { nonNullable: true });
 
   /** Why the server refused the last submit, unless the refusal belongs to the name field. Cleared on the next edit. */
-  readonly submitError = signal<string | null>(null);
+  readonly submitError = computed(() => this.attempt.errors()[0] ?? null);
 
   readonly draft: Signal<CollectionDraft>;
   readonly locales = computed(() => this.#draft().locales);
@@ -81,22 +83,25 @@ export class CollectionForm {
     private readonly data: CollectionFormDialogData,
     private readonly env: FormSubmitEnv,
   ) {
-    this.#entrySubmit = new NamedEntrySubmit({
+    this.attempt = new FormSubmitAttempt({
       nameControl: () => this.form.controls.name,
       fallbackTokens: {
         create: TRACKER_TOKENS.COLLECTIONS.TOAST.CREATEFAILED,
         update: TRACKER_TOKENS.COLLECTIONS.TOAST.UPDATEFAILED,
       },
       env,
+      entry: data,
+      prepare: () => this.prepare(),
+      accepts: (form) => form.valid,
     });
-    this.saving = this.#entrySubmit.saving;
+    this.saving = this.attempt.saving;
     const seed = toCollectionDraft(data);
     this.#draft = signal(seed);
     this.draft = this.#draft.asReadonly();
     this.advancedOpen = signal(seed.tags.length > 0 || seed.protectedTerms.length > 0);
     this.form = new FormGroup({
       name: new FormControl<string>('', {
-        validators: [Validators.required, this.#entrySubmit.nameValidator],
+        validators: [Validators.required, this.attempt.nameValidator],
         nonNullable: true,
       }),
       translationsFolder: new FormControl<string>('', { validators: [Validators.required], nonNullable: true }),
@@ -114,7 +119,7 @@ export class CollectionForm {
     this.#changes.add(
       controls.translationsFolder.valueChanges.subscribe((folder) => this.#draft.update((d) => withFolder(d, folder))),
     );
-    this.#changes.add(this.form.valueChanges.subscribe(() => this.submitError.set(null)));
+    this.#changes.add(this.attempt.clearOnEdit(this.form));
     env.destroyRef.onDestroy(() => this.destroy());
   }
 
@@ -128,7 +133,7 @@ export class CollectionForm {
 
   get showNameError(): boolean {
     const control = this.form.controls.name;
-    return (control.hasError('required') || control.hasError('nameExists')) && control.touched;
+    return (control.hasError('required') || control.hasError('nameExists')) && this.attempt.reveals(control);
   }
 
   /** The server refused the name as taken; the next keystroke on the field clears it. */
@@ -138,7 +143,7 @@ export class CollectionForm {
 
   get showFolderError(): boolean {
     const control = this.form.controls.translationsFolder;
-    return control.hasError('required') && control.touched;
+    return control.hasError('required') && this.attempt.reveals(control);
   }
 
   // ───────────────────────────── locales ─────────────────────────────
@@ -210,9 +215,7 @@ export class CollectionForm {
 
   /** True when the form may be submitted; otherwise marks every field so its error shows. */
   validate(): boolean {
-    if (this.form.valid) return true;
-    this.form.markAllAsTouched();
-    return false;
+    return this.attempt.check(this.form);
   }
 
   /** The locales the original collection had that this edit drops, for the confirmation. */
@@ -229,20 +232,13 @@ export class CollectionForm {
    * the name field; any other refusal on `submitError`. Ignored while a write is in flight.
    */
   submit(options: NamedEntryWrite<CollectionDraftResult>): Promise<void> {
-    return this.#entrySubmit.submit({
-      ...options,
-      entry: this.data,
-      prepare: () => this.prepare(),
-      onRefusal: (refusal) => {
-        if (refusal.kind === 'message') this.submitError.set(refusal.message);
-      },
-    });
+    return this.attempt.submit(options);
   }
 
   private prepare(): CollectionDraftResult | undefined | Promise<CollectionDraftResult | undefined> {
     if (!this.validate()) return undefined;
     const finish = () => {
-      this.submitError.set(null);
+      this.attempt.clear();
       return this.result();
     };
     const removed = this.removedLocales();
@@ -263,6 +259,6 @@ export class CollectionForm {
   /** A change to locales, base locale or read-only: the same edits that retire a stale refusal. */
   #edit(change: (draft: CollectionDraft) => CollectionDraft): void {
     this.#draft.update(change);
-    this.submitError.set(null);
+    this.attempt.clear();
   }
 }

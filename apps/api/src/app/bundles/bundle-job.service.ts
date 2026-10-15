@@ -68,7 +68,7 @@ export class BundleJobService {
             result: mapGenerateBundleResultToJobResult(result),
           });
         } catch (error) {
-          if (prepared.configDeprecation) this.#logger.warn(prepared.configDeprecation);
+          for (const warning of prepared.warnings) this.#logger.warn(warning.message);
           throw error;
         }
       },

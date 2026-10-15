@@ -44,7 +44,7 @@ export function buildGlossary(
   options: BuildGlossaryOptions = {},
 ): BuildGlossaryResult {
   if (collections.length === 0) throw new GlossaryNoCollectionsError();
-  const set = readCollectionSet(collections, { locales: options.locales, includeUnconfiguredLocales: true });
+  const set = readCollectionSet(collections, { scope: 'glossary', locales: options.locales }).read();
   const baseLocale = set.baseLocale;
   if (baseLocale === undefined) throw new GlossaryNoCollectionsError();
   const locales = set.targetLocales;
@@ -57,7 +57,7 @@ export function buildGlossary(
       source: resource.source,
       translations,
       status: resource.status,
-      locales: options.locales ? locales : resource.targetLocales,
+      locales: resource.targetLocales,
     };
   });
   const extractor =

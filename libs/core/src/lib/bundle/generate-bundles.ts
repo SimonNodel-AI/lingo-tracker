@@ -76,7 +76,7 @@ export async function generateBundles(
         name,
         outcome: 'failed',
         error,
-        warnings: prepared.configDeprecation ? [{ origin: 'config', message: prepared.configDeprecation }] : [],
+        warnings: prepared.warnings,
       };
     }
     outcomes.push(outcome);

@@ -41,6 +41,7 @@ const MAX_RESOURCES_TO_DISPLAY = 100;
  *
  * @param result - The validation result containing all validation data
  * @param options - The validation options used (particularly allowTranslated flag)
+ * @param skippedLocales - The resolved scope's skipped locales, for display only
  * @returns Formatted string ready for console output
  *
  * @example
@@ -49,11 +50,15 @@ const MAX_RESOURCES_TO_DISPLAY = 100;
  * console.log(summary);
  * ```
  */
-export function generateValidationSummary(result: ResourceValidationResult, options: ValidationOptions): string {
+export function generateValidationSummary(
+  result: ResourceValidationResult,
+  options: ValidationOptions,
+  skippedLocales: readonly string[] = [],
+): string {
   const sections: string[] = [];
 
   sections.push(buildHeaderSection(result));
-  sections.push(buildStatisticsSection(result, options));
+  sections.push(buildStatisticsSection(result, options, skippedLocales));
   sections.push(buildStatusBreakdownSection(result));
 
   if (result.unreadableFolders && result.unreadableFolders.length > 0) {
@@ -114,7 +119,11 @@ function buildHeaderSection(result: ResourceValidationResult): string {
  * @returns Formatted statistics string
  * @internal
  */
-function buildStatisticsSection(result: ResourceValidationResult, options: ValidationOptions): string {
+function buildStatisticsSection(
+  result: ResourceValidationResult,
+  options: ValidationOptions,
+  skippedLocales: readonly string[],
+): string {
   const lines = [
     '📊 Validation Statistics:',
     '─'.repeat(50),
@@ -123,8 +132,8 @@ function buildStatisticsSection(result: ResourceValidationResult, options: Valid
     `  Locales Validated: ${result.localesValidated}`,
   ];
 
-  if (options.skippedLocales && options.skippedLocales.length > 0) {
-    lines.push(`  Skipped Locales: ${options.skippedLocales.join(', ')} (${options.skippedLocales.length})`);
+  if (skippedLocales.length > 0) {
+    lines.push(`  Skipped Locales: ${skippedLocales.join(', ')} (${skippedLocales.length})`);
   }
 
   lines.push(`  Collections Validated: ${result.collectionsValidated}`);

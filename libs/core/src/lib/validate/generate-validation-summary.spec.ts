@@ -872,15 +872,15 @@ describe('generateValidationSummary', () => {
     };
 
     it('should include skipped locales line when skippedLocales is non-empty', () => {
-      const options: ValidationOptions = { allowTranslated: false, skippedLocales: ['fr', 'de'] };
-      const summary = generateValidationSummary(baseResult, options);
+      const options: ValidationOptions = { allowTranslated: false };
+      const summary = generateValidationSummary(baseResult, options, ['fr', 'de']);
 
       expect(summary).toContain('Skipped Locales: fr, de (2)');
     });
 
     it('should not include skipped locales line when skippedLocales is empty', () => {
-      const options: ValidationOptions = { allowTranslated: false, skippedLocales: [] };
-      const summary = generateValidationSummary(baseResult, options);
+      const options: ValidationOptions = { allowTranslated: false };
+      const summary = generateValidationSummary(baseResult, options, []);
 
       expect(summary).not.toContain('Skipped Locales');
     });
@@ -893,8 +893,8 @@ describe('generateValidationSummary', () => {
     });
 
     it('should place skipped locales between Locales Validated and Collections Validated', () => {
-      const options: ValidationOptions = { allowTranslated: false, skippedLocales: ['fr'] };
-      const summary = generateValidationSummary(baseResult, options);
+      const options: ValidationOptions = { allowTranslated: false };
+      const summary = generateValidationSummary(baseResult, options, ['fr']);
 
       const localesIdx = summary.indexOf('Locales Validated:');
       const skippedIdx = summary.indexOf('Skipped Locales:');

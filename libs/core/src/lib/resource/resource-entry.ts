@@ -1,6 +1,5 @@
 import {
-  checkStoredValue,
-  describeStoredValueFinding,
+  admitValue,
   isUntranslatedCopy,
   needsTranslation,
   normalizeTags,
@@ -247,8 +246,13 @@ function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): Loca
 }
 
 function assertConversionSafe(locale: string, value: string): void {
-  const findings = checkStoredValue(value).filter((finding) => finding.blocksConversion);
-  if (findings.length > 0) throw new BracedPlaceholderError(locale, findings.map(describeStoredValueFinding));
+  const admission = admitValue(undefined, value, { name: 'stored-entry' });
+  if (admission.admitted === false) {
+    throw new BracedPlaceholderError(
+      locale,
+      admission.violations.map((violation) => violation.description),
+    );
+  }
 }
 
 function saveEntry(

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { buildKeyTree } from '@simoncodes-ca/domain';
+import { buildKeyTree, DEFAULT_EXPORT_BASE_PROPERTY_NAME } from '@simoncodes-ca/domain';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import type { ExportOptions, ExportResult, FilteredResource } from './types';
 
@@ -141,7 +141,7 @@ function formatValue(resource: FilteredResource, options: ExportOptions): unknow
     };
 
     if (options.includeBase && resource.baseValue) {
-      richObj[options.basePropertyName ?? 'baseValue'] = resource.baseValue;
+      richObj[options.basePropertyName ?? DEFAULT_EXPORT_BASE_PROPERTY_NAME] = resource.baseValue;
     }
 
     if (options.includeComment && resource.comment) {
