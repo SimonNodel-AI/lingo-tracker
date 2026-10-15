@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
 import type { Observable } from 'rxjs';
 import { apiErrorMessage } from '../../shared/api-error/api-error';
+import type { ConfirmationSpec } from '../../shared/confirm';
 import { type ConfigRefusal, classifyConfigRefusal } from './config-write';
 
 /**
@@ -48,6 +49,16 @@ export interface DialogCloser<TResult> {
 export interface FormSubmitEnv {
   translate: (token: string) => string;
   destroyRef: DestroyRef;
+  confirm: (spec: ConfirmationSpec) => Promise<boolean>;
+}
+
+/** Entity-specific writes and the dialog handle for an attempted submit. */
+export interface NamedEntryWrite<TResult> {
+  dialog: DialogCloser<TResult>;
+  write: {
+    create: (result: TResult) => Observable<unknown>;
+    update: (existingName: string, patch: { name: string | undefined }, result: TResult) => Observable<unknown>;
+  };
 }
 
 interface NamedEntrySubmitConfig {
@@ -59,13 +70,19 @@ interface NamedEntrySubmitConfig {
 }
 
 /** One submit policy for a named collection or bundle. The form keeps its own field rendering. */
-export class NamedEntrySubmit<TResult> {
+export class NamedEntrySubmit<TResult extends { name: string }> {
+  #checking = false;
+  #destroyed = false;
   #serverTakenName: string | undefined;
 
-  /** True from submit until the server has answered. */
+  /** True while the Config Write is in flight; confirmation keeps the original close behavior. */
   readonly saving = signal(false);
 
-  constructor(private readonly config: NamedEntrySubmitConfig) {}
+  constructor(private readonly config: NamedEntrySubmitConfig) {
+    config.env.destroyRef.onDestroy(() => {
+      this.#destroyed = true;
+    });
+  }
 
   private normalizeName(value: unknown): string {
     return this.config.normalizeName?.(value) ?? String(value ?? '');
@@ -76,44 +93,54 @@ export class NamedEntrySubmit<TResult> {
     return value === this.#serverTakenName ? { nameExists: { name: value } } : null;
   };
 
-  submit(options: {
-    dialog: DialogCloser<TResult>;
-    existingName: string | undefined;
-    name: string;
-    create: () => Observable<unknown>;
-    update: (existingName: string, patch: { name: string | undefined }) => Observable<unknown>;
-    result: TResult;
-    onRefusal: (refusal: NamedEntryRefusal) => void;
-  }): void {
-    const write =
-      options.existingName === undefined
-        ? options.create()
-        : options.update(options.existingName, {
-            name: options.name !== options.existingName ? options.name : undefined,
+  async submit(
+    options: NamedEntryWrite<TResult> & {
+      entry: { mode: 'create' | 'edit'; name?: string };
+      prepare: () => TResult | undefined | Promise<TResult | undefined>;
+      onRefusal: (refusal: NamedEntryRefusal) => void;
+    },
+  ): Promise<void> {
+    if (this.saving() || this.#checking || this.#destroyed) return;
+    this.#checking = true;
+    try {
+      const prepared = options.prepare();
+      const result = prepared && 'then' in prepared ? await prepared : prepared;
+      if (!result || this.#destroyed) return;
+      const existingName = options.entry.mode === 'edit' ? options.entry.name : undefined;
+      const write =
+        existingName === undefined
+          ? options.write.create(result)
+          : options.write.update(
+              existingName,
+              { name: result.name !== existingName ? result.name : undefined },
+              result,
+            );
+      submitDialogConfigWrite({
+        dialogRef: options.dialog,
+        write,
+        saving: this.saving,
+        result,
+        destroyRef: this.config.env.destroyRef,
+        onRefusal: (refusal) => {
+          const nameControl = this.config.nameControl();
+          if (refusal.kind === 'conflict' && nameControl.enabled) {
+            this.#serverTakenName = this.normalizeName(result.name);
+            nameControl.updateValueAndValidity();
+            nameControl.markAsTouched();
+            options.onRefusal({ kind: 'name-conflict' });
+            return;
+          }
+          const token =
+            existingName === undefined ? this.config.fallbackTokens.create : this.config.fallbackTokens.update;
+          options.onRefusal({
+            kind: 'message',
+            message: apiErrorMessage(refusal.error, this.config.env.translate(token)),
+            details: refusal.details,
           });
-    submitDialogConfigWrite({
-      dialogRef: options.dialog,
-      write,
-      saving: this.saving,
-      result: options.result,
-      destroyRef: this.config.env.destroyRef,
-      onRefusal: (refusal) => {
-        const nameControl = this.config.nameControl();
-        if (refusal.kind === 'conflict' && nameControl.enabled) {
-          this.#serverTakenName = this.normalizeName(options.name);
-          nameControl.updateValueAndValidity();
-          nameControl.markAsTouched();
-          options.onRefusal({ kind: 'name-conflict' });
-          return;
-        }
-        const token =
-          options.existingName === undefined ? this.config.fallbackTokens.create : this.config.fallbackTokens.update;
-        options.onRefusal({
-          kind: 'message',
-          message: apiErrorMessage(refusal.error, this.config.env.translate(token)),
-          details: refusal.details,
-        });
-      },
-    });
+        },
+      });
+    } finally {
+      this.#checking = false;
+    }
   }
 }

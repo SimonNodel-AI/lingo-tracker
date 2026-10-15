@@ -18,6 +18,7 @@ export function fakeEnv(): FormSubmitEnv & { destroy(): void } {
   return {
     translate: (token) => token,
     destroyRef,
+    confirm: vi.fn(async () => true),
     destroy: () => {
       for (const callback of callbacks.splice(0)) callback();
     },

@@ -30,7 +30,7 @@ import { catchError, debounceTime, map, type Observable, of, Subscription, start
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
-import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
+import { type FormSubmitEnv, NamedEntrySubmit, type NamedEntryWrite } from '../store/dialog-config-submit';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
 
@@ -410,25 +410,11 @@ export class BundleForm {
    * name opens the Output section on the name field; any other refusal lands in `submitErrors`.
    * Ignored while a write is in flight.
    */
-  submit(options: {
-    dialog: DialogCloser<BundleFormResult>;
-    create: (result: BundleFormResult) => Observable<unknown>;
-    update: (
-      existingName: string,
-      patch: { name: string | undefined },
-      result: BundleFormResult,
-    ) => Observable<unknown>;
-  }): void {
-    if (this.saving()) return;
-    const result = this.submitResult();
-    if (!result) return;
-    this.#entrySubmit.submit({
-      dialog: options.dialog,
-      existingName: this.isEditMode ? this.options.data.name : undefined,
-      name: result.name,
-      create: () => options.create(result),
-      update: (name, patch) => options.update(name, patch, result),
-      result,
+  submit(options: NamedEntryWrite<BundleFormResult>): Promise<void> {
+    return this.#entrySubmit.submit({
+      ...options,
+      entry: this.options.data,
+      prepare: () => this.submitResult(),
       onRefusal: (refusal) => {
         if (refusal.kind === 'name-conflict') {
           this.activate('output');

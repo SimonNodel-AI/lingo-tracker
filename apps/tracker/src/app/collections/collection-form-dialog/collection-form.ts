@@ -1,10 +1,9 @@
 import { computed, type Signal, signal, type WritableSignal } from '@angular/core';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { isUnderNodeModules } from '@simoncodes-ca/domain';
-import type { Observable } from 'rxjs';
 import { Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { type DialogCloser, type FormSubmitEnv, NamedEntrySubmit } from '../store/dialog-config-submit';
+import { type FormSubmitEnv, NamedEntrySubmit, type NamedEntryWrite } from '../store/dialog-config-submit';
 import {
   type CollectionDraft,
   type CollectionDraftResult,
@@ -28,8 +27,8 @@ import type { CollectionFormDialogData } from './collection-form-dialog-data';
 /**
  * The collection dialog's form model, independent of the dialog DOM. The Collection Draft is the
  * one copy of the collection's values; every edit goes through its rules. The typed form holds
- * only the two text inputs the user types into, and feeds each change into the draft. It also owns
- * the submit: the `saving` state, the write sequencing, and where a refusal lands.
+ * only the two text inputs the user types into, and feeds each change into the draft. It supplies
+ * validation and refusal rendering to Dialog Config Submit, which owns the attempt.
  */
 export class CollectionForm {
   readonly #changes = new Subscription();
@@ -80,7 +79,7 @@ export class CollectionForm {
 
   constructor(
     private readonly data: CollectionFormDialogData,
-    env: FormSubmitEnv,
+    private readonly env: FormSubmitEnv,
   ) {
     this.#entrySubmit = new NamedEntrySubmit({
       nameControl: () => this.form.controls.name,
@@ -229,29 +228,36 @@ export class CollectionForm {
    * Writes the collection and closes `dialog` with it once the server accepts. A taken name lands on
    * the name field; any other refusal on `submitError`. Ignored while a write is in flight.
    */
-  submit(options: {
-    dialog: DialogCloser<CollectionDraftResult>;
-    create: (result: CollectionDraftResult) => Observable<unknown>;
-    update: (
-      existingName: string,
-      patch: { name: string | undefined },
-      result: CollectionDraftResult,
-    ) => Observable<unknown>;
-  }): void {
-    if (this.saving()) return;
-    const result = this.result();
-    this.submitError.set(null);
-    this.#entrySubmit.submit({
-      dialog: options.dialog,
-      existingName: this.isEditMode ? this.data.name : undefined,
-      name: result.name,
-      create: () => options.create(result),
-      update: (name, patch) => options.update(name, patch, result),
-      result,
+  submit(options: NamedEntryWrite<CollectionDraftResult>): Promise<void> {
+    return this.#entrySubmit.submit({
+      ...options,
+      entry: this.data,
+      prepare: () => this.prepare(),
       onRefusal: (refusal) => {
         if (refusal.kind === 'message') this.submitError.set(refusal.message);
       },
     });
+  }
+
+  private prepare(): CollectionDraftResult | undefined | Promise<CollectionDraftResult | undefined> {
+    if (!this.validate()) return undefined;
+    const finish = () => {
+      this.submitError.set(null);
+      return this.result();
+    };
+    const removed = this.removedLocales();
+    if (removed.length === 0) return finish();
+    return this.env
+      .confirm({
+        title: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE,
+        message: {
+          token: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY,
+          params: { locales: removed.join(', ') },
+        },
+        confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.SAVE,
+        actionType: 'destructive',
+      })
+      .then((confirmed) => (confirmed ? finish() : undefined));
   }
 
   /** A change to locales, base locale or read-only: the same edits that retire a stale refusal. */
