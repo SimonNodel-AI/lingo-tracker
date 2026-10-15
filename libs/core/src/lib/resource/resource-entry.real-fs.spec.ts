@@ -7,7 +7,7 @@ import * as fileIO from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum } from './checksum';
 import { pruneEmptiedFolders } from './folder-pruning';
-import { addEntry, editEntry, removeEntry, translateEntry } from './resource-entry';
+import { addResource, editResource, removeEntry, translateEntry } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
@@ -28,16 +28,15 @@ describe('entry writes (real fs)', () => {
 
   it('adds ICU values, inferred and explicit statuses, details, and the exact saved upsert', async () => {
     const mutations: ResourceMutation[] = [];
-    const result = await addEntry(
+    const result = await addResource(
       collection(),
-      'buttons.ok',
       {
+        key: 'buttons.ok',
         baseValue: 'Hello {{ name }}',
         comment: 'Greeting',
         tags: [' UI ', 'UI'],
         translations: [{ locale: 'fr', value: 'Bonjour {{ name }}', status: 'verified' }],
       },
-      'fail',
       { onMutation: (mutation) => mutations.push(mutation) },
     );
     const stored = folder().treeEntry('ok');
@@ -73,11 +72,11 @@ describe('entry writes (real fs)', () => {
     seed();
     const provider = new InMemoryTranslationProvider();
     const changes = { baseValue: 'Replace' };
-    await expect(addEntry(automatic(), 'buttons.ok', changes, 'fail', { provider })).rejects.toThrow(
+    await expect(addResource(automatic(), { key: 'buttons.ok', ...changes }, { provider })).rejects.toThrow(
       ResourceAlreadyExistsError,
     );
     expect(provider.calls).toEqual([]);
-    const result = await addEntry(collection(), 'buttons.ok', changes, 'replace');
+    const result = await addResource(collection(), { key: 'buttons.ok', ...changes }, { onExisting: 'replace' });
     expect(result.created).toBe(false);
     expect(folder().treeEntry('ok')?.translations).toEqual({ fr: 'Replace', es: 'Replace' });
     expect(folder().keys()).toEqual(['ok', 'keep']);
@@ -87,20 +86,28 @@ describe('entry writes (real fs)', () => {
     const changes = { baseValue: 'OK' };
     const failure = new TranslationError('FAILED', 'provider failed', false);
     await expect(
-      addEntry(automatic(), 'buttons.ok', changes, 'fail', {
-        provider: new InMemoryTranslationProvider(() => {
-          throw failure;
-        }),
-      }),
+      addResource(
+        automatic(),
+        { key: 'buttons.ok', ...changes },
+        {
+          provider: new InMemoryTranslationProvider(() => {
+            throw failure;
+          }),
+        },
+      ),
     ).rejects.toBe(failure);
     expect(existsSync(join(root(), 'buttons'))).toBe(false);
     await expect(
-      addEntry(automatic(), 'buttons.ok', changes, 'fail', {
-        provider: new InMemoryTranslationProvider(() => {
-          seedResources(collection(), { 'buttons.ok': { source: 'Late' } });
-          return 'Translated';
-        }),
-      }),
+      addResource(
+        automatic(),
+        { key: 'buttons.ok', ...changes },
+        {
+          provider: new InMemoryTranslationProvider(() => {
+            seedResources(collection(), { 'buttons.ok': { source: 'Late' } });
+            return 'Translated';
+          }),
+        },
+      ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(folder().get('ok')?.entry.source).toBe('Late');
   });
@@ -111,7 +118,7 @@ describe('entry writes (real fs)', () => {
     const before = files.map((file) => readFileSync(file, 'utf8'));
     const mutations: ResourceMutation[] = [];
     expect(
-      await editEntry(
+      await editResource(
         collection(),
         'buttons.ok',
         { baseValue: 'OK' },
@@ -121,7 +128,6 @@ describe('entry writes (real fs)', () => {
       resolvedKey: 'buttons.ok',
       updated: false,
       message: 'No changes detected',
-      entry: folder().treeEntry('ok'),
     });
     expect(files.map((file) => readFileSync(file, 'utf8'))).toEqual(before);
     expect(mutations).toEqual([]);
@@ -129,7 +135,7 @@ describe('entry writes (real fs)', () => {
 
   it('applies staleness, seeds copies, and changes an unchanged translation status', async () => {
     seed();
-    const result = await editEntry(collection(), 'buttons.ok', {
+    const result = await editResource(collection(), 'buttons.ok', {
       baseValue: 'Save',
       translations: { es: { value: 'Aceptar', status: 'verified' } },
     });
@@ -145,7 +151,7 @@ describe('entry writes (real fs)', () => {
     const mutations: ResourceMutation[] = [];
     const failure = new TranslationError('FAILED', 'provider failed', false);
     await expect(
-      editEntry(
+      editResource(
         automatic(),
         'buttons.ok',
         { baseValue: 'Save' },
@@ -166,7 +172,7 @@ describe('entry writes (real fs)', () => {
   it('keeps concurrent target edits and siblings while reporting ordered skips and fresh mutations', async () => {
     seed();
     const mutations: ResourceMutation[] = [];
-    const result = await editEntry(
+    const result = await editResource(
       automatic(),
       'buttons.ok',
       { baseValue: 'Save' },
@@ -207,14 +213,14 @@ describe('entry writes (real fs)', () => {
     });
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr']);
-    expect(result.entry.source).toBe('Concurrent');
+    expect(result.entry?.source).toBe('Concurrent');
     expect(result.entry).toEqual(folder().treeEntry('ok'));
   });
 
   it('does not resurrect an entry deleted during translation', async () => {
     seed();
     await expect(
-      editEntry(
+      editResource(
         automatic(),
         'buttons.ok',
         { baseValue: 'Save' },
@@ -276,7 +282,7 @@ describe('entry writes (real fs)', () => {
   it('moves a saved edit and prunes after remove/upsert mutations', async () => {
     seedResources(collection(), { 'nested.child.ok': { source: 'OK' } });
     const mutations: ResourceMutation[] = [];
-    const result = await editEntry(
+    const result = await editResource(
       testCollection(root(), { onMutation: (mutation) => mutations.push(mutation) }),
       'nested.child.ok',
       { comment: 'Context', moveTo: 'shared' },
@@ -292,7 +298,10 @@ describe('entry writes (real fs)', () => {
       collection().termFiles.preferredTerminology.path,
       JSON.stringify([{ discouraged: 'Expenditure', preferred: 'Investment', reason: 'Finance style guide' }]),
     );
-    const result = await editEntry(collection(), 'buttons.ok', { baseValue: 'Capital expenditure', moveTo: 'budget' });
+    const result = await editResource(collection(), 'buttons.ok', {
+      baseValue: 'Capital expenditure',
+      moveTo: 'budget',
+    });
     expect(result.terminology).toEqual({
       findings: [
         {
@@ -305,7 +314,7 @@ describe('entry writes (real fs)', () => {
       ],
       problems: [],
     });
-    expect(result.entry.source).toBe('Capital expenditure');
+    expect(result.entry?.source).toBe('Capital expenditure');
   });
   it('skips a target edited during translation and returns its fresh value with unchanged siblings', async () => {
     seed();

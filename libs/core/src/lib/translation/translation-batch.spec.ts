@@ -3,16 +3,15 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { writeJsonFile } from '../file-io/json-file-operations';
 import type { Collection } from '../config/open-collection';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
-import { editResource } from '../resource/edit-resource';
-import { translateExistingResource } from './translate-existing-resource';
-import { prepareTranslationRun } from './translation-run';
 import { readCollection } from '../resource/read-collection';
+import { editResource } from '../resource/resource-entry';
 import { openResourceFolder } from '../resource/resource-folder';
 import { type MutationSinkOptions, resolveMutationSink } from '../resource/resource-mutation';
-import { executeTranslationRun, selectTranslationRow } from './translation-run';
+import { translateExistingResource } from './translate-existing-resource';
+import { executeTranslationRun, prepareTranslationRun, selectTranslationRow } from './translation-run';
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();

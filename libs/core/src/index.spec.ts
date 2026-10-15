@@ -70,6 +70,7 @@ function consumedNames(source: string, library: string): Set<string> {
 
 // Each exception records why the name belongs to the public interface.
 const CONTRACT_EXPORTS = {
+  InvalidBaseValueError: 'Callers of addResource, addResources and editResource can identify invalid base values.',
   TranslationError: 'Implementers of the public TranslationProvider interface must throw this error.',
 } as const;
 const APP_SPEC_SETUP_EXPORTS = {

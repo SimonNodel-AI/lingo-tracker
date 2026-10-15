@@ -1,11 +1,11 @@
-import { type ImportResult, type ImportRunOptions, type RunOutcome, runImport } from '@simoncodes-ca/core';
+import { type ImportResult, type ImportRunOptions, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { cliErrorWording } from '../runner/cli-error-wording';
-import { withoutFlagPrompts } from '../runner/flag-record';
+import { flagAdvisories, withoutFlagPrompts } from '../runner/flag-record';
 import { CommandOutput } from '../runner/command-output';
-import { type CommandResult, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, reportRun, RunTiming } from '../utils';
 import { IMPORT_FLAGS } from './import-cmd-flags';
 import { type ImportCommandOptions, importQuestions, resolveImportOptions } from './import-options';
 
@@ -22,8 +22,10 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       sourceExists: (source) => fs.existsSync(path.resolve(cwd, source)),
     }),
   required: ['source', 'locale'],
-  run: async ({ cwd, collection, answers, summaryDirectory }) => {
+  run: async ({ cwd, collection, answers, summaryDirectory, now }) => {
     const options = resolveImportOptions(answers);
+    for (const message of flagAdvisories<ImportCommandOptions>(IMPORT_FLAGS, answers))
+      ConsoleFormatter.warning(message);
     const { source, locale } = answers;
     const runOptions: ImportRunOptions = {
       ...options,
@@ -31,7 +33,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
       onProgress: options.verbose ? (msg: string) => CommandOutput.log(`  ${msg}`) : undefined,
     };
 
-    let startTime = 0;
+    const timing = new RunTiming(now, Boolean(runOptions.verbose));
     let run: Awaited<ReturnType<typeof runImport>>;
     try {
       run = await runImport(collection, {
@@ -51,8 +53,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
           ConsoleFormatter.indent(`Collection: ${collection.name}`);
           if (runOptions.dryRun) ConsoleFormatter.indent('Mode: DRY RUN (no changes will be made)');
           CommandOutput.log('');
-          startTime = runOptions.verbose ? Date.now() : 0;
-          if (runOptions.verbose) CommandOutput.log(`Started at: ${new Date(startTime).toLocaleTimeString()}`);
+          timing.start();
         },
       });
     } catch (error) {
@@ -65,28 +66,21 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     const { result } = run;
 
     // Log elapsed time in verbose mode
-    if (runOptions.verbose) {
-      const endTime = Date.now();
-      const elapsedMilliseconds = endTime - startTime;
-      const elapsedSeconds = (elapsedMilliseconds / 1000).toFixed(2);
-      CommandOutput.log(`\nCompleted at: ${new Date(endTime).toLocaleTimeString()}`);
-      CommandOutput.log(`Elapsed time: ${elapsedSeconds}s (${elapsedMilliseconds}ms)`);
-    }
+    timing.complete();
 
-    const dryRun = Boolean(runOptions.dryRun);
-    const summary = saveRunSummary('import', run.summary, { dryRun, directory: summaryDirectory });
-    const exit = displayResults(run.outcome, result, runOptions, summary.path);
-    summary.announce();
-    return exit;
+    return reportRun({
+      summary: { kind: 'import', text: run.summary, directory: summaryDirectory },
+      printBody: () => displayResults(result, runOptions),
+      printCompletion: () => displayCompletion(result, runOptions),
+      warnings: result.warnings,
+      errors: result.errors,
+      outcome: run.outcome,
+      dryRun: Boolean(runOptions.dryRun),
+    });
   },
 });
 
-function displayResults(
-  outcome: RunOutcome,
-  result: ImportResult,
-  options: ImportRunOptions,
-  summaryPath: string | undefined,
-): CommandResult {
+function displayResults(result: ImportResult, options: ImportRunOptions): void {
   ConsoleFormatter.section('Import Results');
 
   if (options.dryRun) {
@@ -126,15 +120,9 @@ function displayResults(
       });
     }
   }
+}
 
-  const exit = printRunReport({
-    warnings: result.warnings,
-    errors: result.errors,
-    outcome,
-    dryRun: options.dryRun,
-    summaryPath,
-  });
-
+function displayCompletion(result: ImportResult, options: ImportRunOptions): void {
   CommandOutput.log('─'.repeat(50));
 
   // Summary message
@@ -148,5 +136,4 @@ function displayResults(
   } else {
     ConsoleFormatter.success('Import completed successfully!');
   }
-  return exit;
 }

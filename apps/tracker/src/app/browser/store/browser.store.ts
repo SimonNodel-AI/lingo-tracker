@@ -1,6 +1,6 @@
 import { computed } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods } from '@ngrx/signals';
-import { withCollectionResetRegistry, withCollectionState } from './collection-reset';
+import { withCollectionLifecycle, withCollectionState } from './collection-reset';
 import { withBrowserMirrorFeature } from './features/with-browser-mirror.feature';
 import { withBrowserSessionFeature } from './features/with-browser-session.feature';
 import { withCacheStatusFeature } from './features/with-cache-status.feature';
@@ -16,7 +16,7 @@ import { initialRootState } from './root-state';
 
 export const BrowserStore = signalStore(
   { providedIn: 'root' },
-  withCollectionResetRegistry(),
+  withCollectionLifecycle(),
   withCollectionState(initialRootState),
   withListScopeFeature(),
   withFilterFeature(),

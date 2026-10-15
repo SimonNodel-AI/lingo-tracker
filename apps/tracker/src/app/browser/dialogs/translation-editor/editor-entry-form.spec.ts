@@ -54,6 +54,17 @@ describe('EditorEntryForm', () => {
     expect(value.valid).toBe(true);
   });
 
+  it('should report the required error for a blank base value and accept a real one', () => {
+    const baseValue = form.form.controls.baseValue;
+
+    baseValue.setValue('   ');
+    expect(baseValue.invalid).toBe(true);
+    expect(baseValue.hasError('required')).toBe(true);
+
+    baseValue.setValue('OK');
+    expect(baseValue.valid).toBe(true);
+  });
+
   it('should accept any comment value', () => {
     form.form.controls.comment.setValue('This is a comment for translators');
     expect(form.form.controls.comment.valid).toBe(true);

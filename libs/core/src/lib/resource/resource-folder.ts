@@ -3,9 +3,12 @@ import { join } from 'node:path';
 import {
   applyBaseChange,
   checkStoredValue,
-  isUntranslatedCopy,
+  type ImportStrategy,
+  importStrategyPolicy,
+  type LocaleMetadata,
   normalizeTags,
   recordTranslation,
+  resolveImportStatus,
   type TranslationStatus,
   translocoToICU,
 } from '@simoncodes-ca/domain';
@@ -67,15 +70,20 @@ export interface ResourceFolder {
   setTranslation(key: string, locale: string, value: string, status?: TranslationStatus): void;
   /**
    * Changes the status of a locale that already has metadata. The value and its checksum are kept.
-   * With `refreshBaseChecksum`, the locale's `baseChecksum` is also set to the current base checksum
-   * (the translation is re-confirmed against the current base).
+   * The base checksum reference is kept; use `reconfirmTranslation` to refresh it under strategy policy.
    */
-  setStatus(
+  setStatus(key: string, locale: string, status: TranslationStatus): void;
+  /**
+   * Re-confirms an unchanged translation under the import strategy policy.
+   * `incomingStatus` is already filtered by the caller's source-status preservation policy.
+   * Reports the resolved status and whether metadata changed; update leaves metadata untouched.
+   */
+  reconfirmTranslation(
     key: string,
     locale: string,
-    status: TranslationStatus,
-    options?: { readonly refreshBaseChecksum?: boolean },
-  ): void;
+    strategy: ImportStrategy,
+    incomingStatus?: TranslationStatus,
+  ): { readonly status: TranslationStatus; readonly changed: boolean };
   /**
    * Stores an entry and its metadata, normalizing locale values to ICU (move, rename, add-resource reset).
    * With `targetLocales` (an entry moved into another collection), the entry is fitted to them: values
@@ -201,6 +209,33 @@ function hasOwn(target: object, key: string): boolean {
   return Object.getOwnPropertyDescriptor(target, key) !== undefined;
 }
 
+/** Locale Freshness: compare a locale's reference with an explicitly resolved base checksum. */
+function hasBaseDrift(meta: LocaleMetadata | undefined, baseChecksum: string): boolean {
+  return meta?.baseChecksum !== baseChecksum;
+}
+
+function normalizedLocaleStatus(
+  baseLocale: string,
+  locale: string,
+  checksum: string,
+  baseChecksum: string,
+  previous: LocaleMetadata | undefined,
+): TranslationStatus {
+  const status = previous?.status ?? 'new';
+  if (status === 'new' || previous?.baseChecksum === undefined || !hasBaseDrift(previous, baseChecksum)) return status;
+  // Use the same status rule as a base edit, with the translation's current checksum.
+  return applyBaseChange({ [locale]: { checksum } }, baseLocale, baseChecksum)[locale]?.status ?? status;
+}
+
+function rebaseConvertedLocale(
+  meta: LocaleMetadata | undefined,
+  previousBaseChecksum: string,
+  currentBaseChecksum: string,
+): void {
+  // Syntax conversion preserves status, and only rebases references to the original value.
+  if (meta && !hasBaseDrift(meta, previousBaseChecksum)) meta.baseChecksum = currentBaseChecksum;
+}
+
 class FileResourceFolder implements ResourceFolder {
   private readonly entriesPath: string;
   private readonly metaPath: string;
@@ -324,7 +359,13 @@ class FileResourceFolder implements ResourceFolder {
     this.setTranslationICU(key, locale, translocoToICU(value), status);
   }
 
-  private setTranslationICU(key: string, locale: string, value: string, status?: TranslationStatus): void {
+  private setTranslationICU(
+    key: string,
+    locale: string,
+    value: string,
+    status?: TranslationStatus,
+    baseChecksum?: string,
+  ): void {
     if (status !== undefined) assertTranslationStatus(status);
     if (locale === this.baseLocale) {
       throw new Error(`Cannot set a translation for the base locale "${locale}"; use setBase`);
@@ -333,16 +374,16 @@ class FileResourceFolder implements ResourceFolder {
     entry[locale] = value;
 
     const entryMeta = this.metaOf(key);
-    const baseChecksum = entryMeta[this.baseLocale]?.checksum ?? calculateChecksum(entry.source);
-    this.meta[key] = recordTranslation(entryMeta, locale, calculateChecksum(value), baseChecksum, status);
+    this.meta[key] = recordTranslation(
+      entryMeta,
+      locale,
+      calculateChecksum(value),
+      baseChecksum ?? this.currentBaseChecksum(key),
+      status,
+    );
   }
 
-  setStatus(
-    key: string,
-    locale: string,
-    status: TranslationStatus,
-    options: { readonly refreshBaseChecksum?: boolean } = {},
-  ): void {
+  setStatus(key: string, locale: string, status: TranslationStatus): void {
     assertTranslationStatus(status);
     const entryMeta = this.metaOf(key);
     const localeMeta = entryMeta[locale];
@@ -350,10 +391,39 @@ class FileResourceFolder implements ResourceFolder {
       throw new Error(`No metadata for locale "${locale}" of resource "${key}"`);
     }
     localeMeta.status = status;
-    if (options.refreshBaseChecksum) {
-      localeMeta.baseChecksum =
-        entryMeta[this.baseLocale]?.checksum ?? calculateChecksum(this.requireEntry(key).source);
+  }
+
+  reconfirmTranslation(
+    key: string,
+    locale: string,
+    strategy: ImportStrategy,
+    incomingStatus?: TranslationStatus,
+  ): { readonly status: TranslationStatus; readonly changed: boolean } {
+    const entry = this.requireEntry(key);
+    const previous = this.metaOf(key)[locale];
+    const oldStatus = previous?.status;
+    const policy = importStrategyPolicy(strategy);
+    if (policy.statusOnUnchanged === 'untouched') return { status: oldStatus ?? 'translated', changed: false };
+
+    const baseChecksum = policy.reconfirmsUnchanged ? this.currentBaseChecksum(key) : undefined;
+    const baseChecksumChanged = baseChecksum !== undefined && hasBaseDrift(previous, baseChecksum);
+    const status = resolveImportStatus({
+      strategy,
+      oldStatus,
+      incomingStatus,
+      valueChanged: false,
+      baseChecksumChanged,
+    });
+    const changed = status !== oldStatus || baseChecksumChanged;
+    if (changed) {
+      if (previous) {
+        this.setStatus(key, locale, status);
+        if (baseChecksum !== undefined) previous.baseChecksum = baseChecksum;
+      } else {
+        this.setTranslationICU(key, locale, translocoToICU(entry[locale] as string), status, baseChecksum);
+      }
     }
+    return { status, changed };
   }
 
   setEntry(
@@ -375,11 +445,12 @@ class FileResourceFolder implements ResourceFolder {
     if (normalizedBase !== entry.source) {
       stored.source = normalizedBase;
       const baseMeta = storedMeta[this.baseLocale];
-      if (baseMeta) baseMeta.checksum = calculateChecksum(normalizedBase);
-      const oldChecksum = calculateChecksum(entry.source);
+      const previousBaseChecksum = calculateChecksum(entry.source);
+      const currentBaseChecksum = calculateChecksum(normalizedBase);
+      if (baseMeta) baseMeta.checksum = currentBaseChecksum;
       for (const locale of translationLocales(stored)) {
         const localeMeta = storedMeta[locale];
-        if (localeMeta?.baseChecksum === oldChecksum) localeMeta.baseChecksum = calculateChecksum(normalizedBase);
+        rebaseConvertedLocale(localeMeta, previousBaseChecksum, currentBaseChecksum);
       }
     }
     for (const locale of translationLocales(stored)) {
@@ -429,7 +500,7 @@ class FileResourceFolder implements ResourceFolder {
         tagsNormalized = 1;
       }
     }
-    const baseChecksum = previousMeta[this.baseLocale]?.checksum ?? calculateChecksum(entry.source);
+    const baseChecksum = this.currentBaseChecksum(key, entry.source);
 
     if (this.baseLocale !== 'source') delete entry[this.baseLocale];
     this.entries[key] = entry;
@@ -439,11 +510,12 @@ class FileResourceFolder implements ResourceFolder {
       if (!targetLocales.includes(locale)) continue;
       const value = entry[locale] as string;
       const previous = previousMeta[locale];
-      const status = previous?.status ?? 'new';
-      const madeFromOlderBase =
-        status !== 'new' && previous?.baseChecksum !== undefined && previous.baseChecksum !== baseChecksum;
-      const driftedStatus = isUntranslatedCopy(calculateChecksum(value), baseChecksum) ? 'new' : 'stale';
-      this.setTranslationICU(key, locale, value, madeFromOlderBase ? driftedStatus : status);
+      this.setTranslationICU(
+        key,
+        locale,
+        value,
+        normalizedLocaleStatus(this.baseLocale, locale, calculateChecksum(value), baseChecksum, previous),
+      );
     }
     this.setBaseICU(key, entry.source);
     for (const locale of translationLocales(entry)) {
@@ -532,6 +604,10 @@ class FileResourceFolder implements ResourceFolder {
 
     this.setTranslationICU(key, locale, normalizedBase ?? convertStored(entry.source), 'new');
     return true;
+  }
+
+  private currentBaseChecksum(key: string, source?: string): string {
+    return this.metaOf(key)[this.baseLocale]?.checksum ?? calculateChecksum(source ?? this.requireEntry(key).source);
   }
 
   private metaOf(key: string): ResourceEntryMetadata {

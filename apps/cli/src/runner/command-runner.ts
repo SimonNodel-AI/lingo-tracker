@@ -56,6 +56,8 @@ export interface CommandStdin {
 }
 
 interface BaseContext {
+  /** Wall-clock milliseconds, injectable for verbose run timing. */
+  readonly now: () => number;
   /** Optional directory for CLI-owned run summaries; production uses the system temp directory. */
   readonly summaryDirectory?: string;
   /** The explicit project root; production uses `INIT_CWD` (set by pnpm), else `process.cwd()`. */
@@ -111,7 +113,10 @@ export type CommandContext<
   Need extends CollectionNeed,
   WithConfig extends boolean = true,
   Required extends keyof Options = never,
+  Prepared = void,
 > = PromptContext<Need, WithConfig> & {
+  /** The value returned by this invocation's preflight, before prompts. */
+  readonly preflight: Prepared;
   readonly answers: CheckedAnswers<Options, Required>;
   readonly selections: Partial<Record<keyof Options, Selection>>;
 } & SelectionResources<Need>;
@@ -121,6 +126,7 @@ export interface CommandSpec<
   Need extends CollectionNeed,
   WithConfig extends boolean,
   Required extends keyof Options & string = never,
+  Prepared = void,
 > {
   /** Operation name for messages: `❌ <name> cancelled.` */
   readonly name: string;
@@ -145,9 +151,10 @@ export interface CommandSpec<
   readonly config?: WithConfig;
   /**
    * Checks command preconditions after resources open and before questions are built,
-   * in both modes. Throw to fail through the runner's normal error reporting.
+   * in both modes. Returns the value passed to `run` as `preflight`.
+   * Throw to fail through the runner's normal error reporting.
    */
-  readonly preflight?: (ctx: PreflightContext<Options, Need, WithConfig>) => void | Promise<void>;
+  readonly preflight?: (ctx: PreflightContext<Options, Need, WithConfig>) => Prepared | Promise<Prepared>;
   /**
    * Questions for missing values. Called in both modes, after `preflight` and before
    * `required` is checked. Existing builders may throw to fail early (for example
@@ -170,7 +177,7 @@ export interface CommandSpec<
   readonly formatError?: (error: unknown, duringRun: boolean) => string | undefined;
   /** The core call(s) and the output. Throw to fail with `❌ <message>`. */
   readonly run: (
-    ctx: CommandContext<Options, Need, WithConfig, Required>,
+    ctx: CommandContext<Options, Need, WithConfig, Required, Prepared>,
   ) => Promise<CommandResult> | Promise<void> | CommandResult | void;
 }
 
@@ -206,6 +213,7 @@ function getCwd(): string {
 
 /** Explicit execution environment; omitted prompts cannot read the terminal. */
 export interface CommandEnvironment {
+  readonly now?: () => number;
   readonly cwd: string;
   readonly interactive?: boolean;
   readonly ask?: Ask;
@@ -274,8 +282,9 @@ export function defineCommand<Options extends object>() {
     const Need extends CollectionNeed,
     const WithConfig extends ConfigFlag<Need> = true,
     const Required extends keyof Options & string = never,
+    Prepared = void,
   >(
-    spec: CommandSpec<Options, Need, WithConfig, Required>,
+    spec: CommandSpec<Options, Need, WithConfig, Required, Prepared>,
   ): DefinedCommand<Options> => {
     const command = async (options: Options): Promise<void> => {
       // With no capture scope, the output port uses the real console/streams.
@@ -296,8 +305,9 @@ async function execute<
   Need extends CollectionNeed,
   WithConfig extends boolean,
   Required extends keyof Options & string,
+  Prepared,
 >(
-  spec: CommandSpec<Options, Need, WithConfig, Required>,
+  spec: CommandSpec<Options, Need, WithConfig, Required, Prepared>,
   options: Options,
   environment: CommandEnvironment,
 ): Promise<0 | 1> {
@@ -343,6 +353,7 @@ async function execute<
 
     // `resources` holds exactly what Need and WithConfig promise; the type cannot follow the branches above.
     const promptContext = {
+      now: environment.now ?? Date.now,
       cwd,
       interactive,
       ask,
@@ -354,7 +365,7 @@ async function execute<
       ...resources,
     } as PromptContext<Need, WithConfig>;
 
-    await spec.preflight?.({ ...promptContext, options });
+    const preflight = await spec.preflight?.({ ...promptContext, options });
     const questions = [
       ...(spec.flags ? flagQuestions(spec.flags, options, promptContext) : []),
       ...(spec.prompts ? await spec.prompts(options, promptContext) : []),
@@ -403,6 +414,8 @@ async function execute<
     const result = await spec.run({
       ...promptContext,
       ...resources,
+      // An omitted preflight uses the default void result type.
+      preflight: preflight as Prepared,
       answers,
       selections: resolved.selections,
       ...selectionResources,

@@ -1,10 +1,10 @@
 import type { Collection } from '../config/open-collection';
 import { InvalidCollectionFolderError, InvalidResourceKeyError } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from './collection-folders';
-import { openFolders } from './folder-batch';
 import { pruneEmptiedFolders } from './folder-pruning';
 import type { MovePlan } from './move-plan';
-import type { ResourceFolder, ResourceFolderEntry } from './resource-folder';
+import { resolveResolvedResourcePaths } from './resource-file-paths';
+import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
 import { resolveCheckedResourceKey } from './resource-key';
 import {
   type MutationSinkOptions,
@@ -45,8 +45,8 @@ export interface Relocation {
 }
 
 export interface RelocateEntriesOptions extends MutationSinkOptions {
-  /** A containing move batch collects these paths and prunes once after all selections. */
-  readonly emptiedFolders?: Set<string>;
+  /** Return saved empty folders for the containing Move Run to prune after all selections. */
+  readonly deferPruning?: boolean;
   /** Replace an entry that holds a destination key. Default: false (the relocation is a collision). */
   readonly override?: boolean;
 }
@@ -60,6 +60,8 @@ export interface RelocatedEntry {
 
 export interface RelocationResult {
   readonly warnings?: string[];
+  /** Saved empty folders returned to a containing Move Run for operation-end pruning. */
+  readonly emptiedFolders?: readonly string[];
   /** The relocations done, in the order they were given. */
   readonly moved: RelocatedEntry[];
   /** The relocations not done because the destination key is taken. */
@@ -82,11 +84,35 @@ interface Planned {
   readonly stored: ResourceFolderEntry;
 }
 
+/** Internal interruption data; Move Run restores the original thrown value after cleanup. */
+export class InterruptedRelocation extends Error {
+  constructor(
+    readonly original: unknown,
+    readonly emptiedFolders: readonly string[],
+  ) {
+    super('Entry relocation interrupted');
+  }
+}
+
 /**
  * Moves entries from `source` to `destination` (the same collection, or another) by the rules above.
  * Never throws for one relocation; failures are reported in the result.
  */
 export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOptions = {}): RelocationResult {
+  const emptiedFolders: string[] = [];
+  try {
+    return performRelocation(movePlan, options, emptiedFolders);
+  } catch (error) {
+    if (options.deferPruning) throw new InterruptedRelocation(error, emptiedFolders);
+    throw error;
+  }
+}
+
+function performRelocation(
+  movePlan: MovePlan,
+  options: RelocateEntriesOptions,
+  emptiedFolders: string[],
+): RelocationResult {
   const override = options.override ?? false;
   const { source, destination, relocations, sameCollection } = movePlan;
   const errors: string[] = [];
@@ -155,9 +181,8 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
     to.folder.setEntry(to.entryKey, stored.entry, stored.meta ?? {}, fit);
   }
 
-  const emptiedFolders = options.emptiedFolders ?? new Set<string>();
   const pruneWarnings = (): string[] =>
-    options.emptiedFolders
+    options.deferPruning
       ? []
       : pruneEmptiedFolders(source, emptiedFolders, { onMutation: resolveMutationSink(source, options) }).problems.map(
           (problem) => describeFolderProblem(problem),
@@ -167,7 +192,7 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
   try {
     for (const folder of saveOrder(pending)) {
       const saved = folder.save();
-      if (saved.emptied) emptiedFolders.add(folder.folderPath);
+      if (saved.emptied) emptiedFolders.push(folder.folderPath);
     }
   } catch (error) {
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
@@ -175,7 +200,13 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
     resolveMutationSink(destination, options)?.(reindexMutation(destination.translationsFolder));
     if (!sameCollection) resolveMutationSink(source, options)?.(reindexMutation(source.translationsFolder));
     const warnings = pruneWarnings();
-    return { moved: [], collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
+    return {
+      moved: [],
+      collisions,
+      errors,
+      ...(options.deferPruning ? { emptiedFolders } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
+    };
   }
 
   const moved: RelocatedEntry[] = [];
@@ -188,7 +219,13 @@ export function relocateEntries(movePlan: MovePlan, options: RelocateEntriesOpti
   for (const { to, entry } of moved)
     resolveMutationSink(destination, options)?.(upsertMutation(destination.translationsFolder, to, entry));
   const warnings = pruneWarnings();
-  return { moved, collisions, errors, ...(warnings.length > 0 ? { warnings } : {}) };
+  return {
+    moved,
+    collisions,
+    errors,
+    ...(options.deferPruning ? { emptiedFolders } : {}),
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
 }
 
 /**
@@ -259,4 +296,29 @@ function plan(
   }
 
   return { relocation, from: fromSlot, to: toSlot, stored };
+}
+
+export interface FolderEntryAddress {
+  readonly folder: ResourceFolder;
+  readonly entryKey: string;
+  readonly folderPath: string;
+}
+
+/** A lazy open-once cache for one synchronous batch. Do not retain it across an await. */
+export function openFolders(collection: Collection): { entryAt(key: string): FolderEntryAddress } {
+  const folders = new Map<string, ResourceFolder>();
+  return {
+    entryAt(key) {
+      const { folderPath, entryKey } = resolveResolvedResourcePaths({
+        key,
+        translationsFolder: collection.translationsFolder,
+      });
+      let folder = folders.get(folderPath);
+      if (!folder) {
+        folder = openResourceFolder(folderPath, collection);
+        folders.set(folderPath, folder);
+      }
+      return { folder, entryKey, folderPath };
+    },
+  };
 }

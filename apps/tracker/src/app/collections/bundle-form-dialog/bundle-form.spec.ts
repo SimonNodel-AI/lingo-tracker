@@ -601,7 +601,7 @@ describe('BundleForm — submit', () => {
     const dialog = fakeDialog<BundleFormResult>();
     const create = vi.fn((_result: BundleFormResult) => of(null));
     const update = vi.fn((_name: string, _patch: { name: string | undefined }, _result: BundleFormResult) => of(null));
-    const submit = () => form.submit({ dialog, create, update });
+    const submit = () => form.submit({ dialog, write: { create, update } });
     return { env, form, dialog, create, update, submit };
   };
   const editData: BundleFormDialogData = { mode: 'edit', name: 'admin', bundle: definition };
@@ -617,6 +617,14 @@ describe('BundleForm — submit', () => {
 
     write.next(null);
     expect(dialog.close).toHaveBeenCalledWith(expect.objectContaining({ name: 'admin' }));
+  });
+
+  it('builds the validated submit result exactly once', async () => {
+    const { form, create, submit } = setup();
+    const buildResult = vi.spyOn(form, 'buildResult');
+    await submit();
+    expect(buildResult).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledWith(buildResult.mock.results[0]?.value);
   });
 
   it('does not write while the form is invalid', () => {

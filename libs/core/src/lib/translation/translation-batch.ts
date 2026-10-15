@@ -1,6 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import type { TranslationOutcome, Translator } from '../machine-translation/translator';
-import { groupByFolder } from '../resource/folder-batch';
+import { groupByFolder } from '../resource/folder-grouping';
 import { type MutationSink, upsertMutation } from '../resource/resource-mutation';
 import type { TranslationRunOutcome, TranslationRunRow } from './translation-run';
 import { writeBackTranslations } from './translation-write-back';

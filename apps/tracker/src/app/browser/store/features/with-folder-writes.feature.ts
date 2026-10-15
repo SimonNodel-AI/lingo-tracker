@@ -5,7 +5,7 @@ import { defer, finalize, type Observable, of, tap } from 'rxjs';
 import { createRestartableDelay } from '../../../shared/timed-transients';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { BeginMirrorMove, BrowserWriteResult, MirrorRollback } from '../browser-mirror';
-import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
 import {
   cancelFolderDraft,
   dismissFolderDraftError,
@@ -63,7 +63,7 @@ export type {
 export function withFolderWritesFeature<_>() {
   return signalStoreFeature(
     {
-      props: type<CollectionResetRegistry>(),
+      props: type<CollectionLifecycleRegistry>(),
       state: type<{
         sessionId: number;
         selectedCollection: string | null;
@@ -82,7 +82,7 @@ export function withFolderWritesFeature<_>() {
     withMethods((store) => {
       const api = inject(BrowserApiService);
       const newlyCreatedDelay = createRestartableDelay(3000);
-      store._collectionResets.push({ keys: [], reset: () => newlyCreatedDelay.cancel() });
+      store._collectionLifecycle.register('reset', () => newlyCreatedDelay.cancel());
       inject(DestroyRef).onDestroy(() => newlyCreatedDelay.destroy());
 
       function moving<T>(request: Observable<T>, inSession: () => boolean): Observable<T> {

@@ -1,6 +1,6 @@
 import { DEFAULT_CONFIG, type ExportFormat, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import type prompts from 'prompts';
-import { flagName } from '../runner/flag-record';
+import { flagAdvisories } from '../runner/flag-record';
 import { type ExplicitEmptyList, type Selection, selectionNames, selectionPrompt } from '../utils';
 import { EXPORT_FLAGS, type ExportAnswers, type ExportPromptContext, resolveExportFlags } from './export-cmd-flags';
 import { flagQuestions } from '../runner/flag-record';
@@ -46,10 +46,7 @@ export function resolveExportOptions(
     status: selections.status?.kind === 'some' ? selections.status.names : values.status,
   };
   const options = resolveExportFlags(values);
-  const advisories =
-    options.basePropertyName && !options.includeBase
-      ? [`${flagName(EXPORT_FLAGS.basePropertyName)} has no effect without ${flagName(EXPORT_FLAGS.includeBase)}`]
-      : [];
+  const advisories = flagAdvisories<ExportCommandOptions>(EXPORT_FLAGS, values);
   return { options, advisories };
 }
 function promptContext(context: ExportOptionsContext): ExportPromptContext {

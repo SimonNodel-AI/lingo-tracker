@@ -3,6 +3,7 @@ import { patchState, signalStoreFeature, type, withComputed, withHooks, withMeth
 import { LOCAL_STORAGE } from '../../../shared/storage/browser-storage';
 import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
 import type { DensityMode } from '../../types/density-mode';
+import type { CollectionLifecycleRegistry } from '../collection-reset';
 import { type LocaleContext, type LocaleSelection, setDensity } from '../locale-selection';
 import { restore, snapshot, type ViewPreferences } from '../view-preferences';
 
@@ -13,6 +14,7 @@ function storageKey(collectionName: string): string {
 export function withViewPreferencesFeature<_>() {
   return signalStoreFeature(
     {
+      props: type<CollectionLifecycleRegistry>(),
       state: type<LocaleSelection & LocaleContext & ViewPreferences & { selectedCollection: string | null }>(),
     },
     withProps(() => {
@@ -68,6 +70,10 @@ export function withViewPreferencesFeature<_>() {
           );
         },
       };
+    }),
+    withMethods((store) => {
+      store._collectionLifecycle.register('restore', (settings) => store.restoreViewPreferences(settings.name));
+      return {};
     }),
     withHooks({
       onInit(store) {

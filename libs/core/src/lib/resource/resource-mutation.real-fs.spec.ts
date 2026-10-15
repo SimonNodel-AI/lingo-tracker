@@ -6,10 +6,9 @@ import type { OpenedCollection } from '../config/open-collection';
 import { FolderNotFoundError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
-import { addResource } from './add-resource';
 import { deleteResource } from './delete-resource';
-import { editResource } from './edit-resource';
 import { executeMove } from './execute-move';
+import { addResource, editResource } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 

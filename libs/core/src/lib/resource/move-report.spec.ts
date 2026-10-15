@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import type { PruneResult } from './folder-pruning';
+import { summarizeMovePruning } from './move-cleanup';
 import { MoveReport } from './move-report';
+
+function prune(report: MoveReport, source: string, result: PruneResult, empty: boolean): void {
+  report.prune(summarizeMovePruning(result, [{ source, empty }]));
+}
 
 describe('Move Report', () => {
   it('finishes an empty move successfully without folder fields', () => {
@@ -53,13 +59,14 @@ describe('Move Report', () => {
 
   it('counts only the removed source folder', () => {
     const report = new MoveReport();
-    report.prune('src', { removed: ['src.child', 'src'], kept: [], problems: [] }, false);
+    prune(report, 'src', { removed: ['src.child', 'src'], kept: [], problems: [] }, false);
     expect(report.finish(true).foldersDeleted).toBe(1);
   });
 
   it('reports protected content and entries that appeared again', () => {
     const report = new MoveReport();
-    report.prune(
+    prune(
+      report,
       'src',
       {
         removed: [],
@@ -84,19 +91,27 @@ describe('Move Report', () => {
   });
 
   it('fails empty-source pruning but only warns after resources moved', () => {
+    const pruning: PruneResult = {
+      removed: [],
+      kept: [],
+      problems: [{ kind: 'not-removed', folderPath: 'src', absolutePath: '/collection/src', message: 'Denied' }],
+    };
     const empty = new MoveReport();
-    empty.pruningFailed(new Error('Denied'), true);
-    expect(empty.finish().errors).toEqual(['Failed to delete empty source folder: Denied']);
+    prune(empty, 'src', pruning, true);
+    expect(empty.finish().errors).toEqual([
+      "Failed to delete empty source folder: Could not remove folder 'src': Denied",
+    ]);
     expect(empty.finish().outcome).toBe('failed');
     const moved = new MoveReport();
-    moved.pruningFailed('Denied', false);
-    expect(moved.finish().warnings).toEqual(['Resources moved but failed to delete source folder: Denied']);
+    prune(moved, 'src', pruning, false);
+    expect(moved.finish().warnings).toEqual(["Could not remove folder 'src': Denied"]);
     expect(moved.finish().outcome).toBe('succeeded');
   });
 
   it('formats pruning problems through the same failure rule', () => {
     const report = new MoveReport();
-    report.prune(
+    prune(
+      report,
       'src',
       {
         removed: [],

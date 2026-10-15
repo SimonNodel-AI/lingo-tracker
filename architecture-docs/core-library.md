@@ -342,6 +342,7 @@ The `lib/errors/index.ts` barrel owns the public error list; core forwards it wi
 | `LocaleAlreadyExistsError` | `LOCALE_ALREADY_EXISTS` | `locale`, `collectionName` | `addLocaleToCollection` |
 | `BaseLocaleImmutableError` | `BASE_LOCALE_IMMUTABLE` | `locale` | `addLocaleToCollection`, `removeLocaleFromCollection` |
 | `InvalidResourceKeyError` | `INVALID_RESOURCE_KEY` | `key` | `resolveCheckedResourceKey`, also used by `resolveResourcePaths`; add, edit (including `moveTo`), translate, move and `removeEntry` |
+| `InvalidBaseValueError` | `INVALID_BASE_VALUE` | `key` | `addResource`, `addResources` preflight and `editResource` when a supplied base value is empty or whitespace-only |
 | `ResourceNotFoundError` | `RESOURCE_NOT_FOUND` | `key` | `editResource`, `translateExistingResource`; `deleteResource` returns its message in `errors[]` for a missing entry or resource file |
 | `ResourceAlreadyExistsError` | `RESOURCE_ALREADY_EXISTS` | `key` | `editResource` with a `moveTo` whose folder already has the entry key |
 | `InvalidFolderPathError` | `INVALID_FOLDER_PATH` | `part`, `segment` | `createFolder`, `deleteFolder`, `executeMove` |

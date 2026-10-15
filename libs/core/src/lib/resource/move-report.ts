@@ -1,6 +1,5 @@
 import type { RunOutcome } from '../run-outcome';
-import { describeFolderProblem } from './collection-folders';
-import type { PruneResult } from './folder-pruning';
+import type { MovePruneResult } from './move-cleanup';
 import type { RelocationResult } from './relocate-entries';
 
 export interface MoveResult {
@@ -46,32 +45,11 @@ export class MoveReport {
     this.errors.push(message);
   }
 
-  /** Counts only removal of the source itself, preserving folder move diagnostics. */
-  prune(source: string, result: PruneResult, empty: boolean): void {
-    if (result.removed.includes(source)) {
-      this.foldersDeleted++;
-      return;
-    }
-    const resources = result.kept
-      .filter((folder) => folder.reason === 'entries')
-      .flatMap((folder) => folder.entries ?? []);
-    if (resources.length > 0) this.warn(`Source folder kept: it has resources again: ${resources.join(', ')}`);
-    if (result.problems.length > 0) {
-      this.pruningFailed(result.problems.map((problem) => describeFolderProblem(problem)).join(', '), empty);
-      return;
-    }
-    const leftovers = result.kept
-      .filter((folder) => folder.reason === 'content')
-      .flatMap((folder) => folder.entries ?? []);
-    if (leftovers.length > 0) {
-      this.warn(`Source folder kept: holds content that is not part of the collection: ${leftovers.join(', ')}`);
-    }
-  }
-
-  pruningFailed(error: unknown, empty: boolean): void {
-    const message = error instanceof Error ? error.message : String(error);
-    if (empty) this.fail(`Failed to delete empty source folder: ${message}`);
-    else this.warn(`Resources moved but failed to delete source folder: ${message}`);
+  /** Cleanup already owns source counting and diagnostic policy. */
+  prune(result: MovePruneResult): void {
+    this.foldersDeleted += result.foldersDeleted;
+    this.warnings.push(...result.warnings);
+    this.errors.push(...result.errors);
   }
 
   finish(): MoveResult;

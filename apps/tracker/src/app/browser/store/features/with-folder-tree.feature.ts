@@ -9,7 +9,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
-import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
 import { collectExpandablePaths, filterFolderTree, updateFolderInTree } from '../folder-tree.utils';
 import { handleLoadFailure } from '../load-failure';
 import { captureSession, withinSession } from '../session-guard';
@@ -51,7 +51,7 @@ export function withFolderTreeFeature<_>() {
         error: string | null;
         currentFolderPath: string;
       }>(),
-      props: type<CollectionResetRegistry & { isTranslationsLoading: Signal<boolean> }>(),
+      props: type<CollectionLifecycleRegistry & { isTranslationsLoading: Signal<boolean> }>(),
     },
     withCollectionState(initialFolderTreeState),
     withComputed(

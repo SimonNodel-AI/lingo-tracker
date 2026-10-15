@@ -9,6 +9,7 @@ import { type Collection, openCollection } from '../config/open-collection';
 import {
   BracedPlaceholderError,
   CoreOperationError,
+  InvalidBaseValueError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LocaleNotFoundError,
@@ -19,7 +20,7 @@ import {
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum as md5 } from './checksum';
-import { editResource } from './edit-resource';
+import { editResource } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
@@ -82,6 +83,50 @@ describe('editResource (real fs)', () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it('rejects empty base edits before writes, moves or translation', async () => {
+    const provider = new InMemoryTranslationProvider();
+    const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+      join(root, 'translations', 'common', file),
+    );
+    const before = paths.map((path) => readFileSync(path));
+    for (const baseValue of ['', '   ', '\t\n']) {
+      await expect(
+        editResource(
+          collection(AUTO),
+          'common.save',
+          { baseValue, comment: 'Changed', moveTo: 'new' },
+          { provider, onMutation },
+        ),
+      ).rejects.toThrow(InvalidBaseValueError);
+      await expect(editResource(collection(AUTO), 'common.save', { baseValue }, { provider })).rejects.toThrow(
+        'Base value must not be empty.',
+      );
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+      expect(existsSync(join(root, 'translations', 'new'))).toBe(false);
+    }
+    expect(provider.calls).toEqual([]);
+    expect(collected).toEqual([]);
+  });
+
+  it('allows details and translations to change when the base value is undefined', async () => {
+    const provider = new InMemoryTranslationProvider();
+    await editResource(
+      collection(AUTO),
+      'common.save',
+      {
+        baseValue: undefined,
+        comment: 'Context',
+        tags: ['ui'],
+        translations: { fr: { value: 'Sauver' } },
+      },
+      { provider },
+    );
+    expect(read('resource_entries.json', 'common')).toMatchObject({
+      save: { source: 'Save', comment: 'Context', tags: ['ui'], fr: 'Sauver' },
+    });
+    expect(provider.calls).toEqual([]);
   });
 
   it.each([

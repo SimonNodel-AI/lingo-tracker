@@ -1,5 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
@@ -7,12 +7,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
+import { TranslocoPipe } from '@jsverse/transloco';
 import type { TokenCasingDto } from '@simoncodes-ca/data-transfer';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ChipInput } from '../../shared/chip-input/chip-input';
 import { CONFIG_FILE_MARKUP, codeMarkup } from '../../shared/code-markup';
 import { CollectionsStore } from '../store/collections.store';
+import { injectBundleFormSubmit } from '../store/dialog-config-submit-adapters';
 import { BundleForm, type MergeStrategy } from './bundle-form';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { LOCALE_PLACEHOLDER } from './bundle-output-preview';
@@ -39,8 +40,9 @@ import { SegmentedControl, type SegmentOption } from './segmented-control';
 export class BundleFormDialog {
   readonly #dialogRef = inject(MatDialogRef<BundleFormDialog, BundleFormResult | undefined>);
   readonly #data = inject<BundleFormDialogData>(MAT_DIALOG_DATA);
-  readonly #transloco = inject(TranslocoService);
   readonly store = inject(CollectionsStore);
+
+  readonly #submit = injectBundleFormSubmit();
 
   readonly TOKENS = TRACKER_TOKENS;
   readonly configFileMarkup = CONFIG_FILE_MARKUP;
@@ -75,7 +77,7 @@ export class BundleFormDialog {
     baseLocale: () => this.store.config()?.baseLocale ?? '',
     tokenCasing: () => this.store.config()?.tokenCasing ?? 'upperCase',
     icuTransform: () => this.store.config()?.transformICUToTransloco ?? true,
-    env: { translate: (token) => this.#transloco.translate(token), destroyRef: inject(DestroyRef) },
+    env: this.#submit.env,
     dryRun: (request) => this.store.dryRunBundle(request),
   });
   /** True from submit until the server has answered. */
@@ -95,11 +97,7 @@ export class BundleFormDialog {
     this.#dialogRef.close(undefined);
   }
 
-  onSubmit(): void {
-    this.model.submit({
-      dialog: this.#dialogRef,
-      create: (result) => this.store.createBundle({ name: result.name, bundle: result.bundle }),
-      update: (name, patch, result) => this.store.updateBundle(name, { ...patch, bundle: result.bundle }),
-    });
+  onSubmit(): Promise<void> {
+    return this.model.submit({ dialog: this.#dialogRef, write: this.#submit.write });
   }
 }

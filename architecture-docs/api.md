@@ -223,6 +223,7 @@ An unexpected error or a `CoreOperationError` returns a generic 500 without a `m
 | `AutoTranslationDisabledError` | 422 (`UnprocessableEntityException`) | error message |
 | `InvalidFolderPathError`, `FolderMoveIntoDescendantError` | 400 (`BadRequestException`) | `Validation error: <message>` |
 | `InvalidResourceKeyError`, `InvalidLocaleError`, `InvalidTranslationStatusError`, `LocaleNotFoundError`, `LocaleAlreadyExistsError`, `BaseLocaleImmutableError`, `InvalidCollectionError`, `InvalidProjectTermsEditError`, `ProtectedTermsFileNotSetError`, `ParentDirectoryMissingError` | 400 (`BadRequestException`) | error message; project-term edit and missing-file messages name no CLI flag |
+| `InvalidBaseValueError` | 400 (`BadRequestException`) | `Base value must not be empty.` |
 | `InvalidNameError` | 400 (`BadRequestException`) | `name must be a non-empty string`; a blank collection or bundle rename target |
 | `InvalidBundleDefinitionError` | 400 (`BadRequestException`) | `Invalid bundle definition`, with `errors: string[]` in the body |
 | `PreferredTerminologyValidationError` | 400 (`BadRequestException`) | `Invalid preferred terminology rules`, with `errors` (one per invalid row, indexed by submitted row) in the body |

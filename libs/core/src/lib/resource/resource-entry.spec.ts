@@ -4,10 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
-import { addResource } from './add-resource';
-import { preflightAdd, removeEntry } from './resource-entry';
+import { addResource, removeEntry } from './resource-entry';
 import * as resourceFolder from './resource-folder';
-import { resolveCheckedResourceKey } from './resource-key';
 import type { ResourceMutation } from './resource-mutation';
 
 describe('resource entry writes', () => {
@@ -50,24 +48,28 @@ describe('resource entry writes', () => {
     ).rejects.toThrow(InvalidResourceKeyError);
   });
 
-  it('resolves a target folder and reports a missing entry without creating files', () => {
+  it('resolves a target folder and reports a missing entry without creating files', async () => {
     const open = resourceFolder.openResourceFolder;
     const opened = vi.spyOn(resourceFolder, 'openResourceFolder').mockImplementation((folderPath, options) => {
       const folder = open(folderPath, options);
       vi.spyOn(folder, 'has');
       return folder;
     });
-    const key = resolveCheckedResourceKey('buttons.ok', 'apps.common');
-    const preflight = preflightAdd(collection, key, { baseValue: 'Bonjour' }, 'fail');
-    expect(preflight.resolvedKey).toBe('apps.common.buttons.ok');
-    expect(opened).toHaveBeenCalledExactlyOnceWith(join(root, 'apps', 'common', 'buttons'), collection);
-    const folder = opened.mock.results[0]?.value;
-    expect(folder).toBeDefined();
-    expect(folder?.folderPath).toBe(join(root, 'apps', 'common', 'buttons'));
-    expect(folder?.has).toHaveBeenCalledExactlyOnceWith('ok');
-    expect(folder?.has('ok')).toBe(false);
-    expect(folder?.get('ok')).toBeUndefined();
-    expect(existsSync(join(root, 'apps', 'common', 'buttons'))).toBe(false);
+    const pending = addResource(collection, { key: 'buttons.ok', targetFolder: 'apps.common', baseValue: 'Bonjour' });
+    try {
+      // Preflight opens and inspects the folder synchronously, before preparation resumes.
+      expect(opened).toHaveBeenCalledExactlyOnceWith(join(root, 'apps', 'common', 'buttons'), collection);
+      const folder = opened.mock.results[0]?.value;
+      expect(folder).toBeDefined();
+      expect(folder?.folderPath).toBe(join(root, 'apps', 'common', 'buttons'));
+      expect(folder?.has).toHaveBeenCalledExactlyOnceWith('ok');
+      expect(folder?.has('ok')).toBe(false);
+      expect(folder?.get('ok')).toBeUndefined();
+      expect(existsSync(join(root, 'apps', 'common', 'buttons'))).toBe(false);
+    } finally {
+      await pending;
+    }
+    expect((await pending).resolvedKey).toBe('apps.common.buttons.ok');
   });
 
   it('saves both files with the collection base locale and reports the saved upsert', async () => {

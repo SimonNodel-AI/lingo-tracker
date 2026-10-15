@@ -5,10 +5,10 @@ import {
   resolveAllReferences,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { groupByFolder } from '../resource/folder-batch';
+import { groupByFolder } from '../resource/folder-grouping';
 import { assertTranslationStatus } from '../resource/translation-status-input';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
-import { openImportSession, sessionResult } from './import-session';
+import { type ImportSession, openImportSession, recordImportIssues, sessionResult } from './import-session';
 import { validateImportResources } from './import-validation';
 import { loadBaseLocaleValues } from './load-base-locale-values';
 import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
@@ -22,13 +22,14 @@ import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
  * source. The run:
  * 1. Applies the strategy defaults, and refuses a base-locale import unless the strategy is `migration`.
  * 2. Resolves Transloco references (`{{t('key')}}`, `{{key}}`) between the resources (`migration` only).
- * 3. Converts Transloco `{{ name }}` placeholders to ICU `{name}`.
- * 4. Repairs placeholders that differ from the stored base value (ICU auto-fix).
- * 5. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
- * 6. Uses Value Check as a backstop after ICU auto-fix, then applies the resources per folder
+ * 3. Rejects unsafe values and base values through Stored Value Check before conversion.
+ * 4. Converts Transloco `{{ name }}` placeholders to ICU `{name}`.
+ * 5. Repairs placeholders that differ from the stored base value (ICU auto-fix).
+ * 6. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
+ * 7. Uses Value Check as a backstop after ICU auto-fix, then applies the resources per folder
  *    with the strategy's rules for creation, status, comments, tags, and preferred terminology.
  *    Migration skips argument agreement for unresolved references but still checks protected terms.
- *    The collection's Project Terms are read once per run; a rule-file problem is reported in `warnings`.
+ *    The collection's Project Terms are read when the session opens; a rule-file problem is reported in `warnings`.
  *
  * Nothing is written in a dry run; the result says what would change.
  *
@@ -44,53 +45,15 @@ export function importResources(
     if (resource.status !== undefined) assertTranslationStatus(resource.status);
   }
   const session = openImportSession(collection, options);
-  const { strategy, dryRun, verbose, onProgress } = session.options;
+  const { dryRun, onProgress } = session.options;
 
-  let prepared = [...resources];
-  if (importStrategyPolicy(strategy).resolvesReferences) {
-    onProgress?.('Resolving Transloco-style references...');
-    prepared = resolveAllReferences(prepared, true, session.warnings);
-  }
-
-  prepared = prepared.filter((resource) => {
-    const descriptions = [
-      ...checkStoredValue(resource.value).map((found) => `Value: ${describeStoredValueFinding(found)}`),
-      ...(resource.baseValue === undefined
-        ? []
-        : checkStoredValue(resource.baseValue).map((found) => `Base value: ${describeStoredValueFinding(found)}`)),
-    ];
-    if (descriptions.length === 0) return true;
-    const message = descriptions.join('\n');
-    session.errors.push(`Braced placeholder: "${resource.key}": ${message}`);
-    session.changes.push({ key: resource.key, type: 'failed', reason: message });
-    return false;
-  });
-
+  const referenced = resolveImportReferences(session, resources);
+  const safe = rejectUnsafeStoredValues(session, referenced);
   // Before any ICU parsing or auto-fixing, so later steps see one placeholder syntax.
-  prepared = normalizeTranslocoSyntaxInResources(prepared);
-
-  if (verbose) onProgress?.('Checking for ICU placeholder issues...');
-  const baseValues = loadBaseLocaleValues(prepared, collection);
-  const autoFix = applyICUAutoFixToResources({
-    resources: prepared,
-    getBaseValue: (key) => baseValues.get(key),
-    verbose,
-    onProgress: verbose ? onProgress : undefined,
-  });
-  session.icuAutoFixes.push(...autoFix.autoFixes);
-  session.icuAutoFixErrors.push(...autoFix.autoFixErrors);
-
-  const validation = validateImportResources(autoFix.resources, { skipEmptyValues: true, warnOnLongKeys: true });
-  session.warnings.push(...validation.warnings);
-  session.errors.push(...validation.errors);
-  session.changes.push(...validation.failedChanges);
-
-  for (const group of groupByFolder(collection, validation.validResources, (resource) => resource.key)) {
-    if (verbose) {
-      for (const { item: resource } of group.members) onProgress?.(`Processing: ${resource.key}`);
-    }
-    processResourceGroup(session, group);
-  }
+  const normalized = normalizeTranslocoSyntaxInResources(safe);
+  const repaired = repairImportPlaceholders(session, normalized);
+  const valid = validateResources(session, repaired);
+  applyResourceGroups(session, valid);
 
   const result = sessionResult(session);
   onProgress?.(
@@ -99,4 +62,62 @@ export function importResources(
       : `Import complete: ${result.resourcesUpdated} resources imported`,
   );
   return result;
+}
+
+function resolveImportReferences(session: ImportSession, resources: readonly ImportedResource[]): ImportedResource[] {
+  if (importStrategyPolicy(session.options.strategy).resolvesReferences === false) return [...resources];
+  session.options.onProgress?.('Resolving Transloco-style references...');
+  return resolveAllReferences([...resources], true, session.warnings);
+}
+
+function rejectUnsafeStoredValues(session: ImportSession, resources: ImportedResource[]): ImportedResource[] {
+  return resources.filter((resource) => {
+    const descriptions = [
+      ...checkStoredValue(resource.value).map((found) => `Value: ${describeStoredValueFinding(found)}`),
+      ...(resource.baseValue === undefined
+        ? []
+        : checkStoredValue(resource.baseValue).map((found) => `Base value: ${describeStoredValueFinding(found)}`)),
+    ];
+    if (descriptions.length === 0) return true;
+    const message = descriptions.join('\n');
+    recordImportIssues(session, {
+      key: resource.key,
+      type: 'failed',
+      reason: message,
+      error: `Braced placeholder: "${resource.key}": ${message}`,
+    });
+    return false;
+  });
+}
+
+function repairImportPlaceholders(session: ImportSession, resources: ImportedResource[]): ImportedResource[] {
+  const { verbose, onProgress } = session.options;
+  if (verbose) onProgress?.('Checking for ICU placeholder issues...');
+  const baseValues = loadBaseLocaleValues(resources, session.collection);
+  const autoFix = applyICUAutoFixToResources({
+    resources,
+    getBaseValue: (key) => baseValues.get(key),
+    verbose,
+    onProgress: verbose ? onProgress : undefined,
+  });
+  session.icuAutoFixes.push(...autoFix.autoFixes);
+  session.icuAutoFixErrors.push(...autoFix.autoFixErrors);
+  return autoFix.resources;
+}
+
+function validateResources(session: ImportSession, resources: ImportedResource[]): ImportedResource[] {
+  const validation = validateImportResources(resources, { skipEmptyValues: true, warnOnLongKeys: true });
+  session.warnings.push(...validation.warnings);
+  recordImportIssues(session, validation.issues);
+  return validation.validResources;
+}
+
+function applyResourceGroups(session: ImportSession, resources: ImportedResource[]): void {
+  const { verbose, onProgress } = session.options;
+  for (const group of groupByFolder(session.collection, resources, (resource) => resource.key)) {
+    if (verbose) {
+      for (const { item: resource } of group.members) onProgress?.(`Processing: ${resource.key}`);
+    }
+    processResourceGroup(session, group);
+  }
 }

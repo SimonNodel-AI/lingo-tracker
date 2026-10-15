@@ -389,6 +389,12 @@ export class InvalidResourceKeyError extends defineError(
   }),
 ) {}
 
+/** The supplied base value is empty or contains only whitespace. */
+export class InvalidBaseValueError extends defineError('INVALID_BASE_VALUE', 'invalid', (key: string) => ({
+  message: 'Base value must not be empty.',
+  key,
+})) {}
+
 /** No resource exists at this (resolved) key. */
 export class ResourceNotFoundError extends defineError('RESOURCE_NOT_FOUND', 'not-found', (key: string) => ({
   message: ErrorMessages.resourceNotFound(key),

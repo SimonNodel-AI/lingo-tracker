@@ -8,7 +8,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { IndexReadiness } from '../../services/index-readiness';
-import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
 
 export interface CacheStatusState {
   cacheStatus: CacheStatusType | null;
@@ -26,7 +26,7 @@ export function withCacheStatusFeature<_>() {
   return signalStoreFeature(
     {
       state: type<{ selectedCollection: string | null; folderTreeLoaded: boolean }>(),
-      props: type<CollectionResetRegistry & { listLoaded: Signal<boolean> }>(),
+      props: type<CollectionLifecycleRegistry & { listLoaded: Signal<boolean> }>(),
       methods: type<{ loadRootFolders(): void; reloadList(): void }>(),
     },
     withCollectionState(initialCacheStatusState),
@@ -99,6 +99,10 @@ export function withCacheStatusFeature<_>() {
           ),
         ),
       };
+    }),
+    withMethods((store) => {
+      store._collectionLifecycle.register('ready', () => store.checkCacheStatus());
+      return {};
     }),
   );
 }

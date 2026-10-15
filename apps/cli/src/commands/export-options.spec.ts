@@ -95,7 +95,11 @@ describe('export Run Options Resolution', () => {
         status: ['new'],
         basePropertyName: 'source',
       },
-      advisories: ['--base-property-name has no effect without --include-base'],
+      advisories: [
+        '--rich has no effect with --format xliff.',
+        '--include-base has no effect with --format xliff.',
+        '--base-property-name has no effect without --include-base.',
+      ],
       answers: {
         format: 'xliff',
         rich: false,
@@ -109,6 +113,7 @@ describe('export Run Options Resolution', () => {
     },
     {
       label: 'merged prompt value',
+      advisories: ['--rich applies only to JSON exports.'],
       expected: {
         richJson: true,
       },
@@ -137,6 +142,11 @@ describe('export Run Options Resolution', () => {
     },
     {
       label: 'lists and optional options',
+      advisories: [
+        '--include-status applies only to JSON exports.',
+        '--include-comment applies only to JSON exports.',
+        '--include-tags applies only to JSON exports.',
+      ],
       expected: {
         locales: ['fr', 'de'],
         status: ['verified', 'translated'],
@@ -187,6 +197,10 @@ describe('export Run Options Resolution', () => {
     },
     {
       label: 'base value enabled even without rich',
+      advisories: [
+        '--include-base has no effect without --rich.',
+        '--base-property-name has no effect without --rich.',
+      ],
       expected: {
         format: 'json',
         includeBase: true,

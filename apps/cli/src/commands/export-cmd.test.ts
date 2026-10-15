@@ -494,8 +494,17 @@ describe('exportCommand (real project)', () => {
   it('should warn when --base-property-name is set without --include-base', async () => {
     const result = await run({ format: 'json', locale: ['fr'], basePropertyName: 'original', includeBase: false });
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain('--base-property-name has no effect without --include-base');
+    expect(result.stderr).toContain('--base-property-name has no effect without --include-base.');
     expect(project.read('dist/export/fr.json')).not.toContain('original');
+  });
+  it('warns once for an inert base property when include-base is supplied without rich', async () => {
+    const result = await run(parsedFlags('--format', 'json', '--include-base', '--base-property-name', 'x'));
+    const message = '--base-property-name has no effect without --rich.';
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain(`⚠️  ${message}\n`);
+    expect(result.stderr.split(message)).toHaveLength(2);
+    expect(result.stderr).toContain('--include-base has no effect without --rich.');
+    expect(result.stdout).not.toContain(message);
   });
   it('should exit with error when --base-property-name validation fails', async () => {
     const result = await run({ format: 'json', locale: ['fr'], basePropertyName: 'value', includeBase: true });

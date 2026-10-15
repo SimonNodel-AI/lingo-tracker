@@ -15,9 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { OpenedCollection } from '../config/open-collection';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
-import { addResource } from '../resource/add-resource';
 import { executeMove } from '../resource/execute-move';
 import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
+import { addResource } from '../resource/resource-entry';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 

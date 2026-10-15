@@ -20,6 +20,34 @@ export type ResolvedImportOptions = ImportRunOptions & {
   readonly updateTags: boolean;
 };
 
+/** A rejected resource, or an empty value skipped by validation. */
+export interface ImportIssue {
+  readonly key: string;
+  readonly type: 'failed' | 'skipped';
+  readonly reason: string;
+  /** Absent for skips and repeated hierarchical conflicts, which share one diagnostic. */
+  readonly error?: string;
+  /**
+   * Diagnostic rank within this batch (lower first, stable for ties; defaults to zero).
+   * Validation changes follow input order, but its diagnostics put conflicts first in key-tree
+   * order. One issue list cannot express both orders without this separate diagnostic rank.
+   */
+  readonly diagnosticOrder?: number;
+}
+
+/**
+ * Records each rejection through one channel. Changes retain issue order; diagnostics use
+ * their explicit order when validation's conflict-first order differs from resource order.
+ * Empty-value skips carry no error and retain their position among validation changes.
+ */
+export function recordImportIssues(session: ImportSession, issueOrIssues: ImportIssue | readonly ImportIssue[]): void {
+  const issues = 'key' in issueOrIssues ? [issueOrIssues] : issueOrIssues;
+  for (const { key, type, reason } of issues) session.changes.push({ key, type, reason });
+  for (const issue of [...issues].sort((left, right) => (left.diagnosticOrder ?? 0) - (right.diagnosticOrder ?? 0))) {
+    if (issue.error !== undefined) session.errors.push(issue.error);
+  }
+}
+
 /**
  * The state of one import run. Every step of {@link importResources} reads the settings from
  * here and appends its findings here, so no step passes accumulators to the next.

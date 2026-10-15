@@ -9,9 +9,9 @@ import {
 } from '../../testing/temp-dir.spec-helpers';
 import { calculateChecksum } from './checksum';
 import { deleteResource } from './delete-resource';
-import { editResource } from './edit-resource';
 import { executeMove, executeMoves } from './execute-move';
 import { pruneEmptiedFolders } from './folder-pruning';
+import { editResource } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 import { ResourceTreeIndex } from './resource-tree-index';

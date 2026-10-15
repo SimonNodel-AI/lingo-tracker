@@ -17,16 +17,22 @@ function harness(existingName: string | undefined = undefined, normalizeName?: (
   const update = vi.fn((_name: string, _patch: { name: string | undefined }) => of(null));
   const onRefusal = vi.fn();
   const dialogRef = { disableClose: false as boolean | undefined, close: vi.fn() };
-  const submit = new NamedEntrySubmit<string>({
+  const submit = new NamedEntrySubmit<{ name: string }>({
     nameControl: () => nameControl,
     normalizeName,
     fallbackTokens: { create: 'create-failed', update: 'update-failed' },
-    env: { translate: (token) => token, destroyRef: TestBed.inject(DestroyRef) },
+    env: { translate: (token) => token, destroyRef: TestBed.inject(DestroyRef), confirm: async () => true },
   });
   const saving = submit.saving;
   nameControl.addValidators(submit.nameValidator);
   nameControl.updateValueAndValidity();
-  const options = { dialog: dialogRef, existingName, name: 'draft', create, update, result: 'saved', onRefusal };
+  const options = {
+    dialog: dialogRef,
+    entry: { mode: existingName === undefined ? ('create' as const) : ('edit' as const), name: existingName },
+    write: { create, update },
+    prepare: () => ({ name: 'draft' }),
+    onRefusal,
+  };
   return { submit, options, nameControl, create, update, onRefusal, dialogRef, saving };
 }
 
@@ -36,20 +42,20 @@ describe('named entry submit', () => {
     submit.submit(options);
     expect(create).toHaveBeenCalledOnce();
     expect(update).not.toHaveBeenCalled();
-    expect(dialogRef.close).toHaveBeenCalledWith('saved');
+    expect(dialogRef.close).toHaveBeenCalledWith({ name: 'draft' });
   });
 
   it('updates under the existing name and omits an unchanged rename', () => {
     const { submit, options, create, update } = harness('draft');
     submit.submit(options);
     expect(create).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledWith('draft', { name: undefined });
+    expect(update).toHaveBeenCalledWith('draft', { name: undefined }, { name: 'draft' });
   });
 
   it('sends a changed name in the update patch', () => {
     const { submit, options, update } = harness('original');
     submit.submit(options);
-    expect(update).toHaveBeenCalledWith('original', { name: 'draft' });
+    expect(update).toHaveBeenCalledWith('original', { name: 'draft' }, { name: 'draft' });
   });
 
   it('keeps a refused editable name invalid until it changes', () => {
@@ -89,7 +95,7 @@ describe('named entry submit', () => {
 
   it('keeps a padded refused name invalid after editing to the same trimmed value', () => {
     const { submit, options, nameControl, create } = harness(undefined, (value) => String(value ?? '').trim());
-    options.name = 'name';
+    options.prepare = () => ({ name: 'name' });
     nameControl.setValue('  name  ');
     create.mockReturnValue(rejection(409, { message: 'Name taken' }));
     submit.submit(options);

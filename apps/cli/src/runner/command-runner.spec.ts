@@ -9,7 +9,7 @@ import {
   loadConfig,
 } from '@simoncodes-ca/core';
 import prompts from 'prompts';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { internalErrors } from '@simoncodes-ca/core/testing';
 import { parseListSelection } from '../utils/prompt-utils';
 import { CommandCancelledError } from './command-cancelled-error';
@@ -383,6 +383,45 @@ describe('defineCommand', () => {
   });
 
   describe('preflight', () => {
+    it.each([false, true])('passes the inferred preflight result to run (async: %s)', async (asynchronous) => {
+      const prepared = { value: 'prepared' };
+      const invoke = defineCommand<Options>()({
+        name: 'Prepare',
+        collection: 'none',
+        config: false,
+        preflight: () => (asynchronous ? Promise.resolve(prepared) : prepared),
+        run: ({ preflight }) => {
+          expectTypeOf(preflight).toEqualTypeOf<{ value: string }>();
+          expect(preflight).toBe(prepared);
+        },
+      });
+
+      await invoke({});
+
+      expect(process.exitCode).toBe(0);
+    });
+
+    it('keeps preflight results separate for overlapping invocations', async () => {
+      const received: string[] = [];
+      const invoke = defineCommand<Options>()({
+        name: 'Prepare',
+        collection: 'none',
+        config: false,
+        preflight: ({ options }) => ({ key: options.key }),
+        prompts: async () => {
+          await Promise.resolve();
+          return [];
+        },
+        run: ({ preflight }) => {
+          if (preflight.key) received.push(preflight.key);
+        },
+      });
+
+      await Promise.all([invoke({ key: 'first' }), invoke({ key: 'second' })]);
+
+      expect(received).toEqual(['first', 'second']);
+    });
+
     it.each([
       false,
       true,

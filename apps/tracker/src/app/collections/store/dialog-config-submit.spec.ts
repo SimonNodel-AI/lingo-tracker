@@ -1,10 +1,219 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { createEnvironmentInjector, DestroyRef, EnvironmentInjector, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Subject } from 'rxjs';
+import { FormControl } from '@angular/forms';
+import { Observable, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
 import { toApiError } from '../../shared/api-error/api-error';
-import { submitDialogConfigWrite } from './dialog-config-submit';
+import { NamedEntrySubmit, submitDialogConfigWrite } from './dialog-config-submit';
+
+function setup(entry: { mode: 'create' | 'edit'; name?: string } = { mode: 'create' }) {
+  const env = fakeEnv();
+  const name = new FormControl('new-name', { nonNullable: true });
+  const lifecycle = new NamedEntrySubmit<{ name: string }>({
+    nameControl: () => name,
+    fallbackTokens: { create: 'create-failed', update: 'update-failed' },
+    env,
+  });
+  name.addValidators(lifecycle.nameValidator);
+  const dialog = fakeDialog<{ name: string }>();
+  const validate = vi.fn(() => true);
+  const result = vi.fn(() => ({ name: name.value }));
+  const create = vi.fn((_result: { name: string }): Observable<unknown> => of(null));
+  const update = vi.fn(
+    (_name: string, _patch: { name: string | undefined }, _result: { name: string }): Observable<unknown> => of(null),
+  );
+  const onRefusal = vi.fn();
+  const prepare = vi.fn(() => (validate() ? result() : undefined));
+  const options = { entry, dialog, prepare, write: { create, update }, onRefusal };
+  return { env, name, lifecycle, options, validate, result, submit: () => lifecycle.submit(options) };
+}
+
+function refusal(status: number, message?: string, details?: unknown[]) {
+  return throwError(() => toApiError(new HttpErrorResponse({ status, error: { message, errors: details } })));
+}
+
+describe('Dialog Config Submit lifecycle', () => {
+  it('stops at failed validation without confirming, building a payload or writing', async () => {
+    const { lifecycle, options, validate, result } = setup();
+    validate.mockReturnValue(false);
+    const confirm = vi.fn(async () => true);
+    await lifecycle.submit({
+      ...options,
+      prepare: async () => {
+        if (!validate()) return undefined;
+        return (await confirm()) ? result() : undefined;
+      },
+    });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(result).not.toHaveBeenCalled();
+    expect(options.write.create).not.toHaveBeenCalled();
+    expect(options.dialog.disableClose).toBe(false);
+    expect(lifecycle.saving()).toBe(false);
+  });
+
+  it('stops on declined confirmation and permits the next attempt', async () => {
+    const { lifecycle, options, submit } = setup();
+    await lifecycle.submit({ ...options, prepare: async () => undefined });
+    expect(options.write.create).not.toHaveBeenCalled();
+    expect(options.dialog.close).not.toHaveBeenCalled();
+    expect(lifecycle.saving()).toBe(false);
+    await submit();
+    expect(options.write.create).toHaveBeenCalledOnce();
+  });
+
+  it('waits for accepted confirmation, then builds the current payload and creates', async () => {
+    const { lifecycle, options, name, result } = setup();
+    let answer: (value: boolean) => void = () => undefined;
+    const pending = new Promise<boolean>((resolve) => {
+      answer = resolve;
+    });
+    const attempt = lifecycle.submit({ ...options, prepare: async () => ((await pending) ? result() : undefined) });
+    expect(options.write.create).not.toHaveBeenCalled();
+    expect(options.dialog.disableClose).toBe(false);
+    name.setValue('after-confirmation');
+    answer(true);
+    await attempt;
+    expect(options.write.create).toHaveBeenCalledWith({ name: 'after-confirmation' });
+    expect(options.dialog.close).toHaveBeenCalledWith({ name: 'after-confirmation' });
+  });
+
+  it('locks closing and saving during create and closes only on success', async () => {
+    const { lifecycle, options, submit } = setup();
+    const write = new Subject<unknown>();
+    options.write.create.mockReturnValue(write);
+    await submit();
+    expect(lifecycle.saving()).toBe(true);
+    expect(options.dialog.disableClose).toBe(true);
+    expect(options.dialog.close).not.toHaveBeenCalled();
+    expect(options.write.update).not.toHaveBeenCalled();
+    write.next(null);
+    expect(options.dialog.close).toHaveBeenCalledWith({ name: 'new-name' });
+  });
+
+  it.each(['new-name', 'old-name'])('updates with the rename patch for %s', async (newName) => {
+    const { name, options, submit } = setup({ mode: 'edit', name: 'old-name' });
+    name.setValue(newName);
+    await submit();
+    expect(options.write.create).not.toHaveBeenCalled();
+    expect(options.write.update).toHaveBeenCalledWith(
+      'old-name',
+      { name: newName === 'old-name' ? undefined : newName },
+      { name: newName },
+    );
+    expect(options.dialog.close).toHaveBeenCalledWith({ name: newName });
+  });
+
+  it('routes an editable-name conflict to the name validator and releases the write lock', async () => {
+    const { lifecycle, name, options, submit } = setup();
+    options.write.create.mockReturnValue(refusal(409, 'taken'));
+    await submit();
+    expect(name.hasError('nameExists')).toBe(true);
+    expect(name.touched).toBe(true);
+    expect(options.onRefusal).toHaveBeenCalledWith({ kind: 'name-conflict' });
+    expect(options.dialog.close).not.toHaveBeenCalled();
+    expect(options.dialog.disableClose).toBe(false);
+    expect(lifecycle.saving()).toBe(false);
+    name.setValue('available');
+    expect(name.hasError('nameExists')).toBe(false);
+  });
+
+  it('routes a locked-name conflict to the form message', async () => {
+    const { name, options, submit } = setup({ mode: 'edit', name: 'old-name' });
+    name.disable();
+    options.write.update.mockReturnValue(refusal(409, 'taken'));
+    await submit();
+    expect(options.onRefusal).toHaveBeenCalledWith({ kind: 'message', message: 'taken', details: [] });
+  });
+
+  it('preserves other refusal details and the previous close lock', async () => {
+    const { lifecycle, options, submit } = setup();
+    options.dialog.disableClose = true;
+    options.write.create.mockReturnValue(refusal(400, 'invalid', ['rule']));
+    await submit();
+    expect(options.onRefusal).toHaveBeenCalledWith({ kind: 'message', message: 'invalid', details: ['rule'] });
+    expect(options.dialog.disableClose).toBe(true);
+    expect(lifecycle.saving()).toBe(false);
+  });
+
+  it.each(['create', 'edit'] as const)('translates the %s fallback for a refusal without a message', async (mode) => {
+    const { options, submit } = setup({ mode, name: mode === 'edit' ? 'old-name' : undefined });
+    options.write.create.mockReturnValue(refusal(500));
+    options.write.update.mockReturnValue(refusal(500));
+    await submit();
+    expect(options.onRefusal).toHaveBeenCalledWith({
+      kind: 'message',
+      message: mode === 'create' ? 'create-failed' : 'update-failed',
+      details: [],
+    });
+  });
+
+  it('ignores double submit during confirmation and the subsequent write', async () => {
+    const { lifecycle, options, submit } = setup();
+    let answer: (value: boolean) => void = () => undefined;
+    const confirm = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    options.write.create.mockReturnValue(new Subject());
+    const prepare = vi.fn(async () => ((await confirm()) ? options.prepare() : undefined));
+    const attempt = lifecycle.submit({ ...options, prepare });
+    await lifecycle.submit({ ...options, prepare });
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledOnce();
+    answer(true);
+    await attempt;
+    await submit();
+    expect(options.write.create).toHaveBeenCalledOnce();
+    expect(prepare).toHaveBeenCalledOnce();
+  });
+
+  it('cancels on destroy mid-write and ignores subsequent outcomes and attempts', async () => {
+    const { lifecycle, options, env, submit } = setup();
+    const write = new Subject<unknown>();
+    const cancelled = vi.fn();
+    options.write.create.mockReturnValue(
+      new Observable((subscriber) => {
+        const subscription = write.subscribe(subscriber);
+        return () => {
+          subscription.unsubscribe();
+          cancelled();
+        };
+      }),
+    );
+    await submit();
+    env.destroy();
+    expect(cancelled).toHaveBeenCalledOnce();
+    write.next(null);
+    write.error(new Error('late'));
+    await submit();
+    expect(options.dialog.close).not.toHaveBeenCalled();
+    expect(options.onRefusal).not.toHaveBeenCalled();
+    expect(options.write.create).toHaveBeenCalledOnce();
+    expect(lifecycle.saving()).toBe(true);
+  });
+
+  it('does not write if destroyed while awaiting confirmation', async () => {
+    const { lifecycle, options, env } = setup();
+    let answer: (value: boolean) => void = () => undefined;
+    const attempt = lifecycle.submit({
+      ...options,
+      prepare: async () => {
+        const confirmed = await new Promise<boolean>((resolve) => {
+          answer = resolve;
+        });
+        return confirmed ? options.prepare() : undefined;
+      },
+    });
+    env.destroy();
+    answer(true);
+    await attempt;
+    expect(options.write.create).not.toHaveBeenCalled();
+  });
+});
 
 describe('dialog Config Write submit', () => {
   it('locks closing and saving until success, then closes with the result', () => {

@@ -182,6 +182,27 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle.mock.calls[0][0]).toMatchObject({ locales: ['en', 'fr'] });
   });
 
+  it('includes the config deprecation warning in a successful bundle job result', async () => {
+    mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
+    const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/legacy.ts' };
+    const { jobId } = service.startJob({
+      bundleName: 'main',
+      project: project({ ...config, bundles: { main: legacy } }),
+      locales: ['en'],
+    });
+    await flush();
+
+    const job = service.getJob(jobId);
+    expect(job.status).toBe('completed');
+    expect(job.error).toBeUndefined();
+    expect(job.result?.warnings).toEqual([expect.stringContaining("Bundle 'main': 'typeDist' is deprecated")]);
+    expect(job.result?.filesGenerated).toEqual(['dist/i18n/en.json', 'types/legacy.ts']);
+    expect(job.result?.typeDistFile).toBe('types/legacy.ts');
+    expect(job.result?.typesKeysCount).toBe(1);
+    expect(logger.warn).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
   it('keeps the legacy type setting warning in the job result without logging it again', async () => {
     mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
     const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/invalid.txt' };

@@ -11,7 +11,8 @@ import {
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { executeMove, executeMoves, type MoveRequest } from './execute-move';
-import * as moveInput from './move-input';
+import * as movePlan from './move-plan';
+import type { ResourceMutation } from './resource-mutation';
 
 function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {
@@ -431,7 +432,7 @@ describe('Move Resource (real fs)', () => {
   });
 
   it('validates batch resource selections exactly once before execution', async () => {
-    const validate = vi.spyOn(moveInput, 'validateMoveInput');
+    const validate = vi.spyOn(movePlan, 'validateMoveInput');
     await executeMoves(collection(testDir), [
       { source: 'missing.key', destination: 'dest.key' },
       { source: 'missing.*', destination: '' },
@@ -510,5 +511,46 @@ describe('Move Resource (real fs)', () => {
     expect(fs.existsSync(join(testDir, 'tree'))).toBe(false);
     expect(fs.existsSync(join(testDir, 'source'))).toBe(false);
     expect(fs.existsSync(join(testDir, 'shared', 'tree', RESOURCE_ENTRIES_FILENAME))).toBe(true);
+  });
+});
+
+describe('Move Run interrupted mutation reporting', () => {
+  const root = useTempDir('move-interrupted-sink-');
+
+  it('prunes the in-flight move and earlier emptied folders when the second sink upsert throws', () => {
+    writeFolderFiles(root(), 'a', { entries: { ok: { source: 'A' } } });
+    writeFolderFiles(root(), 'c', { entries: { ok: { source: 'C' } } });
+    writeFolderFiles(root(), 'later', { entries: { ok: { source: 'Later' } } });
+    const failure = new Error('Second upsert failed');
+    const onMutation = vi.fn((mutation: ResourceMutation) => {
+      if (mutation.kind === 'upsert' && mutation.key === 'd.ok') throw failure;
+    });
+
+    expect(() =>
+      executeMoves(
+        collection(root()),
+        [
+          { source: 'a.*', destination: 'b' },
+          { source: 'c.*', destination: 'd' },
+          { source: 'later.*', destination: 'untouched' },
+        ],
+        { onMutation },
+      ),
+    ).toThrow(failure);
+
+    expect(fs.existsSync(join(root(), 'a'))).toBe(false);
+    expect(fs.existsSync(join(root(), 'c'))).toBe(false);
+    expect(fs.existsSync(join(root(), 'b', RESOURCE_ENTRIES_FILENAME))).toBe(true);
+    expect(fs.existsSync(join(root(), 'd', RESOURCE_ENTRIES_FILENAME))).toBe(true);
+    expect(fs.existsSync(join(root(), 'later', RESOURCE_ENTRIES_FILENAME))).toBe(true);
+    expect(fs.existsSync(join(root(), 'untouched'))).toBe(false);
+    expect(onMutation.mock.calls.map(([mutation]) => mutation)).toEqual([
+      { kind: 'remove', translationsFolder: root(), key: 'a.ok' },
+      expect.objectContaining({ kind: 'upsert', key: 'b.ok' }),
+      { kind: 'remove', translationsFolder: root(), key: 'c.ok' },
+      expect.objectContaining({ kind: 'upsert', key: 'd.ok' }),
+      { kind: 'remove-folder', translationsFolder: root(), path: 'a' },
+      { kind: 'remove-folder', translationsFolder: root(), path: 'c' },
+    ]);
   });
 });

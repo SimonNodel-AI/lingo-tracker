@@ -1,6 +1,5 @@
 import type { Collection } from '../config/open-collection';
 import { resolveResolvedResourcePaths } from './resource-file-paths';
-import { openResourceFolder, type ResourceFolder } from './resource-folder';
 
 export interface FolderMember<T> {
   readonly item: T;
@@ -34,29 +33,4 @@ export function groupByFolder<T>(
     group.members.push({ item, key, entryKey });
   }
   return [...groups.values()];
-}
-
-export interface FolderEntryAddress {
-  readonly folder: ResourceFolder;
-  readonly entryKey: string;
-  readonly folderPath: string;
-}
-
-/** A lazy open-once cache for one synchronous batch. Do not retain it across an await. */
-export function openFolders(collection: Collection): { entryAt(key: string): FolderEntryAddress } {
-  const folders = new Map<string, ResourceFolder>();
-  return {
-    entryAt(key) {
-      const { folderPath, entryKey } = resolveResolvedResourcePaths({
-        key,
-        translationsFolder: collection.translationsFolder,
-      });
-      let folder = folders.get(folderPath);
-      if (!folder) {
-        folder = openResourceFolder(folderPath, collection);
-        folders.set(folderPath, folder);
-      }
-      return { folder, entryKey, folderPath };
-    },
-  };
 }

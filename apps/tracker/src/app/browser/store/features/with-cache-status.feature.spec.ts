@@ -10,11 +10,11 @@ import { getTranslocoTestingModule } from '../../../../testing/transloco-testing
 import { ApiError } from '../../../shared/api-error/api-error';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../browser.store';
-import { withCollectionResetRegistry } from '../collection-reset';
+import { withCollectionLifecycle } from '../collection-reset';
 import { withCacheStatusFeature } from './with-cache-status.feature';
 
 const CacheStore = signalStore(
-  withCollectionResetRegistry(),
+  withCollectionLifecycle(),
   withState<{ selectedCollection: string | null; folderTreeLoaded: boolean }>({
     selectedCollection: 'c',
     folderTreeLoaded: false,

@@ -8,7 +8,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { apiErrorMessage } from '../../../shared/api-error/api-error';
 import { NotificationService } from '../../../shared/notification';
 import { BrowserApiService } from '../../services/browser-api.service';
-import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
 import { handleLoadFailure } from '../load-failure';
 import { captureSession, type SessionCheck, withinSession } from '../session-guard';
 
@@ -69,7 +69,7 @@ interface ListLoad {
  *
  * Every load runs through one `switchMap`, so the newest scope wins and an older load is
  * cancelled, not merely ignored: its HTTP request and any not-ready retries stop. The Browser
- * Session cancels the same way when it opens a collection (`_cancelListLoads`). One rule for a
+ * Session cancels the same way when it opens a collection (a close hook). One rule for a
  * failed load: when the index is not ready and a list has already loaded in this session, the
  * list goes back to the last scope that loaded and a toast says why; any other failure is the
  * list's `listError`.
@@ -77,7 +77,7 @@ interface ListLoad {
 export function withListScopeFeature<_>() {
   return signalStoreFeature(
     {
-      props: type<CollectionResetRegistry>(),
+      props: type<CollectionLifecycleRegistry>(),
       state: type<{
         sessionId: number;
         selectedCollection: string | null;
@@ -191,6 +191,8 @@ export function withListScopeFeature<_>() {
         show(store.listScope());
       }
 
+      store._collectionLifecycle.register('close', () => runLoads(null));
+
       return {
         /** Replaces existing entries in both caches, preserving search match metadata. */
         /** Shows one folder's resources (leaving a search, if one is shown). */
@@ -222,11 +224,6 @@ export function withListScopeFeature<_>() {
           // Rows loaded under the other setting no longer belong to any folder view.
           patchState(store, { showNestedResources: value, loadedFolderPath: null });
           if (store.listScope().kind === 'folder') reloadList();
-        },
-
-        /** Stops every load in flight. The Browser Session calls it when it opens a collection. */
-        _cancelListLoads(): void {
-          runLoads(null);
         },
       };
     }),
