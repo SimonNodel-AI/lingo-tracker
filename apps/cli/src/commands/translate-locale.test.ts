@@ -5,7 +5,7 @@ import {
   TranslationError,
   type TranslationProvider,
 } from '@simoncodes-ca/core';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommandCancelledError } from '../runner/command-runner';
 import { type CommandProject, createCommandProject } from '../testing/command-project';
 import { createTranslateLocaleCommand, translateLocaleCommand } from './translate-locale';
@@ -190,50 +190,56 @@ describe('translateLocaleCommand', () => {
     });
     it('refuses a collection with auto-translation disabled before asking for a locale', async () => {
       project.configure({ ...CONFIG, translation: undefined });
+      const ask = vi.fn(async () => {
+        throw new Error('unexpected prompt');
+      });
       const result = await project.run(
         command(),
         {},
         {
           interactive: true,
-          ask: async () => {
-            throw new Error('unexpected prompt');
-          },
+          ask,
         },
       );
       expect(result.stderr).toContain('Set translation.enabled = true');
+      expect(ask).not.toHaveBeenCalled();
       expect(result.exitCode).toBe(1);
     });
     it('refuses a collection with no target locales before asking for a locale', async () => {
       project.configure({ ...CONFIG, locales: ['en'] });
+      const ask = vi.fn(async () => {
+        throw new Error('unexpected prompt');
+      });
       const result = await project.run(
         command(),
         {},
         {
           interactive: true,
-          ask: async () => {
-            throw new Error('unexpected prompt');
-          },
+          ask,
         },
       );
       expect(result.stderr).toContain('No target locales configured');
+      expect(ask).not.toHaveBeenCalled();
       expect(result.exitCode).toBe(1);
     });
     it.each([
       ['en', 'Cannot translate to the base locale "en".'],
       ['ja', 'Locale "ja" is not configured. Available locales: en, fr, de'],
     ])('refuses an invalid locale flag %s before prompting or running', async (locale, message) => {
+      const ask = vi.fn(async () => {
+        throw new Error('unexpected prompt');
+      });
       const result = await project.run(
         command(),
         { locale },
         {
           interactive: true,
-          ask: async () => {
-            throw new Error('unexpected prompt');
-          },
+          ask,
         },
       );
       expect(result.stderr).toContain(message);
       expect(provider.calls).toHaveLength(0);
+      expect(ask).not.toHaveBeenCalled();
       expect(result.exitCode).toBe(1);
     });
     it('cancelling prints one cancel line and exits 0', async () => {

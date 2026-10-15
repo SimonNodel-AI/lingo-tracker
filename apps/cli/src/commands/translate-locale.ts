@@ -1,9 +1,4 @@
-import {
-  type Collection,
-  prepareTranslationRun,
-  type TranslationRun,
-  type TranslationRunOptions,
-} from '@simoncodes-ca/core';
+import { prepareTranslationRun, type TranslationRunOptions } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, printRunReport } from '../utils';
@@ -24,8 +19,6 @@ export interface TranslateLocaleOptions {
  * when several collections are configured.
  */
 export function createTranslateLocaleCommand(options: TranslationRunOptions = {}) {
-  const preparedRuns = new WeakMap<Collection, TranslationRun>();
-
   return defineCommand<TranslateLocaleOptions>()({
     flags: TRANSLATE_LOCALE_FLAGS,
     name: 'Translate locale',
@@ -37,19 +30,17 @@ export function createTranslateLocaleCommand(options: TranslationRunOptions = {}
     preflight: ({ options: flags, collection }) => {
       const run = prepareTranslationRun(collection, options);
       if (flags.locale) run.forLocale(flags.locale);
-      preparedRuns.set(collection, run);
+      return run;
     },
     required: ['locale'],
-    run: async ({ collection, answers }) => {
+    run: async ({ collection, answers, preflight }) => {
       const { name: collectionName } = collection;
       const targetLocale = answers.locale;
 
       CommandOutput.log('');
       ConsoleFormatter.progress(`Translating locale '${targetLocale}' in collection '${collectionName}'...`);
 
-      const prepared = preparedRuns.get(collection);
-      if (!prepared) throw new Error('Translation run was not prepared');
-      const result = await prepared.forLocale(targetLocale).execute({
+      const result = await preflight.forLocale(targetLocale).execute({
         onProgress: answers.verbose
           ? (progress) => {
               ConsoleFormatter.indent(
