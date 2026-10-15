@@ -13,9 +13,8 @@ import {
 } from '../errors/lingo-tracker-error';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
-import { addResource } from './add-resource';
-import { addResources } from './add-resources';
 import { calculateChecksum as md5 } from './checksum';
+import { addResource, addResources } from './resource-entry';
 import * as resourceFolder from './resource-folder';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';

@@ -1,21 +1,7 @@
 // Resource operations, folder files, and the read models built from them.
 
-export {
-  type AddResourceOptions,
-  type AddResourceParams,
-  type AddResourceResult,
-  addResource,
-  type ExistingResourcePolicy,
-} from './add-resource';
-export { type AddResourcesResult, addResources } from './add-resources';
 export type { CollectionFolderProblem } from './collection-folders';
 export { type DeleteResourceParams, type DeleteResourceResult, deleteResource } from './delete-resource';
-export {
-  type EditResourceChanges,
-  type EditResourceOptions,
-  type EditResourceResult,
-  editResource,
-} from './edit-resource';
 export { extractResourcesRecursively, extractSubtree } from './extract-subtree';
 export { type LoadResourceTreeOptions, loadResourceTree } from './load-resource-tree';
 export type { ResourceTranslation } from './locale-seeding';
@@ -26,6 +12,19 @@ export {
   readCollection,
   type StoredResource,
 } from './read-collection';
+export {
+  type AddResourceOptions,
+  type AddResourceParams,
+  type AddResourceResult,
+  type AddResourcesResult,
+  addResource,
+  addResources,
+  type EditResourceChanges,
+  type EditResourceOptions,
+  type EditResourceResult,
+  type ExistingResourcePolicy,
+  editResource,
+} from './resource-entry';
 export type { ResourceEntryMetadata } from './resource-entry-metadata';
 export {
   type EntryDetails,

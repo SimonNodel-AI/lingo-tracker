@@ -19,7 +19,7 @@ import {
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { calculateChecksum as md5 } from './checksum';
-import { editResource } from './edit-resource';
+import { editResource } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 

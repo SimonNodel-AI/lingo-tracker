@@ -5,10 +5,9 @@ import { seedResources, testOpenedCollection as testCollection, useTempDir } fro
 import { InvalidCollectionFolderError } from '../errors/lingo-tracker-error';
 import { createFolder } from '../folder/create-folder';
 import { deleteFolder } from '../folder/delete-folder';
-import { addResource } from './add-resource';
 import { deleteResource } from './delete-resource';
-import { editResource } from './edit-resource';
 import { executeMove } from './execute-move';
+import { addResource, editResource } from './resource-entry';
 import { openResourceFolder } from './resource-folder';
 
 // Real I/O with a mutable module copy so spies can verify that linked files were never read.

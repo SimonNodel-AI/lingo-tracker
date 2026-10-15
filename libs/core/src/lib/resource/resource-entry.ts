@@ -9,7 +9,7 @@ import {
   translocoToICU,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { readProjectTerms, type TerminologyFindings } from '../config/project-terms';
+import { readProjectTerms, type TerminologyFinding, type TerminologyFindings } from '../config/project-terms';
 import {
   BracedPlaceholderError,
   CoreOperationError,
@@ -49,58 +49,11 @@ import {
 import type { ResourceTreeEntry } from './resource-tree-types';
 import { assertTranslationStatus } from './translation-status-input';
 
+/** Entry shapes and operation contracts. */
 interface LocatedEntry {
   readonly resolvedKey: string;
   readonly entryKey: string;
   readonly folder: ResourceFolder;
-}
-
-/** Validates an address and opens its folder for inspection or an existing-entry write. */
-function locateEntry(
-  collection: Collection,
-  key: string,
-  options: { readonly targetFolder?: string } = {},
-): LocatedEntry {
-  const paths = resolveResourcePaths({
-    key,
-    translationsFolder: collection.translationsFolder,
-    targetFolder: options.targetFolder,
-  });
-  return openEntryAt(collection, paths);
-}
-
-/** An add's full key has already been validated and placed by its caller. */
-function locateResolvedEntry(collection: Collection, resolvedKey: string): LocatedEntry {
-  const paths = resolveResolvedResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
-  return openEntryAt(collection, paths);
-}
-
-/** Opens a resolved address without repeating its validation or folder resolution. */
-function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): LocatedEntry {
-  return {
-    resolvedKey: paths.resolvedKey,
-    entryKey: paths.entryKey,
-    folder: openResourceFolder(paths.folderPath, collection),
-  };
-}
-
-function assertConversionSafe(locale: string, value: string): void {
-  const findings = checkStoredValue(value).filter((finding) => finding.blocksConversion);
-  if (findings.length > 0) throw new BracedPlaceholderError(locale, findings.map(describeStoredValueFinding));
-}
-
-function validateAddChanges(collection: Collection, changes: EntryAddChanges): void {
-  assertCollectionLocales(
-    collection,
-    (changes.translations ?? []).map(({ locale }) => locale),
-  );
-  assertConversionSafe(collection.baseLocale, changes.baseValue);
-  for (const translation of changes.translations ?? []) {
-    if (translation.status !== undefined) assertTranslationStatus(translation.status);
-  }
-  for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
-    assertConversionSafe(translation.locale, translation.value);
-  }
 }
 
 /**
@@ -126,13 +79,13 @@ export interface ResourceEntries {
   [key: string]: ResourceEntry;
 }
 
-export interface ResourceEntryRemoval {
+interface ResourceEntryRemoval {
   readonly resolvedKey: string;
   /** Collect at operation end, then call pruneEmptiedFolders once. */
   readonly emptied?: string;
 }
 
-export interface EntryAddChanges {
+interface EntryAddChanges {
   /** Base locale value (the source text). */
   readonly baseValue: string;
   /** Optional context for translators. */
@@ -149,7 +102,7 @@ export interface EntryAddChanges {
 
 export type ExistingResourcePolicy = 'replace' | 'fail';
 
-export interface EntryAddResult {
+export interface AddResourceResult {
   /** The stored key (`targetFolder.key`). */
   readonly resolvedKey: string;
   /** False when an existing entry was replaced. */
@@ -212,11 +165,90 @@ export interface TranslateExistingResourceResult {
   readonly warnings: string[];
 }
 
-export interface EntryEditResult extends EditResourceResult {
+interface EntryEditResult extends EditResourceResult {
   readonly entry: ResourceTreeEntry;
 }
 
-export interface EntryWriteOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+interface EntryWriteOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+
+export interface AddResourceParams extends EntryAddChanges {
+  /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
+  readonly key: string;
+  /** The stored key is targetFolder.key. */
+  readonly targetFolder?: string;
+}
+
+export interface AddResourceOptions extends EntryWriteOptions {
+  readonly onExisting?: ExistingResourcePolicy;
+}
+
+export type EditResourceOptions = EntryWriteOptions;
+
+export interface AddResourcesResult {
+  readonly entriesCreated: number;
+  readonly created: boolean;
+  readonly skippedLocales: string[];
+  readonly terminology: TerminologyFindings;
+}
+
+interface AddPreflight {
+  readonly collection: Collection;
+  readonly resolvedKey: string;
+  readonly changes: EntryAddChanges;
+  readonly onExisting: ExistingResourcePolicy;
+  /** Reads fresh disk state; batches call this for every item immediately before writing. */
+  readonly recheck: () => void;
+}
+
+/** All values and advice needed to commit an add; preparation never writes files. */
+interface PreparedAdd extends AddPreflight {
+  readonly skippedLocales?: string[];
+  readonly terminology: TerminologyFindings;
+}
+
+interface EditContext {
+  readonly collection: Collection;
+  readonly resource: LocatedEntry;
+  readonly options: EntryWriteOptions;
+  readonly onMutation?: MutationSink;
+}
+
+type SuppliedEditTranslations = [string, { readonly value: string; readonly status?: TranslationStatus }][];
+
+/** Shared entry lookup, validation and saving. */
+/** Validates an address and opens its folder for inspection or an existing-entry write. */
+function locateEntry(
+  collection: Collection,
+  key: string,
+  options: { readonly targetFolder?: string } = {},
+): LocatedEntry {
+  const paths = resolveResourcePaths({
+    key,
+    translationsFolder: collection.translationsFolder,
+    targetFolder: options.targetFolder,
+  });
+  return openEntryAt(collection, paths);
+}
+
+/** An add's full key has already been validated and placed by its caller. */
+function locateResolvedEntry(collection: Collection, resolvedKey: string): LocatedEntry {
+  const paths = resolveResolvedResourcePaths({ key: resolvedKey, translationsFolder: collection.translationsFolder });
+  return openEntryAt(collection, paths);
+}
+
+/** Opens a resolved address without repeating its validation or folder resolution. */
+function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): LocatedEntry {
+  return {
+    resolvedKey: paths.resolvedKey,
+    entryKey: paths.entryKey,
+    folder: openResourceFolder(paths.folderPath, collection),
+  };
+}
+
+function assertConversionSafe(locale: string, value: string): void {
+  const findings = checkStoredValue(value).filter((finding) => finding.blocksConversion);
+  if (findings.length > 0) throw new BracedPlaceholderError(locale, findings.map(describeStoredValueFinding));
+}
 
 function saveEntry(
   collection: Collection,
@@ -245,29 +277,57 @@ function requireEntry(
   return entry;
 }
 
-export async function addEntry(
+/** Add: prepare values before single or batch writes. */
+function validateAddChanges(collection: Collection, changes: EntryAddChanges): void {
+  assertCollectionLocales(
+    collection,
+    (changes.translations ?? []).map(({ locale }) => locale),
+  );
+  assertConversionSafe(collection.baseLocale, changes.baseValue);
+  for (const translation of changes.translations ?? []) {
+    if (translation.status !== undefined) assertTranslationStatus(translation.status);
+  }
+  for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
+    assertConversionSafe(translation.locale, translation.value);
+  }
+}
+
+/**
+ * Adds a resource entry to a collection. With `onExisting: 'replace'`, an existing
+ * entry's previous translations and metadata are dropped. Creates the folders it needs.
+ *
+ * Every target locale of the collection gets a value: the supplied translation, else an
+ * auto-translation when the collection has it enabled, else a copy of the base value as
+ * `new` (the Locale seeding rule, {@link seedLocales}). When a supplied translation
+ * has no status, the Staleness rule infers `new` for a copy or `translated` otherwise.
+ *
+ * Values are normalized to ICU before they are stored. Nothing is written when the
+ * translation provider fails. The stored base value is checked against the preferred
+ * terminology (Project Terms) and the findings returned; they never block the add.
+ *
+ * @param options - Existence policy and optional `provider` / `protectedTerms` overrides (see `openTranslator`).
+ * @throws {ResourceAlreadyExistsError} The resolved key already exists and the policy is `fail`.
+ * @throws {InvalidResourceKeyError} The key or `targetFolder` is malformed.
+ * @throws {LocaleNotFoundError} A supplied translation names a locale the collection does not have.
+ * @throws {TranslationError} The translation provider failed.
+ * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
+ */
+export async function addResource(
   collection: Collection,
-  resolvedKey: string,
-  changes: EntryAddChanges,
-  onExisting: ExistingResourcePolicy,
-  options: EntryWriteOptions = {},
-): Promise<EntryAddResult> {
+  params: AddResourceParams,
+  options: AddResourceOptions = {},
+): Promise<AddResourceResult> {
+  const resolvedKey = resolveCheckedResourceKey(params.key, params.targetFolder);
   const onMutation = resolveMutationSink(collection, options);
-  const prepared = await prepareAdd(preflightAdd(collection, resolvedKey, changes, onExisting), options);
+  const prepared = await prepareAdd(
+    preflightAdd(collection, resolvedKey, params, options.onExisting ?? 'fail'),
+    options,
+  );
   return commitPrepared(prepared, onMutation);
 }
 
-export interface AddPreflight {
-  readonly collection: Collection;
-  readonly resolvedKey: string;
-  readonly changes: EntryAddChanges;
-  readonly onExisting: ExistingResourcePolicy;
-  /** Reads fresh disk state; batches call this for every item immediately before writing. */
-  readonly recheck: () => void;
-}
-
 /** Validates supplied values, then checks existence, without seeding or writing. */
-export function preflightAdd(
+function preflightAdd(
   collection: Collection,
   resolvedKey: string,
   changes: EntryAddChanges,
@@ -285,14 +345,8 @@ export function preflightAdd(
   };
 }
 
-/** All values and advice needed to commit an add; preparation never writes files. */
-export interface PreparedAdd extends AddPreflight {
-  readonly skippedLocales?: string[];
-  readonly terminology: TerminologyFindings;
-}
-
 /** Seeds a preflighted add once, retaining its diagnostics for the eventual write. */
-export async function prepareAdd(preflight: AddPreflight, options: OpenTranslatorOptions = {}): Promise<PreparedAdd> {
+async function prepareAdd(preflight: AddPreflight, options: OpenTranslatorOptions = {}): Promise<PreparedAdd> {
   const { collection, resolvedKey, changes } = preflight;
   const { baseValue: input, translations: requested = [], ...details } = changes;
   const baseValue = translocoToICU(input);
@@ -311,7 +365,7 @@ export async function prepareAdd(preflight: AddPreflight, options: OpenTranslato
 }
 
 /** Reopens fresh state and writes the prepared values through the shared save/report path. */
-export function commitPrepared(prepared: PreparedAdd, onMutation?: MutationSink): EntryAddResult {
+function commitPrepared(prepared: PreparedAdd, onMutation?: MutationSink): AddResourceResult {
   const committed = commitAdd(
     prepared.collection,
     prepared.resolvedKey,
@@ -333,7 +387,7 @@ function commitAdd(
   changes: EntryAddChanges,
   onExisting: ExistingResourcePolicy,
   onMutation?: MutationSink,
-): Pick<EntryAddResult, 'resolvedKey' | 'created' | 'translations'> {
+): Pick<AddResourceResult, 'resolvedKey' | 'created' | 'translations'> {
   const resource = locateResolvedEntry(collection, resolvedKey);
   const created = checkWriteConflict(resource, onExisting);
   const translations = applyEntryAdd(resource, changes);
@@ -344,37 +398,6 @@ function commitAdd(
 /** Checks a placed key without writing, including the post-translation batch conflict check. */
 function assertAddable(collection: Collection, resolvedKey: string, onExisting: ExistingResourcePolicy): void {
   checkWriteConflict(locateResolvedEntry(collection, resolvedKey), onExisting);
-}
-
-export async function translateEntry(
-  collection: Collection,
-  key: string,
-  options: EntryWriteOptions = {},
-): Promise<TranslateExistingResourceResult> {
-  const onMutation = resolveMutationSink(collection, options);
-  const config = assertAutoTranslationEnabled(collection);
-  const resource = locateEntry(collection, key);
-  const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
-  const { row, locales } = selectTranslationRow(resource.resolvedKey, entry, collection.targetLocales);
-  if (locales.length === 0) return { translatedCount: 0, skippedLocales: [], entry, warnings: [] };
-  const { tally, warnings } = await executeTranslationRun({
-    ...options,
-    collection,
-    translationConfig: config,
-    rows: [row],
-    locales,
-    failurePolicy: 'throw-first',
-    mutationSink: onMutation,
-  });
-  const outcomes = tally.outcomes;
-  const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;
-  if (!freshEntry) throw new ResourceNotFoundError(resource.resolvedKey);
-  return {
-    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
-    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
-    entry: freshEntry,
-    warnings,
-  };
 }
 
 function checkWriteConflict(resource: LocatedEntry, onExisting: ExistingResourcePolicy): boolean {
@@ -406,21 +429,130 @@ function applyEntryAdd(resource: LocatedEntry, changes: EntryAddChanges): Resour
   });
 }
 
-interface EditContext {
-  readonly collection: Collection;
-  readonly resource: LocatedEntry;
-  readonly options: EntryWriteOptions;
-  readonly onMutation?: MutationSink;
+/**
+ * Resolves every item before translation, prepares every item before writing, then
+ * writes in input order. Preflight refuses malformed keys and target-folder addresses,
+ * unknown locales, duplicate resolved keys within the batch, unreadable folder JSON,
+ * existing exact keys unless `onExisting` is `replace`, and translation failures.
+ * Preflight reads folders but does not create them or check whether a later write can succeed.
+ *
+ * A filesystem failure during writing (for example, an existing regular file in a
+ * folder path or insufficient permissions) can therefore occur after earlier items
+ * were written. Every earlier completed item remains saved in both
+ * JSON files. The failing item may have created its folder and may have written
+ * `resource_entries.json` without `tracker_meta.json`. There is no rollback or result on
+ * failure. Every earlier item's `upsert` was already delivered through `onMutation`;
+ * the failing folder delivers a `reindex` if its save started.
+ */
+export async function addResources(
+  collection: Collection,
+  items: readonly AddResourceParams[],
+  options: AddResourceOptions = {},
+): Promise<AddResourcesResult> {
+  const onExisting = options.onExisting ?? 'fail';
+  const batchKeys = new Set<string>();
+  const resolved: AddPreflight[] = [];
+  const prepared: PreparedAdd[] = [];
+
+  for (const item of items) {
+    const key = resolveCheckedResourceKey(item.key, item.targetFolder);
+    const candidate = preflightAdd(collection, key, item, onExisting);
+    if (batchKeys.has(key)) throw new ResourceAlreadyExistsError(key);
+    batchKeys.add(key);
+    resolved.push(candidate);
+  }
+  for (const candidate of resolved) {
+    prepared.push(await prepareAdd(candidate, options));
+  }
+  // No await separates this check from the write loop, so a late conflict writes nothing.
+  for (const candidate of prepared) {
+    candidate.recheck();
+  }
+
+  let entriesCreated = 0;
+  const skippedLocales = new Set<string>();
+  const findings: TerminologyFinding[] = [];
+  const problems = new Set<string>();
+  for (const candidate of prepared) {
+    const result = commitPrepared(candidate, resolveMutationSink(collection, options));
+    if (result.created) entriesCreated++;
+    for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
+    findings.push(...result.terminology.findings);
+    for (const problem of result.terminology.problems) problems.add(problem);
+  }
+
+  return {
+    entriesCreated,
+    created: entriesCreated > 0,
+    skippedLocales: [...skippedLocales],
+    terminology: { findings, problems: [...problems] },
+  };
+}
+/** Translate an existing entry. */
+export async function translateEntry(
+  collection: Collection,
+  key: string,
+  options: EntryWriteOptions = {},
+): Promise<TranslateExistingResourceResult> {
+  const onMutation = resolveMutationSink(collection, options);
+  const config = assertAutoTranslationEnabled(collection);
+  const resource = locateEntry(collection, key);
+  const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
+  const { row, locales } = selectTranslationRow(resource.resolvedKey, entry, collection.targetLocales);
+  if (locales.length === 0) return { translatedCount: 0, skippedLocales: [], entry, warnings: [] };
+  const { tally, warnings } = await executeTranslationRun({
+    ...options,
+    collection,
+    translationConfig: config,
+    rows: [row],
+    locales,
+    failurePolicy: 'throw-first',
+    mutationSink: onMutation,
+  });
+  const outcomes = tally.outcomes;
+  const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;
+  if (!freshEntry) throw new ResourceNotFoundError(resource.resolvedKey);
+  return {
+    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
+    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
+    entry: freshEntry,
+    warnings,
+  };
 }
 
-type SuppliedEditTranslations = [string, { readonly value: string; readonly status?: TranslationStatus }][];
-
-export async function editEntry(
+/** Edit an existing entry. */
+/**
+ * Edits an existing resource entry of a collection.
+ *
+ * When the base value changes, the Staleness rule updates every translation's status, then
+ * Locale seeding ({@link seedLocales}) fills the locales that need work and were not supplied
+ * in `changes.translations`: auto-translated when the collection has it enabled, else a copy
+ * of the new base value as `new` for a locale that has no value or held an untranslated copy
+ * of the old base value. A real translation is kept (and is `stale`).
+ *
+ * The edit is saved before auto-translation runs, so it is kept even if the provider fails.
+ * With `moveTo`, the edited entry then moves to the destination folder: the destination is
+ * written before the source entry is removed. `moveTo` is validated, and the destination
+ * checked for a collision, before anything is written. The destination is read again just
+ * before the move (auto-translation may have taken a while), and a collision found then
+ * throws `ResourceAlreadyExistsError` with the edit already saved in the source folder.
+ *
+ * @param key - The entry's full, existing key.
+ * @param options - `provider` / `protectedTerms`: used instead of the collection's (see `openTranslator`).
+ * @throws {InvalidResourceKeyError} `key` or `moveTo` is malformed.
+ * @throws {ResourceNotFoundError} No entry exists at `key`.
+ * @throws {ResourceAlreadyExistsError} The destination folder already has an entry with this entry key
+ *   (checked before the edit, and again, on fresh disk state, just before the move).
+ * @throws {LocaleNotFoundError} A translation names a locale the collection does not have.
+ * @throws {TranslationError} The translation provider failed (the edit itself is saved).
+ * @throws {ProtectedTermsFileError} Auto-translation runs and a protected-terms file is malformed.
+ */
+export async function editResource(
   collection: Collection,
   key: string,
   changes: EditResourceChanges,
-  options: EntryWriteOptions = {},
-): Promise<EntryEditResult> {
+  options: EditResourceOptions = {},
+): Promise<EditResourceResult> {
   const onMutation = resolveMutationSink(collection, options);
   const { resource, translations, destination, liveEntry } = validateEntryEdit(collection, key, changes);
   const context: EditContext = { collection, resource, options, onMutation };
@@ -432,7 +564,6 @@ export async function editEntry(
       resolvedKey: resource.resolvedKey,
       updated: false,
       message: 'No changes detected',
-      entry: requireEntry(resource.folder, resource.entryKey, resource.resolvedKey),
     };
   }
 
@@ -662,6 +793,7 @@ function moveEntry(
   return { resolvedKey: moved.to, entry: moved.entry, ...(relocation.warnings && { warnings: relocation.warnings }) };
 }
 
+/** Remove an existing entry. */
 export function removeEntry(
   collection: Collection,
   key: string,

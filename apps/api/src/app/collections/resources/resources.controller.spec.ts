@@ -511,6 +511,16 @@ describe('ResourcesController HTTP (real project)', () => {
         await request('PATCH', { key: dto.key, locales: { 'fr-ca': { value: 'Oui', status: 'verifed' } } }),
       ).toMatchObject({ status: 400, body: { message: expect.stringContaining('verifed') } });
     });
+    it('stores an empty base value on PATCH', async () => {
+      const response = await request('PATCH', { key: dto.key, baseValue: '' });
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        resolvedKey: dto.key,
+        updated: true,
+        resource: { base: { locale: 'en', value: '' } },
+      });
+      expect(entries()).toHaveProperty('ok.source', '');
+    });
     it('should successfully update a resource', async () => {
       const response = await request('PATCH', { key: dto.key, baseValue: 'OK Updated' });
       expect(response.status).toBe(200);
