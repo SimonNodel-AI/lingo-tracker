@@ -3,7 +3,7 @@ import { patchState, signalStoreFeature, type, withComputed, withMethods } from 
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { NEEDS_WORK_STATUSES } from '@simoncodes-ca/domain';
 import type { SortDirection, SortField } from '../../translations/utils/sort-translations';
-import { type CollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
 import {
   clearAll,
   compactDisplayLocale,
@@ -35,7 +35,7 @@ export const initialFilterState: FilterState = {
 export function withFilterFeature<_>() {
   return signalStoreFeature(
     {
-      props: type<CollectionResetRegistry>(),
+      props: type<CollectionLifecycleRegistry>(),
       state: type<
         Pick<LocaleSelection, 'densityMode' | 'compactLocale' | 'compactLocaleManuallyChanged'> & LocaleContext
       >(),

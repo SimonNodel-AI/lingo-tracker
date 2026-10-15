@@ -7,20 +7,19 @@ import { collectionSettings } from '../../../../testing/collection-settings';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { BrowserApiService } from '../../services/browser-api.service';
 import { BrowserStore } from '../browser.store';
-import { type CollectionResetRegistry, withCollectionResetRegistry, withCollectionState } from '../collection-reset';
+import { withCollectionLifecycle, withCollectionState } from '../collection-reset';
 import { initialRootState } from '../root-state';
 import { withBrowserSessionFeature } from './with-browser-session.feature';
 
 // This feature is deliberately composed after Browser Session, without editing that feature.
 const cancelLoads = vi.fn<() => void>();
 const ExtendedSession = signalStore(
-  withCollectionResetRegistry(),
+  withCollectionLifecycle(),
   withCollectionState(initialRootState),
-  withMethods(() => ({
-    restoreViewPreferences: vi.fn<(name: string) => void>(),
-    checkCacheStatus: vi.fn<() => void>(),
-    _cancelListLoads: cancelLoads,
-  })),
+  withMethods((store) => {
+    store._collectionLifecycle.register('close', cancelLoads);
+    return {};
+  }),
   withBrowserSessionFeature(),
   withCollectionState({ extraCache: ['initial'] }),
 );
@@ -28,19 +27,21 @@ const ExtendedSession = signalStore(
 describe('Browser Session reset registration', () => {
   beforeEach(() => TestBed.configureTestingModule({ imports: [getTranslocoTestingModule()] }));
 
-  it('registers every state key on the real BrowserStore for collection reset', () => {
+  it('resets every state key on the real BrowserStore when a collection opens', () => {
     const store = TestBed.inject(BrowserStore);
-    // NgRx hides underscore-prefixed props from public types, but retains them on the instance.
-    const registry = store as unknown as CollectionResetRegistry;
-    const registeredKeys = new Set(registry._collectionResets.flatMap(({ keys }) => keys));
-    const stateKeys = Object.keys(getState(store)).sort();
-    const unregisteredKeys = stateKeys.filter((key) => !registeredKeys.has(key));
-
-    // Every BrowserStore state field is per-collection; there are no intentional exceptions.
-    expect(
-      [...registeredKeys].sort(),
-      `Unregistered collection state keys: ${unregisteredKeys.join(', ') || '(none)'}. Use withCollectionState to declare per-collection state.`,
-    ).toEqual(stateKeys);
+    vi.spyOn(TestBed.inject(BrowserApiService), 'getCacheStatus').mockReturnValue(NEVER);
+    store.openCollection(collectionSettings({ name: 'a' }));
+    const initial = getState(store);
+    // Clear every field, including future state slices, without depending on the registry.
+    patchState(unprotected(store), () => Object.fromEntries(Object.keys(initial).map((key) => [key, undefined])));
+    patchState(unprotected(store), { sessionId: 1 });
+    store.openCollection(collectionSettings({ name: 'b' }));
+    expect(getState(store)).toEqual({
+      ...initial,
+      sessionId: 2,
+      selectedCollection: 'b',
+      collectionSettings: collectionSettings({ name: 'b' }),
+    });
   });
 
   it('resets a later feature on every open, including an earlier open of the same collection', () => {
@@ -52,6 +53,39 @@ describe('Browser Session reset registration', () => {
     }
     expect(store.sessionId()).toBe(3);
     expect(cancelLoads).toHaveBeenCalledTimes(3);
+  });
+
+  it('runs close, reset, settings patch, restore and ready in order, with hooks isolated per instance', () => {
+    const events: string[] = [];
+    const OrderedSession = signalStore(
+      withCollectionLifecycle(),
+      withCollectionState(initialRootState),
+      withBrowserSessionFeature(),
+      withCollectionState({ extraCache: 'initial' }),
+      withMethods((store) => {
+        // Register in reverse phase order: execution order belongs to the Browser Session.
+        for (const phase of ['ready', 'restore', 'reset', 'close'] as const) {
+          store._collectionLifecycle.register(phase, () => {
+            events.push(`${phase}:${store.sessionId()}:${store.selectedCollection()}:${store.extraCache()}`);
+          });
+        }
+        store._collectionLifecycle.register('reset', () => events.push('second reset'));
+        return {};
+      }),
+    );
+    const store = TestBed.runInInjectionContext(() => new OrderedSession());
+    TestBed.runInInjectionContext(() => new OrderedSession());
+    store.openCollection(collectionSettings({ name: 'old' }));
+    events.length = 0;
+    patchState(unprotected(store), { extraCache: 'dirty' });
+    store.openCollection(collectionSettings({ name: 'new' }));
+    expect(events).toEqual([
+      'close:1:old:dirty',
+      'reset:0:null:initial',
+      'second reset',
+      'restore:2:new:initial',
+      'ready:2:new:initial',
+    ]);
   });
 
   it('runs every registered feature reset and removes all previous collection state', () => {

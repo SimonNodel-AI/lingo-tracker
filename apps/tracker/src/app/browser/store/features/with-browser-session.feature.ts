@@ -4,7 +4,7 @@ import {
   collectionNeedsReopen,
   sameCollectionSettings,
 } from '../../../collections/store/collection-settings';
-import type { CollectionResetRegistry } from '../collection-reset';
+import type { CollectionLifecycleRegistry } from '../collection-reset';
 import type { RootState } from '../root-state';
 
 /** The root fields a collection's settings set: the settings themselves and their projections. */
@@ -37,25 +37,25 @@ export function withBrowserSessionFeature<_>() {
   return signalStoreFeature(
     {
       state: type<RootState>(),
-      props: type<CollectionResetRegistry>(),
-      methods: type<{
-        restoreViewPreferences(collectionName: string): void;
-        checkCacheStatus(): void;
-        _cancelListLoads(): void;
-      }>(),
+      props: type<CollectionLifecycleRegistry>(),
     },
     withMethods((store) => {
-      /** Stops list loads, bumps the session, resets every feature, applies `settings`, restores prefs, starts polling. */
+      /**
+       * Hook order: close (cancel old list loads), reset (state and timers), patch settings/session,
+       * restore (saved preferences), ready (index polling). Hooks within a phase run in feature
+       * registration order. Keep the patch between reset and restore: restoration needs new locales.
+       * The old readiness wait is cancelled by the ready hook's switchMap, as before.
+       */
       function open(settings: CollectionSettings): void {
         const sessionId = store.sessionId() + 1;
         // A list load of the previous session (and its not-ready retries) stops here, not later.
-        store._cancelListLoads();
+        store._collectionLifecycle.run('close', settings);
         // Resets and the settings/sessionId patch are synchronous, so computed signals/effects do not observe intermediate state.
-        for (const { reset } of store._collectionResets) reset();
+        store._collectionLifecycle.run('reset', settings);
         patchState(store, { sessionId, ...settingsState(settings) });
 
-        store.restoreViewPreferences(settings.name);
-        store.checkCacheStatus();
+        store._collectionLifecycle.run('restore', settings);
+        store._collectionLifecycle.run('ready', settings);
       }
 
       return {

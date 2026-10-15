@@ -3,6 +3,7 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { describe, expect, it } from 'vitest';
 import { LOCAL_STORAGE } from '../../../shared/storage/browser-storage';
 import { MemoryStorageAdapter } from '../../../shared/storage/keyed-storage';
+import { withCollectionLifecycle } from '../collection-reset';
 import { type PreferenceState, snapshot } from '../view-preferences';
 import { withViewPreferencesFeature } from './with-view-preferences.feature';
 
@@ -18,6 +19,7 @@ const preferences: PreferenceState = {
   selectedStatuses: ['stale'],
 };
 const PreferenceStore = signalStore(
+  withCollectionLifecycle(),
   withState({ ...preferences, availableLocales: ['en', 'fr'], baseLocale: 'en', selectedCollection: 'first' }),
   withViewPreferencesFeature(),
   withMethods((store) => ({
