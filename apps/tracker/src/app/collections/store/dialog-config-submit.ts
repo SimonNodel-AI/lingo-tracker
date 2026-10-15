@@ -61,7 +61,7 @@ export interface NamedEntryWrite<TResult> {
   };
 }
 
-interface NamedEntrySubmitConfig {
+export interface NamedEntrySubmitConfig {
   /** The control is read after form construction; its validator needs this helper during construction. */
   nameControl: () => FormControl<string>;
   normalizeName?: (value: unknown) => string;
