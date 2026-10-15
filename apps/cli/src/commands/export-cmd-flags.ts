@@ -1,9 +1,8 @@
 import type { ExportRunOptions } from '@simoncodes-ca/core';
-import { TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
+import { DEFAULT_EXPORT_BASE_PROPERTY_NAME, TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
 import { flagName, resolveFlag, type ResolvingFlagRecords } from '../runner/flag-record';
 import type { selectionPrompt } from '../utils/prompt-utils';
-import { parseCommaSeparatedList } from '../utils/string-parsers';
 import type { ExportCommandOptions, ExportOptionsContext } from './export-options';
 
 export type ExportAnswers = ExportCommandOptions & {
@@ -40,6 +39,13 @@ type ExportOptionResults = {
   >;
 };
 
+const STATUS_DEFAULT: readonly TranslationStatus[] = ['new', 'stale'];
+const STRUCTURE_DEFAULT: NonNullable<ExportCommandOptions['structure']> = 'hierarchical';
+const STRUCTURE_CHOICES = [
+  { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
+  { title: 'Flat (dot-delimited keys)', value: 'flat' },
+];
+
 const json = (options: ExportCommandOptions) => options.format === 'json';
 const richJson = (options: ExportCommandOptions) => json(options) && Boolean(options.rich);
 const jsonAdvice =
@@ -51,7 +57,7 @@ const jsonAdvice =
     return `${flag} applies only to JSON exports.`;
   };
 const toggle = (message: string): Partial<prompts.PromptObject> => ({ message, active: 'Yes', inactive: 'No' });
-const BASE_PROPERTY_INITIAL = 'baseValue';
+const BASE_PROPERTY_INITIAL = DEFAULT_EXPORT_BASE_PROPERTY_NAME;
 const STATUS_TITLES: Record<TranslationStatus, string> = {
   new: 'New (not yet translated)',
   stale: 'Stale (source changed)',
@@ -61,15 +67,15 @@ const STATUS_TITLES: Record<TranslationStatus, string> = {
 // Keep the established prompt order while deriving the choices from domain.
 const statusOrder = (status: TranslationStatus) =>
   status === 'stale' ? 1 : status === 'translated' ? 2 : TRANSLATION_STATUSES.indexOf(status);
-// flagDefault uses helpDefault ?? defaultValue ?? runtimeDefault, preserving the help-only status fallback.
-function resolveStatuses(values: ExportAnswers, defaultValue: string): string[] {
+// Keep the status fallback help-only; resolution and prompt selection use STATUS_DEFAULT directly.
+function resolveStatuses(values: ExportAnswers): string[] {
   const status = values.status;
   if (status !== undefined && Array.isArray(status) === false) {
     throw new Error(
       `Invalid ${flagName(EXPORT_FLAGS.status)} "${status.input}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
     );
   }
-  const statuses = (Array.isArray(status) ? status : undefined) ?? parseCommaSeparatedList(defaultValue) ?? [];
+  const statuses = (Array.isArray(status) ? status : undefined) ?? [...STATUS_DEFAULT];
   if (statuses.length === 0)
     throw new Error(`Invalid ${flagName(EXPORT_FLAGS.status)} "". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
   return statuses;
@@ -158,9 +164,8 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
     flags: '-s, --status <statuses>',
     description: 'Filter by translation status (comma-separated)',
     list: 'preserve',
-    helpDefault: 'new,stale',
-    prompt: (options, _context, defaultValue) => {
-      const selectedStatuses = parseCommaSeparatedList(String(defaultValue)) ?? [];
+    helpDefault: STATUS_DEFAULT.join(','),
+    prompt: (options) => {
       return options.status
         ? []
         : [
@@ -171,7 +176,7 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
               choices: TRANSLATION_STATUSES.map((status) => ({
                 title: STATUS_TITLES[status],
                 value: status,
-                selected: selectedStatuses.includes(status),
+                selected: STATUS_DEFAULT.includes(status),
               })).sort((left, right) => statusOrder(left.value) - statusOrder(right.value)),
               min: 1,
               hint: 'Space to select. Return to submit',
@@ -179,7 +184,7 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
             },
           ];
     },
-    resolve: (values, defaultValue) => ({ status: resolveStatuses(values, String(defaultValue)) }),
+    resolve: (values) => ({ status: resolveStatuses(values) }),
   },
   tags: {
     flags: '-t, --tags <tags>',
@@ -219,23 +224,20 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   structure: {
     flags: '--structure <type>',
     description: 'JSON structure (flat | hierarchical)',
-    helpDefault: 'hierarchical',
+    helpDefault: STRUCTURE_DEFAULT,
     appliesWhen: json,
     inapplicableMessage: jsonAdvice('--structure', json),
-    prompt: (_options, _context, defaultValue) => [
+    prompt: () => [
       {
         message: 'JSON structure type',
-        choices: [
-          { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
-          { title: 'Flat (dot-delimited keys)', value: 'flat' },
-        ],
+        choices: STRUCTURE_CHOICES,
         name: 'structure',
         type: 'select',
-        initial: defaultValue === 'hierarchical' ? 0 : 1,
+        initial: STRUCTURE_CHOICES.findIndex((choice) => choice.value === STRUCTURE_DEFAULT),
       },
     ],
-    resolve: (values, defaultValue) => ({
-      jsonStructure: values.structure ?? (defaultValue === 'flat' ? 'flat' : 'hierarchical'),
+    resolve: (values) => ({
+      jsonStructure: values.structure ?? STRUCTURE_DEFAULT,
     }),
   },
   rich: {
