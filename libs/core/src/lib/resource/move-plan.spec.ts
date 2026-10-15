@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { testCollection } from '../../testing/temp-dir.spec-helpers';
-import { FolderMoveIntoDescendantError } from '../errors/lingo-tracker-error';
-import { type MoveSelection, planMove } from './move-plan';
+import { FolderMoveIntoDescendantError, InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import { type MoveSelection, planMove, validateMoveInput } from './move-plan';
 
 describe('Move Plan', () => {
   const source = testCollection('/collections/main');
@@ -181,7 +181,9 @@ describe('Move Plan', () => {
     });
     expect(plan).toMatchObject({ kind: 'refused', reason: 'same-location' });
     if (plan.kind !== 'refused') throw new Error('Expected a refusal');
-    expect(plan.warning()).toBe('Source and destination are the same. No move performed.');
+    expect('warning' in plan ? plan.warning : undefined).toBe(
+      'Source and destination are the same. No move performed.',
+    );
   });
 
   it('warns for nesting a folder under its own parent', () => {
@@ -193,7 +195,7 @@ describe('Move Plan', () => {
     });
     expect(plan).toMatchObject({ kind: 'refused', reason: 'already-there' });
     if (plan.kind !== 'refused') throw new Error('Expected a refusal');
-    expect(plan.warning()).toBe('Folder is already at this location. No move performed.');
+    expect('warning' in plan ? plan.warning : undefined).toBe('Folder is already at this location. No move performed.');
   });
 
   it('warns for moving a top-level folder to the root', () => {
@@ -205,7 +207,7 @@ describe('Move Plan', () => {
     });
     expect(plan).toMatchObject({ kind: 'refused', reason: 'already-there' });
     if (plan.kind !== 'refused') throw new Error('Expected a refusal');
-    expect(plan.warning()).toBe('Folder is already at this location. No move performed.');
+    expect('warning' in plan ? plan.warning : undefined).toBe('Folder is already at this location. No move performed.');
   });
 
   it('refuses a folder destination inside its source with the existing message', () => {
@@ -217,8 +219,8 @@ describe('Move Plan', () => {
     });
     expect(plan).toMatchObject({ kind: 'refused', reason: 'descendant' });
     if (plan.kind !== 'refused') throw new Error('Expected a refusal');
-    expect(() => plan.warning()).toThrow(FolderMoveIntoDescendantError);
-    expect(() => plan.warning()).toThrow(
+    expect('error' in plan ? plan.error : undefined).toBeInstanceOf(FolderMoveIntoDescendantError);
+    expect('error' in plan ? plan.error.message : undefined).toBe(
       'Cannot move folder "apps.buttons" into its own descendant "apps.buttons.child"',
     );
   });
@@ -290,5 +292,28 @@ describe('Move Plan', () => {
         { from: 'apps.buttons.nested.cancel', to: 'shared.buttons.nested.cancel' },
       ],
     });
+  });
+});
+
+describe('validateMoveInput', () => {
+  it('uses typed key validation and retains the submitted selection', () => {
+    for (const source of ['bad@key', 'bad@key*', 'bad@key.*']) {
+      const validate = () => validateMoveInput({ source, destination: 'ok' });
+      expect(validate).toThrow(InvalidResourceKeyError);
+      expect(validate).toThrow(
+        expect.objectContaining({
+          key: source,
+          message: 'Key validation: Invalid key segment "bad@key". Segments must match pattern [A-Za-z0-9_-]+',
+        }),
+      );
+    }
+    expect(() => validateMoveInput({ source: 'ok', destination: 'bad@key' })).toThrow(InvalidResourceKeyError);
+  });
+
+  it('keeps the pattern root rules', () => {
+    expect(validateMoveInput({ source: '*', destination: '' })).toBe('pattern');
+    expect(validateMoveInput({ source: 'apps.*', destination: '' })).toBe('pattern');
+    expect(validateMoveInput({ source: 'ok', destination: 'apps.ok' })).toBe('key');
+    expect(() => validateMoveInput({ source: 'ok', destination: '' })).toThrow(InvalidResourceKeyError);
   });
 });

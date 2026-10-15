@@ -7,7 +7,8 @@ import { writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
 import { planMove } from './move-plan';
 import { readCollection } from './read-collection';
-import { type Relocation, relocateEntries } from './relocate-entries';
+import { openFolders, type Relocation, relocateEntries } from './relocate-entries';
+import { openResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
 /** Custom batches exercise relocation itself; collection facts still come from Move Plan. */
@@ -337,5 +338,62 @@ describe('relocateEntries (real fs)', () => {
     expect(result.errors[2]).toContain('Failed to read destination file for key: broken.ok');
     expect(result.errors[3]).toBe('Source and destination are the same key: common.fine');
     expect(result.moved.map(({ to }) => to)).toEqual(['shared.ok']);
+  });
+});
+
+vi.mock('./resource-folder', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./resource-folder')>();
+  return { ...actual, openResourceFolder: vi.fn(actual.openResourceFolder) };
+});
+
+describe('openFolders', () => {
+  const root = useTempDir('relocation-folders-');
+  const collection = () => testCollection(root(), { baseLocale: 'de' });
+
+  beforeEach(() => {
+    vi.mocked(openResourceFolder).mockClear();
+  });
+
+  it('opens lazily, once per folder, and returns the same folder for later keys', () => {
+    writeFolderFiles(root(), 'common', { entries: { ok: { source: 'OK' } } });
+    const folders = openFolders(collection());
+    expect(openResourceFolder).not.toHaveBeenCalled();
+
+    const first = folders.entryAt('common.ok');
+    const sibling = folders.entryAt('common.cancel');
+    const repeated = folders.entryAt('common.ok');
+    const rootEntry = folders.entryAt('welcome');
+
+    expect(sibling.folder).toBe(first.folder);
+    expect(repeated.folder).toBe(first.folder);
+    expect(rootEntry.folder).not.toBe(first.folder);
+    expect(first.folder.get(first.entryKey)?.entry.source).toBe('OK');
+    expect(first.folderPath).toBe(join(root(), 'common'));
+    expect(sibling.entryKey).toBe('cancel');
+    expect(rootEntry.folderPath).toBe(root());
+    expect(rootEntry.entryKey).toBe('welcome');
+    expect(openResourceFolder).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(openResourceFolder).mock.calls.map(([folderPath]) => folderPath)).toEqual([
+      join(root(), 'common'),
+      root(),
+    ]);
+  });
+
+  it('uses the collection base locale and translations folder policy', () => {
+    const openedCollection = collection();
+    const { folder, entryKey } = openFolders(openedCollection).entryAt('common.hello');
+    folder.setBase(entryKey, 'Hallo');
+
+    expect(openResourceFolder).toHaveBeenCalledWith(join(root(), 'common'), openedCollection);
+    expect(folder.get(entryKey)?.meta).toEqual({ de: { checksum: calculateChecksum('Hallo') } });
+  });
+
+  it('propagates folder read errors and does not cache an unsuccessful open', () => {
+    writeFolderFiles(root(), 'common', { entries: '{ invalid json' });
+    const folders = openFolders(collection());
+    expect(() => folders.entryAt('common.ok')).toThrow();
+    writeFolderFiles(root(), 'common', { entries: { ok: { source: 'OK' } } });
+    expect(folders.entryAt('common.ok').folder.get('ok')?.entry.source).toBe('OK');
+    expect(openResourceFolder).toHaveBeenCalledTimes(2);
   });
 });

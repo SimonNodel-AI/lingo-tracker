@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { groupByFolder } from '../resource/folder-batch';
+import { groupByFolder } from '../resource/folder-grouping';
 import { openResourceFolder } from '../resource/resource-folder';
 import type { ImportedResource } from './types';
 

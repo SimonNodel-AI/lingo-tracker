@@ -1,4 +1,3 @@
-import { isFolderPathUnder } from '@simoncodes-ca/domain';
 import { type Collection, type OpenedCollection, openProjectCollection } from '../config/open-collection';
 import {
   CollectionNotFoundError,
@@ -7,7 +6,7 @@ import {
   ReadOnlyCollectionError,
 } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from './collection-folders';
-import { sweepCollection, sweepKeys } from './collection-sweep';
+import { fullKeyOf, sweepCollection, sweepKeys } from './collection-sweep';
 import {
   folderAddressExists,
   inspectFolderAddress,
@@ -15,10 +14,10 @@ import {
   validateFolderAddress,
 } from './folder-address';
 import { pruneEmptiedFolders } from './folder-pruning';
-import { movePatternPrefix, validateMoveInput } from './move-input';
-import { planMove } from './move-plan';
+import { type MovePruneSource, summarizeMovePruning } from './move-cleanup';
+import { movePatternPrefix, planMove, validateMoveInput } from './move-plan';
 import { MoveReport, type MoveResult } from './move-report';
-import { relocateEntries } from './relocate-entries';
+import { InterruptedRelocation, relocateEntries } from './relocate-entries';
 import type { MutationSinkOptions } from './resource-mutation';
 
 /** Submitted addresses; patterns retain the trailing `*` syntax (including root `*`). */
@@ -36,9 +35,10 @@ export type ExecuteMoveResult = MoveResult;
 type Selection = Omit<MoveRequest, 'kind'> &
   ({ readonly kind: 'key' | 'pattern' } | { readonly kind: 'folder'; readonly nestUnderDestination?: boolean });
 type FolderSelection = Extract<Selection, { kind: 'folder' }>;
-interface MoveBatch {
-  readonly emptiedFolders: Set<string>;
-  readonly folderSources: Array<{ source: string; empty: boolean }>;
+interface CompletedMove {
+  readonly report: ExecuteMoveResult;
+  readonly emptiedFolders: readonly string[];
+  readonly folderSource?: MovePruneSource;
 }
 
 type PreparedMove = { readonly destinationCollection: Collection } & (
@@ -89,36 +89,33 @@ function finishMoves(
   includesFolder: boolean,
 ): ExecuteMoveResult {
   const report = new MoveReport();
-  const batch: MoveBatch = { emptiedFolders: new Set(), folderSources: [] };
+  const cleanup: Pick<CompletedMove, 'emptiedFolders' | 'folderSource'>[] = [];
   try {
     for (const move of prepared) {
       if ('error' in move) report.fail(move.error);
-      else report.merge(executePreparedMove(collection, move, options, batch));
+      else {
+        const result = executePreparedMove(collection, move, options);
+        cleanup.push(result);
+        report.merge(result.report);
+      }
     }
+  } catch (error) {
+    if (error instanceof InterruptedRelocation) {
+      cleanup.push({ emptiedFolders: error.emptiedFolders });
+      throw error.original;
+    }
+    throw error;
   } finally {
-    const pruning = pruneEmptiedFolders(collection, batch.emptiedFolders, options);
-    const failedEmptySourceProblems = new Set<(typeof pruning.problems)[number]>();
-    // validateSelection rejects root folder sources with validateFolderAddress(..., false)
-    // before either executeMove or executeMoves can populate this batch.
-    for (const { source, empty } of batch.folderSources) {
-      const problems =
-        empty && !pruning.removed.includes(source)
-          ? pruning.problems.filter(({ folderPath }) => isFolderPathUnder(source, folderPath))
-          : [];
-      for (const problem of problems) failedEmptySourceProblems.add(problem);
-      report.prune(
-        source,
-        {
-          removed: pruning.removed,
-          kept: pruning.kept.filter(({ folderPath }) => isFolderPathUnder(source, folderPath)),
-          problems,
-        },
-        empty,
-      );
-    }
-    for (const problem of pruning.problems) {
-      if (!failedEmptySourceProblems.has(problem)) report.warn(describeFolderProblem(problem));
-    }
+    report.prune(
+      summarizeMovePruning(
+        pruneEmptiedFolders(
+          collection,
+          cleanup.flatMap(({ emptiedFolders }) => emptiedFolders),
+          options,
+        ),
+        cleanup.flatMap(({ folderSource }) => (folderSource ? [folderSource] : [])),
+      ),
+    );
   }
   return includesFolder ? report.finish(true) : report.finish();
 }
@@ -156,15 +153,10 @@ function resolveDestination(source: OpenedCollection, name: string | undefined):
   }
 }
 
-function executePreparedMove(
-  collection: Collection,
-  move: PreparedMove,
-  options: MoveOptions,
-  batch: MoveBatch,
-): ExecuteMoveResult {
+function executePreparedMove(collection: Collection, move: PreparedMove, options: MoveOptions): CompletedMove {
   const report = new MoveReport();
   const { destinationCollection, selection } = move;
-  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, options, report, batch);
+  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, options, report);
 
   const { source, destination, override = false } = selection;
   let plannedSelection: { kind: 'key'; key: string } | { kind: 'pattern'; prefix: string; keys: readonly string[] };
@@ -172,7 +164,7 @@ function executePreparedMove(
     const prefix = movePatternPrefix(source);
     if (!folderAddressExists(collection.translationsFolder, prefix)) {
       report.warn(`No folder found for prefix ${prefix}. Nothing moved.`);
-      return report.finish();
+      return { report: report.finish(), emptiedFolders: [] };
     }
     const { keys, problems } = sweepKeys(collection, { startPath: prefix });
     for (const problem of problems) report.fail(describeFolderProblem(problem));
@@ -186,14 +178,9 @@ function executePreparedMove(
     selection: plannedSelection,
     destinationPath: destination,
   });
-  report.merge(
-    relocateEntries(plan, {
-      override,
-      emptiedFolders: batch.emptiedFolders,
-      onMutation: options.onMutation,
-    }),
-  );
-  return report.finish();
+  const relocation = relocateEntries(plan, { override, deferPruning: true, onMutation: options.onMutation });
+  report.merge(relocation);
+  return { report: report.finish(), emptiedFolders: relocation.emptiedFolders ?? [] };
 }
 
 function prepareFolder(collection: Collection, destinationCollection: Collection, selection: FolderSelection) {
@@ -207,7 +194,7 @@ function prepareFolder(collection: Collection, destinationCollection: Collection
   });
   if (plan.kind === 'refused') {
     // Preserve no-op refusals before source inspection; descendant refusals still throw.
-    plan.warning();
+    if ('error' in plan) throw plan.error;
     return plan;
   }
 
@@ -234,18 +221,17 @@ function executeFolder(
   plan: ReturnType<typeof prepareFolder>,
   options: MoveOptions,
   report: MoveReport,
-  batch: MoveBatch,
-): ExecuteMoveResult {
+): CompletedMove {
   const { source: sourceFolderPath, override = false } = selection;
   if (plan.kind === 'refused') {
-    report.warn(plan.warning());
-    return report.finish(true);
+    report.warn(plan.warning);
+    return { report: report.finish(true), emptiedFolders: [] };
   }
 
   // Extract all resource keys from the source folder tree
   const folders = [...sweepCollection(collection, { startPath: sourceFolderPath })];
   const resourceKeys = folders.flatMap((folder) =>
-    folder.folder ? folder.folder.keys().map((key) => `${folder.folderPath}.${key}`) : [],
+    folder.folder ? folder.folder.keys().map((key) => fullKeyOf(folder.folderPath, key)) : [],
   );
   const problems = folders.flatMap((folder) => (folder.problem ? [folder.problem] : []));
   const enumerationErrors = problems.map(
@@ -255,7 +241,7 @@ function executeFolder(
   // An unreadable folder would be deleted without its entries being copied; stop before any move/delete.
   if (enumerationErrors.length > 0) {
     for (const error of enumerationErrors) report.fail(error);
-    return report.finish(true);
+    return { report: report.finish(true), emptiedFolders: [] };
   }
 
   const empty = resourceKeys.length === 0;
@@ -263,10 +249,10 @@ function executeFolder(
 
   // One Entry Relocation for the whole tree: each folder is read and written once.
   const relocation = empty
-    ? { moved: [], collisions: [], errors: [] }
+    ? { moved: [], collisions: [], errors: [], emptiedFolders: [] }
     : relocateEntries(plan.forKeys(resourceKeys), {
         override,
-        emptiedFolders: batch.emptiedFolders,
+        deferPruning: true,
         onMutation: options.onMutation,
       });
   report.merge(relocation);
@@ -279,11 +265,14 @@ function executeFolder(
     report.warn(`Source folder kept; resources not moved: ${keptKeys.join(', ')}`);
   }
 
-  if (keptKeys.length === 0 && report.hasErrors === false) {
+  const cleaned = keptKeys.length === 0 && report.hasErrors === false;
+  return {
+    report: report.finish(true),
     // Include folders that were already empty, so folder moves retain their batch repair behaviour.
-    for (const folder of folders) batch.emptiedFolders.add(folder.absolutePath);
-    batch.folderSources.push({ source: sourceFolderPath, empty });
-  }
-
-  return report.finish(true);
+    emptiedFolders: [
+      ...(relocation.emptiedFolders ?? []),
+      ...(cleaned ? folders.map(({ absolutePath }) => absolutePath) : []),
+    ],
+    ...(cleaned ? { folderSource: { source: sourceFolderPath, empty } } : {}),
+  };
 }

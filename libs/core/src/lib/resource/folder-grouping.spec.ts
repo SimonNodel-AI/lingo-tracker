@@ -1,9 +1,8 @@
 import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
+import { testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import type { ImportedResource } from '../import/types';
-import { calculateChecksum } from './checksum';
-import { groupByFolder, openFolders } from './folder-batch';
+import { groupByFolder } from './folder-grouping';
 import { openResourceFolder } from './resource-folder';
 
 vi.mock('./resource-folder', async (importOriginal) => {
@@ -15,8 +14,8 @@ beforeEach(() => {
   vi.mocked(openResourceFolder).mockClear();
 });
 
-describe('folder-batch', () => {
-  const root = useTempDir('folder-batch-');
+describe('groupByFolder', () => {
+  const root = useTempDir('folder-grouping-');
   const collection = () => testCollection(root(), { baseLocale: 'de' });
 
   it('preserves first-seen folder order and member order with the original items', () => {
@@ -60,49 +59,6 @@ describe('folder-batch', () => {
       },
       { folderPath: root(), members: [{ item: 'title', key: 'title', entryKey: 'title' }] },
     ]);
-  });
-
-  it('opens lazily, once per folder, and returns the same folder for later keys', () => {
-    writeFolderFiles(root(), 'common', { entries: { ok: { source: 'OK' } } });
-    const folders = openFolders(collection());
-    expect(openResourceFolder).not.toHaveBeenCalled();
-
-    const first = folders.entryAt('common.ok');
-    const sibling = folders.entryAt('common.cancel');
-    const repeated = folders.entryAt('common.ok');
-    const rootEntry = folders.entryAt('welcome');
-
-    expect(sibling.folder).toBe(first.folder);
-    expect(repeated.folder).toBe(first.folder);
-    expect(rootEntry.folder).not.toBe(first.folder);
-    expect(first.folder.get(first.entryKey)?.entry.source).toBe('OK');
-    expect(first.folderPath).toBe(join(root(), 'common'));
-    expect(sibling.entryKey).toBe('cancel');
-    expect(rootEntry.folderPath).toBe(root());
-    expect(rootEntry.entryKey).toBe('welcome');
-    expect(openResourceFolder).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(openResourceFolder).mock.calls.map(([folderPath]) => folderPath)).toEqual([
-      join(root(), 'common'),
-      root(),
-    ]);
-  });
-
-  it('uses the collection base locale and translations folder policy', () => {
-    const openedCollection = collection();
-    const { folder, entryKey } = openFolders(openedCollection).entryAt('common.hello');
-    folder.setBase(entryKey, 'Hallo');
-
-    expect(openResourceFolder).toHaveBeenCalledWith(join(root(), 'common'), openedCollection);
-    expect(folder.get(entryKey)?.meta).toEqual({ de: { checksum: calculateChecksum('Hallo') } });
-  });
-
-  it('propagates folder read errors and does not cache an unsuccessful open', () => {
-    writeFolderFiles(root(), 'common', { entries: '{ invalid json' });
-    const folders = openFolders(collection());
-    expect(() => folders.entryAt('common.ok')).toThrow();
-    writeFolderFiles(root(), 'common', { entries: { ok: { source: 'OK' } } });
-    expect(folders.entryAt('common.ok').folder.get('ok')?.entry.source).toBe('OK');
-    expect(openResourceFolder).toHaveBeenCalledTimes(2);
   });
 });
 

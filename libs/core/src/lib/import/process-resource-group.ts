@@ -7,7 +7,7 @@ import {
   type TranslationStatus,
 } from '@simoncodes-ca/domain';
 import type { ProjectTerms } from '../config/project-terms';
-import type { FolderGroup } from '../resource/folder-batch';
+import type { FolderGroup } from '../resource/folder-grouping';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import type { ImportSession, ResolvedImportOptions } from './import-session';
 import type { ImportChange, ImportedResource } from './types';

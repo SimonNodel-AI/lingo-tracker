@@ -10,6 +10,7 @@ import {
 import type { Collection } from '../config/open-collection';
 import { FolderMoveIntoDescendantError } from '../errors/lingo-tracker-error';
 import type { Relocation } from './relocate-entries';
+import { resolveCheckedResourceKey } from './resource-key';
 
 export type MoveSelection =
   | { readonly kind: 'key'; readonly key: string }
@@ -32,12 +33,10 @@ interface FolderPlan {
   readonly forKeys: (keys: readonly string[]) => MovePlan;
 }
 
-interface MoveRefusal {
-  readonly kind: 'refused';
-  readonly reason: 'descendant' | 'same-location' | 'already-there';
-  /** Return the existing warning, or throw the existing typed descendant error. */
-  readonly warning: () => string;
-}
+type MoveRefusal = { readonly kind: 'refused' } & (
+  | { readonly reason: 'descendant'; readonly error: FolderMoveIntoDescendantError }
+  | { readonly reason: 'same-location' | 'already-there'; readonly warning: string }
+);
 
 interface MoveRequest<S extends MoveSelection> {
   readonly source: Collection;
@@ -90,16 +89,14 @@ function decideMove({
     return {
       kind: 'refused',
       reason: 'descendant',
-      warning: () => {
-        throw new FolderMoveIntoDescendantError(path, destinationPath);
-      },
+      error: new FolderMoveIntoDescendantError(path, destinationPath),
     };
   }
   if (sameCollection && path === destinationPath) {
     return {
       kind: 'refused',
       reason: 'same-location',
-      warning: () => 'Source and destination are the same. No move performed.',
+      warning: 'Source and destination are the same. No move performed.',
     };
   }
   const nest = nestUnderDestination || destinationPath === '';
@@ -108,7 +105,7 @@ function decideMove({
     return {
       kind: 'refused',
       reason: 'already-there',
-      warning: () => 'Folder is already at this location. No move performed.',
+      warning: 'Folder is already at this location. No move performed.',
     };
   }
   const folderName = folderPathLeaf(path);
@@ -120,4 +117,26 @@ function decideMove({
     kind: 'folder',
     forKeys: (keys) => entries(keys, (from) => rebaseFolderPath(from, path, path === '' ? destinationPath : prefix)),
   };
+}
+
+/** Retains the existing `prefix*`, `prefix.*`, and root `*` selection rules. */
+export function movePatternPrefix(pattern: string): string {
+  const prefix = pattern.slice(0, -1);
+  return prefix.endsWith('.') ? prefix.slice(0, -1) : prefix;
+}
+
+/** Validate submitted addresses and infer resource selection without reading or changing folders. */
+export function validateMoveInput({
+  source,
+  destination,
+}: {
+  readonly source: string;
+  readonly destination: string;
+}): 'key' | 'pattern' {
+  const pattern = source.endsWith('*');
+  const prefix = pattern ? movePatternPrefix(source) : source;
+  if (pattern === false || prefix.length > 0) resolveCheckedResourceKey(prefix, undefined, source);
+  // Only a pattern destination can name the collection root.
+  if (pattern === false || destination.length > 0) resolveCheckedResourceKey(destination);
+  return pattern ? 'pattern' : 'key';
 }

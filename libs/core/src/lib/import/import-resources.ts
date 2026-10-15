@@ -5,7 +5,7 @@ import {
   resolveAllReferences,
 } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
-import { groupByFolder } from '../resource/folder-batch';
+import { groupByFolder } from '../resource/folder-grouping';
 import { assertTranslationStatus } from '../resource/translation-status-input';
 import { applyICUAutoFixToResources } from './apply-icu-auto-fix';
 import { openImportSession, sessionResult } from './import-session';
