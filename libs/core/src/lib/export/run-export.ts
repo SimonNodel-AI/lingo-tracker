@@ -96,10 +96,10 @@ export async function runExport(
   const outputDirectory = resolveExportOutputDirectory(options.outputDirectory, options.exportFolder, options.cwd);
   validateOutputDirectory(outputDirectory);
   const set = readCollectionSet(collections, {
+    scope: 'export',
     locales: options.locales,
-    skipReadWhenNoTargets: true,
     onBeforeRead: (locales) => options.onStart?.({ outputDirectory, locales }),
-  });
+  }).read();
   const targetLocales = set.targetLocales;
   const augmentProtectedTerms = options.augmentProtectedTerms !== false;
   const runOptions: ExportOptions = {
@@ -144,17 +144,12 @@ export async function runExport(
     );
 
     for (const locale of targetLocales) {
-      // Among the collections that target this locale, the last one wins a shared key.
-      const eligible = new Map(
-        collections
-          .filter((collection) => collection.targetLocales.includes(locale))
-          .flatMap((collection) => set.resources.filter((resource) => resource.collection === collection.name))
-          .map((resource) => [resource.fullKey, resource]),
-      );
-      const exportResources: ExportResource[] = [...eligible.values()].map((resource) => ({
-        ...resource,
-        protectedTerms: protectedTermsByCollection.get(resource.collection),
-      }));
+      const exportResources: ExportResource[] = set.resources
+        .filter((resource) => resource.targetLocales.includes(locale))
+        .map((resource) => ({
+          ...resource,
+          protectedTerms: protectedTermsByCollection.get(resource.collection),
+        }));
       const filtered = filterResources(exportResources, locale, validatedStatus, options.tags, {
         augmentProtectedTerms,
         baseLocale,

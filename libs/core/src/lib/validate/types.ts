@@ -15,12 +15,6 @@ export interface ValidationOptions {
   readonly allowTranslated: boolean;
 
   /**
-   * Locales not to validate. Each collection validates its own target locales minus these.
-   * The summary also lists them.
-   */
-  readonly skippedLocales?: readonly string[];
-
-  /**
    * When present, stored values are inspected as ICU messages.
    *
    * Status validation and ICU validation answer different questions: one asks
