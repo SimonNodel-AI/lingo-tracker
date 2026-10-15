@@ -56,6 +56,8 @@ export interface CommandStdin {
 }
 
 interface BaseContext {
+  /** Wall-clock milliseconds, injectable for verbose run timing. */
+  readonly now: () => number;
   /** Optional directory for CLI-owned run summaries; production uses the system temp directory. */
   readonly summaryDirectory?: string;
   /** The explicit project root; production uses `INIT_CWD` (set by pnpm), else `process.cwd()`. */
@@ -206,6 +208,7 @@ function getCwd(): string {
 
 /** Explicit execution environment; omitted prompts cannot read the terminal. */
 export interface CommandEnvironment {
+  readonly now?: () => number;
   readonly cwd: string;
   readonly interactive?: boolean;
   readonly ask?: Ask;
@@ -343,6 +346,7 @@ async function execute<
 
     // `resources` holds exactly what Need and WithConfig promise; the type cannot follow the branches above.
     const promptContext = {
+      now: environment.now ?? Date.now,
       cwd,
       interactive,
       ask,

@@ -1,8 +1,8 @@
 import { type ExportRunResult, exportTargetLocales, runExport } from '@simoncodes-ca/core';
 import { withoutFlagPrompts } from '../runner/flag-record';
 import { CommandOutput } from '../runner/command-output';
-import { type CommandResult, defineCommand } from '../runner/command-runner';
-import { ConsoleFormatter, printRunReport, saveRunSummary } from '../utils';
+import { defineCommand } from '../runner/command-runner';
+import { ConsoleFormatter, reportRun } from '../utils';
 import { EXPORT_FLAGS } from './export-cmd-flags';
 import { type ExportCommandOptions, exportQuestions, exportSelection, resolveExportOptions } from './export-options';
 
@@ -44,18 +44,19 @@ export const exportCommand = defineCommand<ExportCommandOptions>()({
     }
 
     const dryRun = Boolean(options.dryRun);
-    const summary = saveRunSummary('export', result.summary, {
+    return reportRun({
+      summary: { kind: 'export', text: result.summary, previewOnDryRun: true, directory: summaryDirectory },
+      printBody: () => displayResults(result),
+      counts: { 'Files Created': result.filesCreated.length, 'Resources Exported': result.resourcesExported },
+      warnings: result.warnings,
+      errors: [...result.errors, ...result.hierarchicalConflicts],
+      outcome: result.outcome,
       dryRun,
-      previewOnDryRun: true,
-      directory: summaryDirectory,
     });
-    const exit = displayResults(result, dryRun, summary.path);
-    summary.announce();
-    return exit;
   },
 });
 
-function displayResults(result: ExportRunResult, dryRun: boolean, summaryPath: string | undefined): CommandResult {
+function displayResults(result: ExportRunResult): void {
   for (const { locale, outcome, resourcesExported, filesCreated, error } of result.localeResults) {
     if (outcome === 'exported') {
       ConsoleFormatter.indent(`✅ ${locale}: Exported ${resourcesExported} resources to ${filesCreated.join(', ')}`);
@@ -65,12 +66,4 @@ function displayResults(result: ExportRunResult, dryRun: boolean, summaryPath: s
   }
 
   ConsoleFormatter.section('Export Summary');
-  return printRunReport({
-    counts: { 'Files Created': result.filesCreated.length, 'Resources Exported': result.resourcesExported },
-    warnings: result.warnings,
-    errors: [...result.errors, ...result.hierarchicalConflicts],
-    outcome: result.outcome,
-    dryRun,
-    summaryPath,
-  });
 }
