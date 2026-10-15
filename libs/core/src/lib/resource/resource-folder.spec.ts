@@ -2,7 +2,9 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as domain from '@simoncodes-ca/domain';
+import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as checksumModule from './checksum';
 import { calculateChecksum } from './checksum';
 import { openResourceFolder, translationLocales } from './resource-folder';
 
@@ -203,7 +205,7 @@ describe('ResourceFolder', () => {
       });
       expect(() => folder.setStatus('ok', 'de', 'verified')).toThrow();
     });
-    it('setStatus can re-confirm against the current base checksum', () => {
+    it('reconfirmTranslation refreshes the reference while keeping the translation checksum', () => {
       writePair(
         { ok: { source: 'Okay', fr: 'Oui' } },
         {
@@ -214,7 +216,10 @@ describe('ResourceFolder', () => {
         },
       );
       const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
-      folder.setStatus('ok', 'fr', 'translated', { refreshBaseChecksum: true });
+      expect(folder.reconfirmTranslation('ok', 'fr', 'translation-service')).toEqual({
+        status: 'translated',
+        changed: true,
+      });
       expect(folder.get('ok')?.meta?.['fr']).toEqual({
         checksum: 'kept',
         baseChecksum: md5('Okay'),
@@ -235,6 +240,272 @@ describe('ResourceFolder', () => {
 
       expect(folder.setDetails('ok', { comment: null, tags: [] })).toBe(true);
       expect(folder.get('ok')?.entry).toEqual({ source: 'OK' });
+    });
+  });
+
+  describe('Locale Freshness', () => {
+    it('setTranslation hashes the source when only other locales have metadata', () => {
+      writePair(
+        { ok: { source: 'OK', de: 'Ja' } },
+        {
+          ok: { de: { checksum: md5('Ja'), baseChecksum: 'older', status: 'verified' } },
+        },
+      );
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setTranslation('ok', 'fr', 'Oui', 'verified');
+      expect(folder.get('ok')?.meta).toEqual({
+        de: { checksum: md5('Ja'), baseChecksum: 'older', status: 'verified' },
+        fr: { checksum: md5('Oui'), baseChecksum: md5('OK'), status: 'verified' },
+      });
+    });
+
+    it('setStatus preserves the reference without base metadata; reconfirmation hashes the source', () => {
+      writePair(
+        { ok: { source: 'OK', fr: 'Oui' } },
+        {
+          ok: { fr: { checksum: 'kept', baseChecksum: md5('Old'), status: 'stale' } },
+        },
+      );
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setStatus('ok', 'fr', 'verified');
+      expect(folder.get('ok')?.meta).toEqual({
+        fr: { checksum: 'kept', baseChecksum: md5('Old'), status: 'verified' },
+      });
+      expect(folder.reconfirmTranslation('ok', 'fr', 'verification')).toEqual({ status: 'verified', changed: true });
+      expect(folder.get('ok')?.meta).toEqual({
+        fr: { checksum: 'kept', baseChecksum: md5('OK'), status: 'verified' },
+      });
+    });
+
+    it.each([
+      { value: 'Oui', oldStatus: 'verified', oldBase: 'Old', status: 'stale' },
+      { value: 'OK', oldStatus: 'translated', oldBase: 'Old', status: 'new' },
+      { value: 'Oui', oldStatus: 'new', oldBase: 'Old', status: 'new' },
+      { value: 'Oui', oldStatus: 'verified', oldBase: 'OK', status: 'verified' },
+    ] satisfies {
+      value: string;
+      oldStatus: domain.TranslationStatus;
+      oldBase: string;
+      status: domain.TranslationStatus;
+    }[])('normalizeEntry hashes the source without base metadata ($oldStatus, $oldBase, $value)', ({
+      value,
+      oldStatus,
+      oldBase,
+      status,
+    }) => {
+      writePair(
+        { ok: { source: 'OK', fr: value } },
+        {
+          ok: { fr: { checksum: 'outdated', baseChecksum: md5(oldBase), status: oldStatus } },
+        },
+      );
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.normalizeEntry('ok', ['fr']);
+      expect(folder.get('ok')?.meta).toEqual({
+        en: { checksum: md5('OK') },
+        fr: { checksum: md5(value), baseChecksum: md5('OK'), status },
+      });
+      expect(folder.normalizeEntry('ok', ['fr']).changed).toBe(false);
+    });
+
+    it.each([
+      true,
+      false,
+    ])('reconfirmation computes the missing base checksum once (locale metadata: %s)', (hasLocaleMetadata) => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setEntry(
+        'ok',
+        { source: 'OK', fr: 'Oui' },
+        hasLocaleMetadata
+          ? {
+              fr: { checksum: 'kept', baseChecksum: 'older', status: 'verified' },
+            }
+          : {},
+      );
+      const checksum = vi.spyOn(checksumModule, 'calculateChecksum');
+      expect(folder.reconfirmTranslation('ok', 'fr', 'verification')).toEqual({ status: 'verified', changed: true });
+      expect(checksum.mock.calls.filter(([value]) => value === 'OK')).toHaveLength(1);
+      expect(folder.get('ok')?.meta?.['fr']).toEqual({
+        checksum: hasLocaleMetadata ? 'kept' : md5('Oui'),
+        baseChecksum: md5('OK'),
+        status: 'verified',
+      });
+    });
+
+    it.each([
+      { strategy: 'translation-service', incoming: undefined, status: 'translated', refreshed: true },
+      { strategy: 'verification', incoming: undefined, status: 'verified', refreshed: true },
+      { strategy: 'migration', incoming: undefined, status: 'stale', refreshed: false },
+      { strategy: 'migration', incoming: 'verified', status: 'verified', refreshed: false },
+      { strategy: 'update', incoming: 'verified', status: 'stale', refreshed: false },
+      { strategy: 'translation-service', incoming: 'new', status: 'new', refreshed: true },
+    ] satisfies {
+      strategy: domain.ImportStrategy;
+      incoming: domain.TranslationStatus | undefined;
+      status: domain.TranslationStatus;
+      refreshed: boolean;
+    }[])('reconfirms unchanged values with $strategy (incoming $incoming)', ({
+      strategy,
+      incoming,
+      status,
+      refreshed,
+    }) => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setEntry(
+        'ok',
+        { source: 'OK', fr: 'Oui' },
+        {
+          en: { checksum: md5('OK') },
+          fr: { checksum: 'kept', baseChecksum: md5('Old'), status: 'stale' },
+        },
+      );
+
+      expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({
+        status,
+        changed: refreshed || status !== 'stale',
+      });
+      expect(folder.get('ok')?.meta?.['fr']).toEqual({
+        checksum: 'kept',
+        baseChecksum: md5(refreshed ? 'OK' : 'Old'),
+        status,
+      });
+      expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({ status, changed: false });
+    });
+
+    it.each([
+      'translation-service',
+      'verification',
+      'migration',
+      'update',
+    ] as const)('handles missing metadata under %s', (strategy) => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      folder.setEntry('ok', { source: 'OK', fr: 'Oui' }, {});
+      const status = strategy === 'verification' ? 'verified' : 'translated';
+      const changed = strategy !== 'update';
+      expect(folder.reconfirmTranslation('ok', 'fr', strategy)).toEqual({ status, changed });
+      expect(folder.get('ok')?.meta?.['fr']).toEqual(
+        changed
+          ? {
+              checksum: md5('Oui'),
+              baseChecksum: md5('OK'),
+              status,
+            }
+          : undefined,
+      );
+    });
+
+    it('prefers stored base metadata and otherwise hashes the source during reconfirmation', () => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      for (const hasBaseMetadata of [true, false]) {
+        folder.setEntry(
+          'ok',
+          { source: 'OK', fr: 'Oui' },
+          {
+            ...(hasBaseMetadata ? { en: { checksum: 'stored-base' } } : {}),
+            fr: { checksum: 'kept', baseChecksum: 'older', status: 'verified' },
+          },
+        );
+        expect(folder.reconfirmTranslation('ok', 'fr', 'translation-service')).toEqual({
+          status: 'translated',
+          changed: true,
+        });
+        expect(folder.get('ok')?.meta?.['fr']?.baseChecksum).toBe(hasBaseMetadata ? 'stored-base' : md5('OK'));
+      }
+    });
+
+    it('preserves freshness metadata through sequences of edits, writes, statuses and normalization', () => {
+      const operation = fc.record({
+        kind: fc.constantFrom('base', 'translation', 'status', 'normalize', 'reconfirm'),
+        value: fc.constantFrom('A', 'B', 'Bonjour'),
+        status: fc.constantFrom<domain.TranslationStatus>('new', 'stale', 'translated', 'verified'),
+      });
+      fc.assert(
+        fc.property(
+          fc.boolean(),
+          fc.array(operation, { minLength: 1, maxLength: 40 }),
+          (initialHasBaseMetadata, operations) => {
+            let hasBaseMetadata = initialHasBaseMetadata;
+            const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+            // A copied/merged entry may start with an older base reference and an approved status.
+            let base = 'B';
+            let translation = 'Bonjour';
+            let baseReference = md5('A');
+            let status: domain.TranslationStatus = 'verified';
+            folder.setEntry(
+              'ok',
+              { source: base, fr: translation },
+              {
+                ...(hasBaseMetadata ? { en: { checksum: md5(base) } } : {}),
+                fr: { checksum: md5(translation), baseChecksum: baseReference, status },
+              },
+            );
+            for (const op of operations) {
+              switch (op.kind) {
+                case 'base':
+                  folder.setBase('ok', op.value);
+                  hasBaseMetadata = true;
+                  if (base !== op.value) {
+                    base = op.value;
+                    baseReference = md5(base);
+                    status = translation === base ? 'new' : 'stale';
+                  }
+                  break;
+                case 'translation':
+                  folder.setTranslation('ok', 'fr', op.value, op.status);
+                  translation = op.value;
+                  baseReference = md5(base);
+                  status = op.status;
+                  break;
+                case 'status':
+                  folder.setStatus('ok', 'fr', op.status);
+                  status = op.status;
+                  break;
+                case 'reconfirm':
+                  folder.reconfirmTranslation('ok', 'fr', 'verification', op.status);
+                  status = op.status;
+                  baseReference = md5(base);
+                  break;
+                case 'normalize':
+                  hasBaseMetadata = true;
+                  folder.normalizeEntry('ok', ['fr']);
+                  if (status !== 'new' && baseReference !== md5(base)) status = translation === base ? 'new' : 'stale';
+                  baseReference = md5(base);
+                  expect(folder.normalizeEntry('ok', ['fr']).changed).toBe(false);
+                  break;
+              }
+              expect(folder.get('ok')?.meta).toEqual({
+                ...(hasBaseMetadata ? { en: { checksum: md5(base) } } : {}),
+                fr: { checksum: md5(translation), baseChecksum: baseReference, status },
+              });
+            }
+          },
+        ),
+        { seed: 20261014, numRuns: 100 },
+      );
+    });
+
+    it('rebases only references to the converted base and preserves copied statuses', () => {
+      const folder = openResourceFolder(folderPath, { baseLocale: 'en' });
+      const legacy = 'Hello {{ name }}';
+      folder.setEntry(
+        'ok',
+        { source: legacy, fr: 'Bonjour {name}', de: 'Hallo {name}' },
+        {
+          en: { checksum: md5(legacy) },
+          fr: { checksum: md5('Bonjour {name}'), baseChecksum: md5(legacy), status: 'verified' },
+          de: { checksum: md5('Hallo {name}'), baseChecksum: 'older', status: 'translated' },
+        },
+      );
+      expect(folder.get('ok')?.meta?.['fr']).toEqual({
+        checksum: md5('Bonjour {name}'),
+        baseChecksum: md5('Hello {name}'),
+        status: 'verified',
+      });
+      expect(folder.get('ok')?.meta?.['de']).toEqual({
+        checksum: md5('Hallo {name}'),
+        baseChecksum: 'older',
+        status: 'translated',
+      });
     });
   });
 

@@ -7,7 +7,6 @@ import {
   type TranslationStatus,
 } from '@simoncodes-ca/domain';
 import type { ProjectTerms } from '../config/project-terms';
-import { calculateChecksum } from '../resource/checksum';
 import type { FolderGroup } from '../resource/folder-batch';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
 import type { ImportSession, ResolvedImportOptions } from './import-session';
@@ -171,44 +170,14 @@ function handleUnchangedTargetLocaleValue(
   oldValue: string,
   oldStatus: TranslationStatus | undefined,
 ): ImportChange {
-  const { locale, baseLocale, options, folder } = ctx;
-
-  if (importStrategyPolicy(options.strategy).statusOnUnchanged === 'untouched') {
-    return {
-      key: resource.key,
-      type: 'updated',
-      oldValue,
-      newValue: resource.value,
-      oldStatus,
-      newStatus: oldStatus ?? 'translated',
-    };
-  }
-
-  // Translation-service and verification imports re-confirm unchanged values.
-  // Keep the update/migration strategies' existing metadata behavior intact,
-  // while bringing the target locale's base checksum back in sync with the
-  // current base locale metadata during re-confirmation.
-  const stored = folder.get(entryKey);
-  const entryMeta = stored?.meta;
-  const shouldRefreshBaseChecksum = importStrategyPolicy(options.strategy).reconfirmsUnchanged;
-  const currentBaseChecksum = entryMeta?.[baseLocale]?.checksum ?? calculateChecksum(stored?.entry.source ?? '');
-  const baseChecksumChanged = shouldRefreshBaseChecksum && entryMeta?.[locale]?.baseChecksum !== currentBaseChecksum;
-  const resolvedStatus = resolveImportStatus({
-    strategy: options.strategy,
-    oldStatus,
-    incomingStatus: honouredImportSourceStatus(options.strategy, options.preserveStatus, resource.status),
-    valueChanged: false,
-    baseChecksumChanged,
-  });
-
-  if (resolvedStatus !== oldStatus || baseChecksumChanged) {
-    if (entryMeta?.[locale]) {
-      folder.setStatus(entryKey, locale, resolvedStatus, { refreshBaseChecksum: shouldRefreshBaseChecksum });
-    } else {
-      folder.setTranslation(entryKey, locale, oldValue, resolvedStatus);
-    }
-    ctx.dataModified = true;
-  }
+  const { locale, options, folder } = ctx;
+  const result = folder.reconfirmTranslation(
+    entryKey,
+    locale,
+    options.strategy,
+    honouredImportSourceStatus(options.strategy, options.preserveStatus, resource.status),
+  );
+  if (result.changed) ctx.dataModified = true;
 
   return {
     key: resource.key,
@@ -216,7 +185,7 @@ function handleUnchangedTargetLocaleValue(
     oldValue,
     newValue: resource.value,
     oldStatus,
-    newStatus: resolvedStatus,
+    newStatus: result.status,
   };
 }
 
