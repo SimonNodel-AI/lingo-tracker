@@ -94,7 +94,7 @@ The Command Runner resolves the configured collections before `normalize` checks
 
 `normalizeCollections` in core decides what to do with the opened read-only collections. The command maps flags, prints core events, and prints the returned totals and JSON payload. Any read-only collection in a named selection is refused with `❌ Collection "name" is read-only. Its resources cannot be modified.` on stderr and exit 1. It still prints the empty JSON summary with `--json`, or the dry-run completion warning with `--dry-run`. With `--all`, it skips each read-only collection, prints `⚠️  Skipping read-only collection: name` on stderr, and continues with the writable collections. `--all --json` keeps stdout to the JSON payload.
 
-The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and the API job service prepares a run then calls `generatePreparedBundle`. The prepared run's `configDeprecation` becomes a `config` warning in the result's single `warnings: BundleWarning[]` list, or in the failed outcome's `warnings` when generation throws. Bundle Presentation prints it on stderr before progress or the error.
+The `bundle` command maps flags to core `generateBundles`, prints each outcome and its totals, and the API job service prepares a run then calls `generatePreparedBundle`. The prepared run's worded `warnings`, with origin `config`, appear in result warnings or on the failed outcome when generation throws. Bundle Presentation prints it on stderr before progress or the error.
 
 ### `glossary` pipeline
 
