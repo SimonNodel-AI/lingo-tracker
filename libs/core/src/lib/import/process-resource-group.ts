@@ -9,7 +9,7 @@ import {
 import type { ProjectTerms } from '../config/project-terms';
 import type { FolderGroup } from '../resource/folder-grouping';
 import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import type { ImportSession, ResolvedImportOptions } from './import-session';
+import { type ImportSession, recordImportIssues, type ResolvedImportOptions } from './import-session';
 import type { ImportChange, ImportedResource } from './types';
 
 // ---------------------------------------------------------------------------
@@ -228,7 +228,7 @@ function warnAboutPreferredTerminology(change: ImportChange, terms: ProjectTerms
  * violations) and written files go to the session too.
  */
 export function processResourceGroup(session: ImportSession, group: FolderGroup<ImportedResource>): void {
-  const { options, terms, isBaseLocaleImport, changes, warnings, errors } = session;
+  const { options, terms, isBaseLocaleImport, changes, warnings } = session;
   const { baseLocale } = session.collection;
   const resolvesReferences = importStrategyPolicy(options.strategy).resolvesReferences;
 
@@ -259,8 +259,7 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
     if (violations.length === 0) return false;
 
     const reason = violations.map(describeValueViolation).join('; ');
-    errors.push(`"${resource.key}" ${reason}`);
-    changes.push({ key: resource.key, type: 'failed', reason });
+    recordImportIssues(session, { key: resource.key, type: 'failed', reason, error: `"${resource.key}" ${reason}` });
     return true;
   }
 

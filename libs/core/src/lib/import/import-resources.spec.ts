@@ -59,6 +59,103 @@ describe('importResources', () => {
   const stored = (folderKey: string, key: string) =>
     openResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
 
+  it.each([false, true])('records every rejection kind once in each channel (dryRun=%s)', (dryRun) => {
+    seed('common', {
+      argument: { source: 'Hello {name}' },
+      brand: { source: 'Open Acme' },
+      good: { source: 'OK' },
+    });
+    writeFileSync(join(projectDir, '.lingo-tracker-protected-terms.json'), '["Acme"]');
+
+    const result = importResources(
+      collection,
+      [
+        { key: 'invalid key', value: 'Invalid' },
+        { key: 'common.braced', value: '{{{name}}}' },
+        { key: 'common.bracedBase', value: 'Hola', baseValue: '{{{name}}}' },
+        { key: 'parent', value: 'Parent' },
+        { key: 'parent.child', value: 'Child' },
+        { key: 'common.empty', value: '' },
+        { key: 'common.argument', value: 'Hola {name} {extra}' },
+        { key: 'common.brand', value: 'Abrir Akme' },
+        { key: 'common.good', value: 'Aceptar' },
+      ],
+      { locale: 'es', dryRun },
+    );
+
+    const failedKeys = [
+      'common.braced',
+      'common.bracedBase',
+      'invalid key',
+      'parent',
+      'common.argument',
+      'common.brand',
+    ];
+    expect(result.resourcesFailed).toBe(failedKeys.length);
+    expect(result.errors).toHaveLength(failedKeys.length);
+    expect(result.changes.filter((change) => change.type === 'failed').map((change) => change.key)).toEqual(failedKeys);
+    for (const key of failedKeys) {
+      expect(result.errors.filter((error) => error.includes(`"${key}"`))).toHaveLength(1);
+      expect(result.changes.filter((change) => change.key === key && change.type === 'failed')).toHaveLength(1);
+    }
+    expect(result.errors).toEqual([
+      expect.stringContaining('Braced placeholder: "common.braced": Value: '),
+      expect.stringContaining('Braced placeholder: "common.bracedBase": Base value: '),
+      'Hierarchical conflict: "parent" (has value and child keys)',
+      expect.stringContaining('Invalid key format: "invalid key" ('),
+      '"common.argument" Placeholders disagree with the base value: unexpected \'{extra}\'',
+      '"common.brand" Protected term(s) altered: Acme',
+    ]);
+    expect(result.changes.map(({ key, type }) => ({ key, type }))).toEqual([
+      { key: 'common.braced', type: 'failed' },
+      { key: 'common.bracedBase', type: 'failed' },
+      { key: 'invalid key', type: 'failed' },
+      { key: 'parent', type: 'failed' },
+      { key: 'common.empty', type: 'skipped' },
+      { key: 'parent.child', type: 'skipped' },
+      { key: 'common.argument', type: 'failed' },
+      { key: 'common.brand', type: 'failed' },
+      { key: 'common.good', type: 'value-changed' },
+    ]);
+  });
+
+  it.each([false, true])('reports a repeated conflict once but fails each occurrence (dryRun=%s)', (dryRun) => {
+    const result = importResources(
+      collection,
+      [
+        { key: 'invalid key', value: 'Invalid' },
+        { key: 'parent', value: 'First' },
+        { key: 'empty', value: '' },
+        { key: 'parent.child', value: 'Child' },
+        { key: 'parent', value: 'Second' },
+      ],
+      { locale: 'es', dryRun },
+    );
+
+    expect(result.errors).toEqual([
+      'Hierarchical conflict: "parent" (has value and child keys)',
+      expect.stringContaining('Invalid key format: "invalid key" ('),
+    ]);
+    expect(result.changes).toEqual([
+      { key: 'invalid key', type: 'failed', reason: expect.stringContaining('Invalid key format: ') },
+      { key: 'parent', type: 'failed', reason: 'Hierarchical conflict (has value and child keys)' },
+      { key: 'empty', type: 'skipped', reason: 'Empty value' },
+      { key: 'parent', type: 'failed', reason: 'Hierarchical conflict (has value and child keys)' },
+      { key: 'parent.child', type: 'skipped', reason: 'Resource not found (strategy does not allow creation)' },
+    ]);
+    expect(result.warnings).toEqual([
+      'Duplicate key in import file: "parent" (used last occurrence, appeared 2 times)',
+      'Empty value skipped: "empty"',
+    ]);
+    expect(result).toMatchObject({
+      resourcesFailed: 3,
+      resourcesSkipped: 2,
+      resourcesUpdated: 0,
+      resourcesCreated: 0,
+      filesModified: [],
+    });
+  });
+
   it.each([false, true])('partitions braced resources before conversion (dryRun=%s)', (dryRun) => {
     const result = importResources(
       collection,
