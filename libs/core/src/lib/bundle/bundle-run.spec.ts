@@ -88,10 +88,10 @@ describe('prepared bundle run', () => {
     const result = await generatePreparedBundle(prepared);
 
     expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
-    expect(prepared.configDeprecation).toBeDefined();
+    expect(prepared.warnings).toEqual([{ origin: 'config', message: expect.any(String) }]);
     expect(result.warnings).toEqual([
       { origin: 'generation', message: "Bundle 'main' for locale 'en' is empty" },
-      { origin: 'config', message: prepared.configDeprecation },
+      ...prepared.warnings,
       { origin: 'type', message: "Type generation skipped for 'main': bundle is empty" },
     ]);
   });

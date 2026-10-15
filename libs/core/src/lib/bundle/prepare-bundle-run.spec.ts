@@ -47,6 +47,7 @@ describe('prepareBundleRun', () => {
     expect(prepared.settings).toEqual({ tokenConstantName, tokenCasing, transformICUToTransloco });
     expect(prepared.locales).toEqual(['fr']);
     expect(prepared.collections).toEqual({ collections: [], warnings: [] });
+    expect(prepared.warnings).toEqual([]);
   });
 
   it.each([
@@ -118,9 +119,13 @@ describe('prepareBundleRun', () => {
       config: { ...config, bundles: { main: saved } },
     });
     expect(prepared.definition).toBe(saved);
-    expect(prepared.configDeprecation).toBe(
-      "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.",
-    );
+    expect(prepared.warnings).toEqual([
+      {
+        origin: 'config',
+        message:
+          "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.",
+      },
+    ]);
   });
 
   it('defers opening saved collections until the run consumes them', () => {

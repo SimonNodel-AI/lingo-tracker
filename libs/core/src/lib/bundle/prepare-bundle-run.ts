@@ -19,6 +19,7 @@ import {
   selectBundleEntries,
   selectionValues,
 } from './bundle-selection';
+import type { BundleWarning } from './generate-bundle';
 import { buildBundleHierarchy } from './hierarchy-builder';
 import { type BundleSettings, type BundleSettingsOverrides, resolveBundleSettings } from './resolve-bundle-settings';
 import { COLLECTION_BASE_LOCALE, type CollectionReadCache } from './resource-loader';
@@ -49,7 +50,8 @@ export interface PreparedBundleRun {
     readonly onLocale?: (locale: string, index: number) => void;
     readonly onBase?: () => void;
   }): PreparedBundleContent;
-  readonly configDeprecation?: string;
+  /** Config advisories, already worded, available before content selection or writes. */
+  readonly warnings: readonly BundleWarning[];
   readonly tokenConstantNameOverride?: string;
 }
 
@@ -109,10 +111,15 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
       }
       return content;
     },
-    configDeprecation: legacyTypeDistWarning(bundleKey, definition),
+    warnings: configWarnings(bundleKey, definition),
     tokenConstantNameOverride: params.tokenConstantName,
   };
   return prepared;
+}
+
+function configWarnings(bundleKey: string, definition: BundleDefinition): BundleWarning[] {
+  const message = legacyTypeDistWarning(bundleKey, definition);
+  return message ? [{ origin: 'config', message }] : [];
 }
 
 /** Validates an optional project locale subset, including malformed API bodies. */

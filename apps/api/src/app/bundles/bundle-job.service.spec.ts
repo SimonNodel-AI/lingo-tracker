@@ -240,6 +240,23 @@ describe('BundleJobService', () => {
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("Bundle 'main': 'typeDist' is deprecated"));
   });
 
+  it('logs the exact config deprecation once when generation throws', async () => {
+    mockGenerateBundle.mockRejectedValue(new Error('disk full'));
+    const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/legacy.ts' };
+    const { jobId } = service.startJob({
+      bundleName: 'main',
+      project: project({ ...config, bundles: { main: legacy } }),
+    });
+    await flush();
+
+    expect(service.getJob(jobId).status).toBe('failed');
+    expect(service.getJob(jobId).error).toBe('disk full');
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Warning: Bundle 'main': 'typeDist' is deprecated and will be removed in the next major version. Please rename to 'typeDistFile' in your .lingo-tracker.json config.",
+    );
+  });
+
   it('reflects onProgress events in the job snapshot while running', async () => {
     let capturedProgress: ((event: BundleProgressEvent) => void) | undefined;
     mockGenerateBundle.mockImplementation((_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {

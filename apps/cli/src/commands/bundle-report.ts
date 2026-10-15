@@ -25,18 +25,15 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     return;
   }
   const { outcome } = event;
+  const findings = outcome.result ? outcome.result.warnings : outcome.warnings;
+  for (const finding of findings) {
+    if (finding.origin === 'config') CommandOutput.warn(finding.message);
+  }
   if ('warnings' in outcome) {
-    for (const warning of outcome.warnings) {
-      if (warning.origin === 'config') CommandOutput.warn(warning.message);
-    }
     printCliError(outcome.error, { fallbackMessage: 'Failed to generate bundle' });
     return;
   }
   const result = outcome.result;
-  const findings = result.warnings;
-  for (const finding of findings) {
-    if (finding.origin === 'config') CommandOutput.warn(finding.message);
-  }
   if (!options.quiet) {
     ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
     ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
