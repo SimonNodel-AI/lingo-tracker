@@ -927,7 +927,7 @@ Progress fires before each locale selection, with its locale, index, total, and 
 This preflight holds every locale selection and JSON tree in memory at once, alongside the collection read cache and base keys. Memory grows with the total selected keys across all requested locales. This costs more memory than locale-at-a-time writes but permits conflict refusal before output. `bundleRunConflicts` and `bundleRunWarnings` apply the same output policy to planning and generation. Base conflicts matter only when types or debug keys consume the base tree. Duplicate token paths name both source keys and refuse type output.
 
 
-A bundle result carries one `warnings: BundleWarning[]` list in generation → config → type order. Each warning carries `origin` and `message`; CLI reports select by origin, and the API mapper copies messages into its string-list DTO. The prepared run's `configDeprecation` becomes a `config` warning on the result, or on the failed outcome's `warnings` when generation throws. Core totals count processed bundles and generated JSON files; the CLI derives generation-only warning totals from results. See [Bundle Result Warnings](glossary.md#bundle-result-warnings).
+A bundle result carries one `warnings: BundleWarning[]` list in generation → config → type order. Each warning carries `origin` and `message`; CLI reports select by origin, and the API mapper copies messages into its string-list DTO. The prepared run's worded `warnings`, with origin `config`, appear in result warnings or on the failed outcome when generation throws. Core totals count processed bundles and generated JSON files; the CLI derives generation-only warning totals from results. See [Bundle Result Warnings](glossary.md#bundle-result-warnings).
 
 ### Bundle Selection
 

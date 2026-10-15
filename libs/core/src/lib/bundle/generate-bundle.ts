@@ -192,7 +192,7 @@ export async function generatePreparedBundle(
 
   if (typeOutcome.status === 'written') writtenFiles.push(typeOutcome.path);
 
-  if (prepared.configDeprecation) warnings.push({ origin: 'config', message: prepared.configDeprecation });
+  warnings.push(...prepared.warnings);
   const typeOutcomeWarning = describeTypeOutcome(bundleKey, typeOutcome);
   if (typeOutcomeWarning) warnings.push({ origin: 'type', message: typeOutcomeWarning });
 
