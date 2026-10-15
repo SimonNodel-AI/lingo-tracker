@@ -118,6 +118,8 @@ Explained in context: [`cli.md`](cli.md)
 
 The one ordered `warnings` list on `GenerateBundleResult` in `libs/core/src/lib/bundle/generate-bundle.ts`. Each [Bundle Warning](#bundle-warning) carries its origin and message. Generation assembles the list in generation, config, then type order, preserving text and repeated findings. The API mapper copies messages into the unchanged string-list DTO; CLI Bundle Presentation selects warnings by origin, without inferring origins from positions. A thrown run carries its prepared config warning on the failed `BundleRunOutcome.warnings` list.
 
+Successful API jobs include config deprecations in the existing `warnings` field, even when type generation succeeds. The DTO retains warning messages without origins. The job service logs the prepared deprecation only when generation throws before it returns a result.
+
 Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
 ---
@@ -171,6 +173,8 @@ Explained in context: [`core-library.md`](core-library.md#bundle-selection), [`b
 ### Bundle Type Outcome
 
 The discriminated `BundleTypeOutcome` union in `libs/core/src/lib/bundle/generate-bundle.ts`: `written` with a project-relative path and key count, `skipped` with the `empty-bundle` reason, `failed` with a reason message, or `not-configured`. `generateBundleTypes` in `type-generation/generate-types.ts` returns it directly. Hierarchical conflicts still throw before writes; generation records them as failed outcomes. The bundle result carries this outcome as `typeOutcome` and formats skipped or failed outcomes into [Bundle Result Warnings](#bundle-result-warnings).
+
+Both adapters read this outcome directly. The CLI prints the type status, path, and key count. The API includes type metadata only for `written` outcomes. Core includes the written type path in `writtenFiles`, alongside JSON paths. A `written` outcome can still accompany a config deprecation warning.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
