@@ -1,7 +1,8 @@
 import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { LingoTrackerError, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { RouteCollectionPipe, routeCollectionRef } from './route-collection';
 
 describe('RouteCollection', () => {
@@ -32,7 +33,7 @@ describe('RouteCollection', () => {
     try {
       fn();
     } catch (error) {
-      if (error instanceof HttpException) return error;
+      if (error instanceof LingoTrackerError) return toHttpException(error);
       throw error;
     }
     throw new Error('expected an HTTP exception');

@@ -304,6 +304,8 @@ So a command whose stdout is piped keeps it clean. `glossary --stdout` writes on
 
 ### CLI Error Wording
 
+`CLI_BY_CODE` uses catalogue-derived `ErrorRules` and `mapTypedError`. Each rule reads code-specific `facts`, without property probes or subclass checks. Problem wording tables index the fact unions directly. Unknown codes retain their original message.
+
 The runner applies [CLI Error Wording](glossary.md#cli-error-wording) before command-specific hooks and generic error text. `printCliError` prints complete diagnostics for the runner. Bundle's event presentation and normalize's read-only Run Report use the same error wording. `ADD_RESOURCE_COMMAND_NAME` links add-resource's command definition to its existing-key advice, which other commands omit. `AUTO_TRANSLATION_DISABLED` appends `Set translation.enabled = true in your configuration`, and `BUNDLE_NOT_FOUND` retains its trailing period in every command. Typed import errors show `Error` causes except source and invalid-import-locale errors, while untyped `runImport` errors suppress causes.
 
 | Thrown | Printed | Exit code |

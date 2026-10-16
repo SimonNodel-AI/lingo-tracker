@@ -1,5 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { createErrorCatalogue } from './error-catalogue';
+import { mapTypedError, type ErrorRules } from './error-codes';
+import { ConfigParseError, ImportSourceError, TranslationError } from './lingo-tracker-error';
 import { defineError, LingoTrackerError } from './error-definition';
 
 class FirstError extends defineError('FIRST', 'invalid', () => ({ message: 'first' })) {}
@@ -118,5 +120,38 @@ describe('error definition payloads', () => {
     defineError('CODE', 'invalid', () => ({ message: 42 }));
     // @ts-expect-error Details must match the base error's validation list.
     defineError('CODE', 'invalid', () => ({ message: 'invalid', details: 'not a list' }));
+  });
+});
+
+describe('catalogue facts', () => {
+  it('shares one payload with facts', () => {
+    const error = new ConfigParseError('config', 'bad JSON');
+    expect(error.facts).toBe(error);
+    expect(error.facts.reason).toBe('bad JSON');
+  });
+
+  it('narrows facts for each code without exposing subclass fields to rules', () => {
+    const rules = {
+      CONFIG_PARSE_FAILED: (error) => {
+        expectTypeOf(error.facts.reason).toEqualTypeOf<string | undefined>();
+        // @ts-expect-error Stage belongs to import-source errors, not config parse errors.
+        void error.facts.stage;
+        // @ts-expect-error Adapters receive facts, not subclass fields.
+        void error.reason;
+        return error.facts.reason ?? error.message;
+      },
+      IMPORT_SOURCE_ERROR: (error) => {
+        expectTypeOf(error.facts.stage).toEqualTypeOf<'format' | 'source' | undefined>();
+        return error.facts.stage ?? error.message;
+      },
+      RATE_LIMIT: (error) => {
+        expectTypeOf(error.facts.retryable).toEqualTypeOf<boolean | undefined>();
+        return String(error.facts.retryable);
+      },
+    } satisfies ErrorRules<string>;
+    expect(mapTypedError(new ConfigParseError('config', 'bad JSON'), rules, undefined)).toBe('bad JSON');
+    expect(mapTypedError(new ImportSourceError('bad format', { stage: 'format' }), rules, undefined)).toBe('format');
+    expect(mapTypedError(new TranslationError('slow down', 'RATE_LIMIT', true), rules, undefined)).toBe('true');
+    expect(mapTypedError(new TranslationError('new', 'FUTURE_PROVIDER', false), rules, undefined)).toBeUndefined();
   });
 });

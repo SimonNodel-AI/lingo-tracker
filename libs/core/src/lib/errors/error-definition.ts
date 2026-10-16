@@ -11,6 +11,10 @@ export abstract class LingoTrackerError extends Error {
   abstract readonly kind: ErrorKind;
   readonly exposeMessage: boolean = true;
   readonly code: string;
+  /** Typed view of the instance payload; `ErrorView` narrows it by code. */
+  get facts(): this {
+    return this;
+  }
   /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
   readonly cause?: unknown;
 

@@ -1,17 +1,5 @@
-import {
-  createParamDecorator,
-  type ExecutionContext,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  type PipeTransform,
-} from '@nestjs/common';
-import {
-  CollectionNotFoundError,
-  type OpenedCollection,
-  openCollection,
-  ReadOnlyCollectionError,
-} from '@simoncodes-ca/core';
+import { createParamDecorator, type ExecutionContext, Injectable, type PipeTransform } from '@nestjs/common';
+import { type OpenedCollection, openCollection } from '@simoncodes-ca/core';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
 
@@ -56,18 +44,11 @@ export class RouteCollectionPipe implements PipeTransform<RouteCollectionRef, Op
 
   transform({ name, writable, lifecycle }: RouteCollectionRef): OpenedCollection {
     const reportsMutations = writable || lifecycle !== undefined;
-    try {
-      return openCollection(this.#configService.getConfig(), name, {
-        cwd: this.#configService.projectRoot,
-        writable,
-        onMutation: reportsMutations ? this.index.sink : undefined,
-        forDeletion: lifecycle === 'delete',
-      });
-    } catch (error) {
-      // Route pipes also run in modules without the app-level exception filter.
-      if (error instanceof CollectionNotFoundError) throw new NotFoundException(`Collection "${name}" not found`);
-      if (error instanceof ReadOnlyCollectionError) throw new ForbiddenException(error.message);
-      throw error;
-    }
+    return openCollection(this.#configService.getConfig(), name, {
+      cwd: this.#configService.projectRoot,
+      writable,
+      onMutation: reportsMutations ? this.index.sink : undefined,
+      forDeletion: lifecycle === 'delete',
+    });
   }
 }

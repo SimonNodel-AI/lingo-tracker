@@ -1,19 +1,14 @@
-import {
-  InvalidProjectTermsEditError,
-  isPreferredTerminologyEditProblem,
-  isProtectedTermsEditProblem,
-} from '@simoncodes-ca/core';
+import { InvalidProjectTermsEditError } from '@simoncodes-ca/core';
 import { describe, expect, it } from 'vitest';
 import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
 
 describe('preferredTerminologyRequestFromFlags', () => {
-  it('narrows each command to its own problem codes and rejects unknown codes', () => {
-    expect(isProtectedTermsEditProblem('protected-file-path')).toBe(true);
-    expect(isPreferredTerminologyEditProblem('protected-file-path')).toBe(false);
-    expect(isPreferredTerminologyEditProblem('preferred-incomplete-flags')).toBe(true);
-    expect(isProtectedTermsEditProblem('preferred-incomplete-flags')).toBe(false);
-    expect(isProtectedTermsEditProblem('unknown')).toBe(false);
-    expect(isPreferredTerminologyEditProblem(undefined)).toBe(false);
+  it('carries each command problem as typed facts', () => {
+    for (const problem of ['protected-file-path', 'preferred-incomplete-flags'] as const) {
+      const error = new InvalidProjectTermsEditError('Edit refused', problem);
+      expect(error.facts.problem).toBe(problem);
+      expect(error.facts.problem).toBe(error.problem);
+    }
   });
   it('builds rule and list requests without CLI wording', () => {
     expect(

@@ -2,13 +2,7 @@ import { Controller, Get, HttpException, type INestApplication, Logger, NotFound
 import { APP_FILTER } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import * as core from '@simoncodes-ca/core';
-import {
-  CollectionNotFoundError,
-  type ErrorKind,
-  LingoTrackerError,
-  PreferredTerminologyValidationError,
-  TranslationError,
-} from '@simoncodes-ca/core';
+import { type ErrorKind, LingoTrackerError, TranslationError } from '@simoncodes-ca/core';
 // Pin core-internal subclasses too. The public alias resolves to this same source via tsconfig.base paths.
 import {
   errorAdapterFixtures,
@@ -23,7 +17,7 @@ import { HTTP_BY_CODE, LingoTrackerExceptionFilter, toHttpException } from './li
 describe('toHttpException', () => {
   const cases = [
     [
-      new core.BracedPlaceholderError('en', ['braced']),
+      new internalErrors.BracedPlaceholderError('en', ['braced']),
       400,
       {
         message: 'Value for locale "en" is not valid: braced',
@@ -56,7 +50,9 @@ describe('toHttpException', () => {
       { message: 'Invalid bundle definition', error: 'Bad Request', statusCode: 400, errors: ['a', 'b'] },
     ],
     [
-      new PreferredTerminologyValidationError([{ index: 0, field: 'preferred', code: 'empty', message: 'empty' }]),
+      new internalErrors.PreferredTerminologyValidationError([
+        { index: 0, field: 'preferred', code: 'empty', message: 'empty' },
+      ]),
       400,
       {
         message: 'Invalid preferred terminology rules',
@@ -84,7 +80,7 @@ describe('toHttpException', () => {
   });
 
   it('maps a missing move destination with its destination-specific message', () => {
-    const http = toHttpException(new CollectionNotFoundError('app', 'destination'));
+    const http = toHttpException(new internalErrors.CollectionNotFoundError('app', 'destination'));
     expect(http.getStatus()).toBe(404);
     expect(http.getResponse()).toEqual({
       statusCode: 404,
@@ -211,6 +207,15 @@ describe('toHttpException', () => {
     expect(JSON.stringify({ status: actual.getStatus(), body: actual.getResponse() })).not.toBe(
       JSON.stringify({ status: fallback.getStatus(), body: fallback.getResponse() }),
     );
+  });
+
+  it('maps an API-owned job error through the filter', () => {
+    const error = new JobNotFoundError('missing-job', 'Translation');
+    expect(toHttpException(error).getResponse()).toEqual({
+      statusCode: 404,
+      message: 'Translation job "missing-job" not found',
+      error: 'Not Found',
+    });
   });
 
   it('returns an HttpException unchanged', () => {
