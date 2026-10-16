@@ -395,6 +395,14 @@ describe('bundle-definition-operations', () => {
 });
 
 describe('bundle collection reference planning', () => {
+  it.each(['rename', 'remove'] as const)('rebuilds a null bundle map as an empty object on %s', (operation) => {
+    const config = baseConfig({ bundles: null as unknown as LingoTrackerConfig['bundles'] });
+    if (operation === 'rename') renameBundleCollectionReferences(config, 'common', 'renamed');
+    else removeBundleCollectionReferences(config, 'common');
+    expect(config).toHaveProperty('bundles', {});
+    expect(JSON.parse(JSON.stringify(config))).toHaveProperty('bundles', {});
+  });
+
   it.each(['rename', 'remove'] as const)('preserves absent and empty maps on %s', (operation) => {
     for (const config of [baseConfig(), baseConfig({ bundles: {} })]) {
       const before = JSON.stringify(config);

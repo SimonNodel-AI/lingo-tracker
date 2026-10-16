@@ -14,7 +14,12 @@
  * `constructor` is an ordinary bundle name, never something on `Object.prototype`.
  */
 
-import { type BundleDefinition, checkBundleDefinition, findBundleDefinition } from '@simoncodes-ca/domain';
+import {
+  type BundleDefinition,
+  type CollectionBundleDefinition,
+  checkBundleDefinition,
+  findBundleDefinition,
+} from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { guardedConfigWrite } from '../config/config-file-operations';
 import { resolveRenameTarget } from '../config/entry-name';
@@ -112,7 +117,9 @@ export function deleteBundleDefinition(project: OpenedProject, key: string): { m
     }
 
     const result = { ...config };
-    rewriteBundles(result, (entries) => entries.filter(([existingKey]) => existingKey !== bundleKey), true);
+    rewriteBundles(result, (entries) => entries.filter(([existingKey]) => existingKey !== bundleKey));
+    // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
+    if (Object.keys(result.bundles ?? {}).length === 0) delete result.bundles;
     return result;
   })();
   configWrite.write(next);
@@ -132,53 +139,52 @@ function assertValid(definition: BundleDefinition, config: LingoTrackerConfig, k
 type BundleEntry = [string, BundleDefinition];
 
 /** The single rebuild path for edits to the config's bundle map. */
-function rewriteBundles(
-  config: LingoTrackerConfig,
-  rewrite: (entries: BundleEntry[]) => BundleEntry[],
-  dropEmpty = false,
-): void {
+function rewriteBundles(config: LingoTrackerConfig, rewrite: (entries: BundleEntry[]) => BundleEntry[]): void {
   const entries = rewrite(Object.entries(config.bundles ?? {}));
   // `Object.fromEntries` defines own properties, including `__proto__`.
   config.bundles = Object.fromEntries(entries);
-  // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
-  if (dropEmpty && entries.length === 0) delete config.bundles;
 }
 
 /** Update explicit bundle references in the in-memory config before its single write. */
 export function renameBundleCollectionReferences(config: LingoTrackerConfig, oldName: string, newName: string): void {
-  if (oldName === newName) return;
-  changeBundleCollectionReferences(config, oldName, newName);
+  if (oldName === newName || config.bundles === undefined) return;
+  rewriteBundles(config, (entries) => renameCollectionReferences(entries, oldName, newName));
 }
 
 /** Check every bundle before removing any reference from the in-memory config. */
 export function removeBundleCollectionReferences(config: LingoTrackerConfig, name: string): void {
-  changeBundleCollectionReferences(config, name);
+  if (config.bundles === undefined) return;
+  rewriteBundles(config, (entries) => removeCollectionReferences(entries, name));
 }
 
-/** Config planning only: preserve malformed lists and refuse the whole edit before assigning the map. */
-function changeBundleCollectionReferences(config: LingoTrackerConfig, name: string, newName?: string): void {
-  if (config.bundles === undefined) return;
-  rewriteBundles(config, (entries) => {
-    const blocked: string[] = [];
-    const next: BundleEntry[] = entries.map(([bundleName, bundle]) => {
-      if (!Array.isArray(bundle?.collections)) return [bundleName, bundle];
-      const collections: typeof bundle.collections = [];
-      let referencesTarget = false;
-      for (const entry of bundle.collections) {
-        const entryName = entry?.name;
-        if (newName !== undefined && entryName === newName) referencesTarget = true;
-        if (entryName !== name) collections.push(entry);
-        else if (newName !== undefined) collections.push({ ...entry, name: newName });
-      }
-      if (referencesTarget || (newName === undefined && bundle.collections.length > 0 && collections.length === 0)) {
-        blocked.push(bundleName);
-      }
-      return [bundleName, { ...bundle, collections }];
-    });
-    if (blocked.length > 0) {
-      if (newName !== undefined) throw new CollectionRenameBundleConflictError(name, newName, blocked);
-      throw new CollectionRequiredByBundleError(name, blocked);
-    }
-    return next;
+function renameCollectionReferences(entries: BundleEntry[], oldName: string, newName: string): BundleEntry[] {
+  const blocked: string[] = [];
+  const next = mapBundleCollections(entries, (collections, bundleName) => {
+    if (collections.some((entry) => entry?.name === newName)) blocked.push(bundleName);
+    return collections.map((entry) => (entry?.name === oldName ? { ...entry, name: newName } : entry));
   });
+  if (blocked.length > 0) throw new CollectionRenameBundleConflictError(oldName, newName, blocked);
+  return next;
+}
+
+function removeCollectionReferences(entries: BundleEntry[], name: string): BundleEntry[] {
+  const blocked: string[] = [];
+  const next = mapBundleCollections(entries, (collections, bundleName) => {
+    const remaining = collections.filter((entry) => entry?.name !== name);
+    if (collections.length > 0 && remaining.length === 0) blocked.push(bundleName);
+    return remaining;
+  });
+  if (blocked.length > 0) throw new CollectionRequiredByBundleError(name, blocked);
+  return next;
+}
+
+/** Preserve malformed lists and transform explicit lists without mutating source definitions. */
+function mapBundleCollections(
+  entries: BundleEntry[],
+  transform: (collections: CollectionBundleDefinition[], bundleName: string) => CollectionBundleDefinition[],
+): BundleEntry[] {
+  return entries.map(([bundleName, bundle]) => [
+    bundleName,
+    Array.isArray(bundle?.collections) ? { ...bundle, collections: transform(bundle.collections, bundleName) } : bundle,
+  ]);
 }
