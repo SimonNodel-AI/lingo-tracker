@@ -34,12 +34,13 @@ describe('Browser Session reset registration', () => {
     const initial = getState(store);
     // Clear every field, including future state slices, without depending on the registry.
     patchState(unprotected(store), () => Object.fromEntries(Object.keys(initial).map((key) => [key, undefined])));
-    patchState(unprotected(store), { sessionId: 1 });
+    patchState(unprotected(store), { sessionId: 1, folderDraftId: initial.folderDraftId });
     store.openCollection(collectionSettings({ name: 'b' }));
     expect(getState(store)).toEqual({
       ...initial,
       sessionId: 2,
       selectedCollection: 'b',
+      folderDraftId: initial.folderDraftId + 1,
       collectionSettings: collectionSettings({ name: 'b' }),
     });
   });
@@ -154,6 +155,7 @@ describe('Browser Session reset registration', () => {
       ...initial,
       sessionId: 2,
       selectedCollection: 'b',
+      folderDraftId: 43,
       collectionSettings: collectionSettings({ name: 'b' }),
     });
   });
