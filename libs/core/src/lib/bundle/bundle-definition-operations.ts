@@ -1,7 +1,7 @@
 /**
- * Add / update / delete bundle definitions in `.lingo-tracker.json`.
+ * Own edits to the bundle map in `.lingo-tracker.json`, including collection references.
  *
- * Every operation normalises the definition and validates it (with the domain
+ * Definition add and update normalise the definition and validate it (with the domain
  * Bundle Definition rules) against the opened project's config, so the check
  * and write see the same state. Key order in `config.bundles` is preserved.
  *
@@ -22,6 +22,8 @@ import type { OpenedProject } from '../config/open-collection';
 import {
   BundleAlreadyExistsError,
   BundleNotFoundError,
+  CollectionRenameBundleConflictError,
+  CollectionRequiredByBundleError,
   InvalidBundleDefinitionError,
 } from '../errors/lingo-tracker-error';
 
@@ -47,10 +49,9 @@ export function addBundleDefinition(
     }
 
     // `Object.fromEntries` defines own properties, so even `__proto__` is stored as a key.
-    return {
-      ...config,
-      bundles: Object.fromEntries([...Object.entries(config.bundles ?? {}), [bundleKey, cleaned]]),
-    };
+    const next = { ...config };
+    rewriteBundles(next, (entries) => [...entries, [bundleKey, cleaned]]);
+    return next;
   })();
   configWrite.write(next);
 
@@ -82,13 +83,14 @@ export function updateBundleDefinition(
     }
 
     // Rebuild the record in the original order so a rename keeps its position.
-    const nextBundles: Record<string, BundleDefinition> = Object.fromEntries(
-      Object.entries(bundles).map(([existingKey, existingDefinition]) =>
+    const next = { ...config };
+    rewriteBundles(next, (entries) =>
+      entries.map(([existingKey, existingDefinition]) =>
         existingKey === bundleKey ? [targetKey, cleaned] : [existingKey, existingDefinition],
       ),
     );
 
-    return { next: { ...config, bundles: nextBundles }, targetKey, isRename };
+    return { next, targetKey, isRename };
   })();
   configWrite.write(next);
 
@@ -109,14 +111,8 @@ export function deleteBundleDefinition(project: OpenedProject, key: string): { m
       throw new BundleNotFoundError(bundleKey);
     }
 
-    const remaining = Object.fromEntries(Object.entries(bundles).filter(([existingKey]) => existingKey !== bundleKey));
-    const result: LingoTrackerConfig = { ...config, bundles: remaining };
-
-    // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
-    if (Object.keys(remaining).length === 0) {
-      delete result.bundles;
-    }
-
+    const result = { ...config };
+    rewriteBundles(result, (entries) => entries.filter(([existingKey]) => existingKey !== bundleKey), true);
     return result;
   })();
   configWrite.write(next);
@@ -131,4 +127,58 @@ function assertValid(definition: BundleDefinition, config: LingoTrackerConfig, k
     throw new InvalidBundleDefinitionError(check.errors);
   }
   return check.definition;
+}
+
+type BundleEntry = [string, BundleDefinition];
+
+/** The single rebuild path for edits to the config's bundle map. */
+function rewriteBundles(
+  config: LingoTrackerConfig,
+  rewrite: (entries: BundleEntry[]) => BundleEntry[],
+  dropEmpty = false,
+): void {
+  const entries = rewrite(Object.entries(config.bundles ?? {}));
+  // `Object.fromEntries` defines own properties, including `__proto__`.
+  config.bundles = Object.fromEntries(entries);
+  // Drop the `bundles` key entirely when the last bundle goes, keeping the file minimal.
+  if (dropEmpty && entries.length === 0) delete config.bundles;
+}
+
+/** Update explicit bundle references in the in-memory config before its single write. */
+export function renameBundleCollectionReferences(config: LingoTrackerConfig, oldName: string, newName: string): void {
+  if (oldName === newName) return;
+  changeBundleCollectionReferences(config, oldName, newName);
+}
+
+/** Check every bundle before removing any reference from the in-memory config. */
+export function removeBundleCollectionReferences(config: LingoTrackerConfig, name: string): void {
+  changeBundleCollectionReferences(config, name);
+}
+
+/** Config planning only: preserve malformed lists and refuse the whole edit before assigning the map. */
+function changeBundleCollectionReferences(config: LingoTrackerConfig, name: string, newName?: string): void {
+  if (config.bundles === undefined) return;
+  rewriteBundles(config, (entries) => {
+    const blocked: string[] = [];
+    const next: BundleEntry[] = entries.map(([bundleName, bundle]) => {
+      if (!Array.isArray(bundle?.collections)) return [bundleName, bundle];
+      const collections: typeof bundle.collections = [];
+      let referencesTarget = false;
+      for (const entry of bundle.collections) {
+        const entryName = entry?.name;
+        if (newName !== undefined && entryName === newName) referencesTarget = true;
+        if (entryName !== name) collections.push(entry);
+        else if (newName !== undefined) collections.push({ ...entry, name: newName });
+      }
+      if (referencesTarget || (newName === undefined && bundle.collections.length > 0 && collections.length === 0)) {
+        blocked.push(bundleName);
+      }
+      return [bundleName, { ...bundle, collections }];
+    });
+    if (blocked.length > 0) {
+      if (newName !== undefined) throw new CollectionRenameBundleConflictError(name, newName, blocked);
+      throw new CollectionRequiredByBundleError(name, blocked);
+    }
+    return next;
+  });
 }
