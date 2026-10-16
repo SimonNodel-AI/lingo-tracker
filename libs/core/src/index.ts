@@ -43,6 +43,7 @@ export type {
 // Operations: bundles
 export {
   addBundleDefinition,
+  bundleFindings,
   deleteBundleDefinition,
   generateBundles,
   generatePreparedBundle,

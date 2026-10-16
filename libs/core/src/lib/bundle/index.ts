@@ -1,3 +1,4 @@
+export { bundleFindings } from './bundle-findings';
 // The bundle module: plan or generate bundles, and edit the bundle definitions in config.
 
 export {

@@ -1,4 +1,4 @@
-import type { GenerateBundlesOptions, GenerateBundlesResult } from '@simoncodes-ca/core';
+import { bundleFindings, type GenerateBundlesOptions, type GenerateBundlesResult } from '@simoncodes-ca/core';
 import { printCliError } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { flagName } from '../runner/flag-record';
@@ -25,10 +25,8 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     return;
   }
   const { outcome } = event;
-  const findings = outcome.result ? outcome.result.warnings : outcome.warnings;
-  for (const finding of findings) {
-    if (finding.origin === 'config') CommandOutput.warn(finding.message);
-  }
+  const findings = bundleFindings(outcome.result ? outcome.result : { warnings: outcome.warnings });
+  for (const message of findings.byOrigin.config) CommandOutput.warn(message);
   if ('warnings' in outcome) {
     printCliError(outcome.error, { fallbackMessage: 'Failed to generate bundle' });
     return;
@@ -38,32 +36,23 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     ConsoleFormatter.indent(`✅ Files generated: ${result.filesGenerated}`);
     ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
   }
-  const types = result.typeOutcome;
-  switch (types.status) {
-    case 'failed':
-      ConsoleFormatter.error(`Type generation failed: ${types.reason}`);
-      break;
-    case 'written':
-      if (!options.quiet) ConsoleFormatter.indent(`└─ Types: ${types.path} (${types.keysCount} keys)`);
-      break;
-    case 'skipped':
-      if (!options.quiet) ConsoleFormatter.indent('└─ Types: Skipped (bundle is empty)');
-      break;
-    case 'not-configured':
-      if (!options.quiet) ConsoleFormatter.indent('└─ Types: Skipped (no typeDistFile configured)');
-      break;
-    default: {
-      const unhandled: never = types;
-      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
+  const { types } = findings;
+  if (types.failure !== undefined) {
+    ConsoleFormatter.error(`Type generation failed: ${types.failure}`);
+  } else if (!options.quiet) {
+    if (types.written) {
+      ConsoleFormatter.indent(`└─ Types: ${types.written.path} (${types.written.keysCount} keys)`);
+    } else if (types.skipped !== undefined) {
+      ConsoleFormatter.indent(`└─ Types: Skipped (${types.skipped})`);
     }
   }
   // Type warnings are represented by the type tree/failure above. Only generation
   // findings belong in the legacy warning count and verbose detail list.
-  const warnings = findings.filter((finding) => finding.origin === 'generation');
+  const warnings = findings.byOrigin.generation;
   if (warnings.length > 0)
     ConsoleFormatter.warning(
       `Warnings: ${warnings.length}`,
-      options.verbose ? warnings.map((warning) => `- ${warning.message}`) : [],
+      options.verbose ? warnings.map((warning) => `- ${warning}`) : [],
     );
 }
 
@@ -74,9 +63,7 @@ export function printBundleSummary(run: GenerateBundlesResult, options: BundlePr
     ConsoleFormatter.section(`Summary (${run.totals.bundlesProcessed} bundles)`);
     ConsoleFormatter.keyValue('Total files generated', run.totals.filesGenerated);
   }
-  const warnings = run.outcomes.flatMap((item) =>
-    item.result ? item.result.warnings.filter((finding) => finding.origin === 'generation') : [],
-  );
+  const warnings = run.outcomes.flatMap((item) => (item.result ? bundleFindings(item.result).byOrigin.generation : []));
   if (warnings.length > 0) {
     ConsoleFormatter.keyValue('Total warnings', warnings.length);
     if (!options.verbose) ConsoleFormatter.indent(`Run with ${flagName(BUNDLE_FLAGS.verbose)} to see warning details`);

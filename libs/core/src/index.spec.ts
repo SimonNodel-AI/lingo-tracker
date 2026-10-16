@@ -96,6 +96,7 @@ describe('core public surface', () => {
         'assertCollectionFields',
         'assertProtectedTerms',
         'buildGlossary',
+        'bundleFindings',
         'createFolder',
         'deleteBundleDefinition',
         'deleteCollection',
