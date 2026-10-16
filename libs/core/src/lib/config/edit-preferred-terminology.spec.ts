@@ -5,6 +5,7 @@ import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { PreferredTerminologyValidationError } from '../errors/lingo-tracker-error';
 import type { PreferredTerminologyEdit } from './preferred-terminology-file';
+import { failure, written } from './project-terms-outcome.spec-helpers';
 import { updateProjectTerms } from './update-project-terms';
 
 const config = {};
@@ -14,7 +15,7 @@ function editPreferredTerminology(
   edit: PreferredTerminologyEdit,
   cwd: string,
 ) {
-  const report = updateProjectTerms(
+  return updateProjectTerms(
     {
       projectRoot: cwd,
       sourceConfig: {
@@ -28,9 +29,6 @@ function editPreferredTerminology(
     },
     { preferredTerminology: edit },
   );
-  const result = report.preferredTerminologyResult;
-  if (result === undefined) throw new Error('Missing preferred terminology edit result');
-  return result;
 }
 
 describe('editPreferredTerminology', () => {
@@ -46,8 +44,9 @@ describe('editPreferredTerminology', () => {
       { upsert: { discouraged: ' Expenditure ', preferred: ' Investment ' } },
       tempDir(),
     );
-    expect(result.action).toBe('added');
-    expect(result.changedRule).toEqual({ discouraged: 'Expenditure', preferred: 'Investment' });
+    const ruleResult = written(result)?.preferredTerminologyResult;
+    expect(ruleResult?.action).toBe('added');
+    expect(ruleResult?.changedRule).toEqual({ discouraged: 'Expenditure', preferred: 'Investment' });
     expect(stored()).toEqual([
       { discouraged: 'Expenditure', preferred: 'Investment' },
       { discouraged: 'Zoo', preferred: 'Park' },
@@ -61,35 +60,35 @@ describe('editPreferredTerminology', () => {
       { upsert: { discouraged: 'email', preferred: 'electronic mail' } },
       tempDir(),
     );
-    expect(result.action).toBe('updated');
+    const ruleResult = written(result)?.preferredTerminologyResult;
+    expect(ruleResult?.action).toBe('updated');
     expect(stored()).toEqual([{ discouraged: 'email', preferred: 'electronic mail' }]);
   });
 
   it('removes a rule case insensitively', () => {
     seed([{ discouraged: 'Email', preferred: 'Inbox' }]);
     const result = editPreferredTerminology(config, { remove: ' EMAIL ' }, tempDir());
-    expect(result.action).toBe('removed');
+    const ruleResult = written(result)?.preferredTerminologyResult;
+    expect(ruleResult?.action).toBe('removed');
     expect(stored()).toEqual([]);
   });
 
   it('reports a missing rule with the file path and leaves the file unchanged', () => {
     seed([{ discouraged: 'Email', preferred: 'Inbox' }]);
     const before = readFileSync(filePath(), 'utf8');
-    expect(() => editPreferredTerminology(config, { remove: 'Missing' }, tempDir())).toThrow(
-      'No preferred terminology rule for "Missing"',
-    );
+    expect(failure(editPreferredTerminology(config, { remove: 'Missing' }, tempDir()), 'failed').error).toMatchObject({
+      message: expect.stringContaining('No preferred terminology rule for "Missing"'),
+    });
     expect(readFileSync(filePath(), 'utf8')).toBe(before);
   });
 
   it('returns row errors and leaves the file unchanged for an invalid upsert', () => {
     seed([{ discouraged: 'Email', preferred: 'Inbox' }]);
     const before = readFileSync(filePath(), 'utf8');
-    let thrown: unknown;
-    try {
-      editPreferredTerminology(config, { upsert: { discouraged: 'Expenditure', preferred: '' } }, tempDir());
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = failure(
+      editPreferredTerminology(config, { upsert: { discouraged: 'Expenditure', preferred: '' } }, tempDir()),
+      'failed',
+    ).error;
     expect(thrown).toBeInstanceOf(PreferredTerminologyValidationError);
     const validation = thrown as PreferredTerminologyValidationError;
     expect(validation.errors).toEqual([expect.objectContaining({ index: 1, field: 'preferred', code: 'empty' })]);
@@ -104,32 +103,41 @@ describe('editPreferredTerminology', () => {
       { set: [{ discouraged: 'Expenditure', preferred: 'Investment' }] },
       tempDir(),
     );
-    expect(result.rules).toEqual([{ discouraged: 'Expenditure', preferred: 'Investment' }]);
-    expect(result).not.toHaveProperty('error');
-    expect(stored()).toEqual(result.rules);
+    const ruleResult = written(result)?.preferredTerminologyResult;
+    expect(ruleResult?.rules).toEqual([{ discouraged: 'Expenditure', preferred: 'Investment' }]);
+    expect(ruleResult).not.toHaveProperty('error');
+    expect(stored()).toEqual(ruleResult?.rules);
   });
 
   it('validates a replacement before creating a file', () => {
-    expect(() =>
-      editPreferredTerminology(config, { set: [{ discouraged: 'Email', preferred: 'email' }] }, tempDir()),
-    ).toThrow(PreferredTerminologyValidationError);
+    expect(
+      failure(
+        editPreferredTerminology(config, { set: [{ discouraged: 'Email', preferred: 'email' }] }, tempDir()),
+        'refused',
+      ).error,
+    ).toBeInstanceOf(PreferredTerminologyValidationError);
     expect(existsSync(filePath())).toBe(false);
   });
 
   it('rejects a non-array replacement before creating a file', () => {
-    expect(() => editPreferredTerminology(config, { set: { discouraged: 'Email' } } as never, tempDir())).toThrow(
-      'Preferred terminology replacement must be an array of rules',
-    );
+    expect(
+      failure(editPreferredTerminology(config, { set: { discouraged: 'Email' } } as never, tempDir()), 'refused').error,
+    ).toMatchObject({
+      message: expect.stringContaining('Preferred terminology replacement must be an array of rules'),
+    });
     expect(existsSync(filePath())).toBe(false);
   });
 
   it('reports invalid replacement rows before a malformed file pointer', () => {
-    expect(() =>
-      editPreferredTerminology(
-        { preferredTerminologyFile: 42 as never },
-        { set: [{ discouraged: 'Email', preferred: 'email' }] },
-        tempDir(),
-      ),
-    ).toThrow(PreferredTerminologyValidationError);
+    expect(
+      failure(
+        editPreferredTerminology(
+          { preferredTerminologyFile: 42 as never },
+          { set: [{ discouraged: 'Email', preferred: 'email' }] },
+          tempDir(),
+        ),
+        'refused',
+      ).error,
+    ).toBeInstanceOf(PreferredTerminologyValidationError);
   });
 });

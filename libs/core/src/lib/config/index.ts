@@ -37,9 +37,6 @@ export {
 export type { TermFile } from './term-file';
 export {
   type ProjectTermsUpdate,
-  type ProjectTermsUpdatePlan,
-  type ProjectTermsUpdateReport,
   type ProtectedTermsChange,
-  planProjectTermsUpdate,
   updateProjectTerms,
 } from './update-project-terms';

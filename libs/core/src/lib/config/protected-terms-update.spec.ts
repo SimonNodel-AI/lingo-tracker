@@ -6,7 +6,8 @@ import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { loadConfig } from './config-file-operations';
 import { readProjectTermsView } from './project-terms-view';
-import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './protected-terms-request';
+import type { ProtectedTermsEdit } from './protected-terms-request';
+import { failure, written } from './project-terms-outcome.spec-helpers';
 import { updateProjectTerms } from './update-project-terms';
 
 const baseConfig: LingoTrackerConfig = {
@@ -24,40 +25,20 @@ describe('protected terms edits', () => {
   const readJson = (path: string): unknown => JSON.parse(readFileSync(path, 'utf8'));
   const writeConfig = (config: LingoTrackerConfig = baseConfig) => writeFileSync(configPath(), JSON.stringify(config));
   const project = () => ({ projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) });
-  const termResult = (result: ProtectedTermsEditResult | undefined): ProtectedTermsEditResult => {
-    if (!result) throw new Error('Missing protected terms result');
-    return result;
-  };
   const replaceGlobalTerms = (terms: string[]) =>
-    termResult(
-      updateProjectTerms(project(), { protectedTerms: { target: {}, change: { kind: 'replace', replace: terms } } })
-        .protectedTermsResult,
-    );
+    updateProjectTerms(project(), { protectedTerms: { target: {}, change: { kind: 'replace', replace: terms } } });
   const replaceCollectionTerms = (collection: string, terms: string[]) =>
-    termResult(
-      updateProjectTerms(project(), {
-        protectedTerms: { target: { collection }, change: { kind: 'edit', edit: { set: terms } } },
-      }).protectedTermsResult,
-    );
-  const changeGlobalTermsPointer = (pointer: string | undefined) => {
-    const result = updateProjectTerms(project(), {
-      protectedTerms: { target: {}, change: { kind: 'view' }, file: pointer ?? '' },
-    }).protectedTermsFileChange;
-    if (!result) throw new Error('Missing pointer result');
-    return result;
-  };
-  const changeCollectionTermsPointer = (collection: string, pointer: string | undefined) => {
-    const result = updateProjectTerms(project(), {
+    updateProjectTerms(project(), {
+      protectedTerms: { target: { collection }, change: { kind: 'edit', edit: { set: terms } } },
+    });
+  const changeGlobalTermsPointer = (pointer: string | undefined) =>
+    updateProjectTerms(project(), { protectedTerms: { target: {}, change: { kind: 'view' }, file: pointer ?? '' } });
+  const changeCollectionTermsPointer = (collection: string, pointer: string | undefined) =>
+    updateProjectTerms(project(), {
       protectedTerms: { target: { collection }, change: { kind: 'view' }, file: pointer ?? '' },
-    }).protectedTermsFileChange;
-    if (!result) throw new Error('Missing pointer result');
-    return result;
-  };
+    });
   const applyTermsEdit = (target: { collection?: string }, edit: ProtectedTermsEdit) =>
-    termResult(
-      updateProjectTerms(project(), { protectedTerms: { target, change: { kind: 'edit', edit } } })
-        .protectedTermsResult,
-    );
+    updateProjectTerms(project(), { protectedTerms: { target, change: { kind: 'edit', edit } } });
 
   beforeEach(() => {
     mkdirSync(join(tempDir(), 'i18n'));
@@ -68,7 +49,7 @@ describe('protected terms edits', () => {
   describe('global list', () => {
     it('writes normalized, deduped, sorted terms to the default file', () => {
       const result = replaceGlobalTerms([' Node.js ', 'iPhone', 'iPhone']);
-      expect(result.filePath).toBe(defaultPath());
+      expect(written(result)?.protectedTermsResult?.filePath).toBe(defaultPath());
       expect(readJson(defaultPath())).toEqual(['iPhone', 'Node.js']);
     });
     it('leaves the config unchanged', () => {
@@ -95,14 +76,18 @@ describe('protected terms edits', () => {
         collections: { myApp: { ...baseConfig.collections['myApp'], protectedTermsFile: 'i18n/terms.json' } },
       });
       const result = replaceCollectionTerms('myApp', ['iPhone', ' Node.js ']);
-      expect(result.filePath).toBe(join(tempDir(), 'i18n/terms.json'));
-      expect(readJson(result.filePath ?? '')).toEqual(['iPhone', 'Node.js']);
+      expect(written(result)?.protectedTermsResult?.filePath).toBe(join(tempDir(), 'i18n/terms.json'));
+      expect(readJson(written(result)?.protectedTermsResult?.filePath ?? '')).toEqual(['iPhone', 'Node.js']);
     });
     it('rejects a collection with no terms file', () => {
-      expect(() => replaceCollectionTerms('myApp', ['iPhone'])).toThrow('has no protected terms file');
+      expect(failure(replaceCollectionTerms('myApp', ['iPhone']), 'refused').error).toMatchObject({
+        message: expect.stringContaining('has no protected terms file'),
+      });
     });
     it('rejects an unknown collection', () => {
-      expect(() => replaceCollectionTerms('nope', ['iPhone'])).toThrow('Collection "nope" not found');
+      expect(failure(replaceCollectionTerms('nope', ['iPhone']), 'refused').error).toMatchObject({
+        message: expect.stringContaining('Collection "nope" not found'),
+      });
     });
   });
 
@@ -110,9 +95,9 @@ describe('protected terms edits', () => {
     it('stores the pointer and carries terms into the new file', () => {
       writeFileSync(defaultPath(), '["iPhone"]');
       const result = changeGlobalTermsPointer('config/terms.json');
-      expect(result.filePath).toBe(join(tempDir(), 'config/terms.json'));
+      expect(written(result)?.protectedTermsFileChange?.filePath).toBe(join(tempDir(), 'config/terms.json'));
       expect((readJson(configPath()) as LingoTrackerConfig).protectedTermsFile).toBe('config/terms.json');
-      expect(readJson(result.filePath ?? '')).toEqual(['iPhone']);
+      expect(readJson(written(result)?.protectedTermsFileChange?.filePath ?? '')).toEqual(['iPhone']);
     });
     it.each([undefined, '', '   '])('clears the pointer for %j', (pointer) => {
       changeGlobalTermsPointer(pointer);
@@ -120,7 +105,9 @@ describe('protected terms edits', () => {
     });
     it('leaves config untouched for a missing target directory', () => {
       const before = readFileSync(configPath(), 'utf8');
-      expect(() => changeGlobalTermsPointer('nope/terms.json')).toThrow('directory does not exist');
+      expect(failure(changeGlobalTermsPointer('nope/terms.json'), 'refused').error).toMatchObject({
+        message: expect.stringContaining('directory does not exist'),
+      });
       expect(readFileSync(configPath(), 'utf8')).toBe(before);
     });
   });
@@ -128,16 +115,18 @@ describe('protected terms edits', () => {
   describe('collection pointer', () => {
     it('stores the pointer and creates the file', () => {
       const result = changeCollectionTermsPointer('myApp', 'i18n/terms.json');
-      expect(result.filePath).toBe(join(tempDir(), 'i18n/terms.json'));
+      expect(written(result)?.protectedTermsFileChange?.filePath).toBe(join(tempDir(), 'i18n/terms.json'));
       expect((readJson(configPath()) as LingoTrackerConfig).collections['myApp'].protectedTermsFile).toBe(
         'i18n/terms.json',
       );
-      expect(readJson(result.filePath ?? '')).toEqual([]);
+      expect(readJson(written(result)?.protectedTermsFileChange?.filePath ?? '')).toEqual([]);
     });
     it.each([undefined, '', '   '])('clears the pointer for %j', (pointer) => {
       const result = changeCollectionTermsPointer('myApp', pointer);
-      expect(result.filePath).toBeUndefined();
-      expect(result.message).toBe('Collection "myApp" protected terms file cleared');
+      expect(written(result)?.protectedTermsFileChange?.filePath).toBeUndefined();
+      expect(written(result)?.protectedTermsFileChange?.message).toBe(
+        'Collection "myApp" protected terms file cleared',
+      );
       expect((readJson(configPath()) as LingoTrackerConfig).collections['myApp'].protectedTermsFile).toBeUndefined();
     });
     it('preserves a translation override and the rest of the record', () => {
@@ -152,20 +141,27 @@ describe('protected terms edits', () => {
       });
     });
     it('rejects an unknown collection', () => {
-      expect(() => changeCollectionTermsPointer('nope', 'terms.json')).toThrow('Collection "nope" not found');
+      expect(failure(changeCollectionTermsPointer('nope', 'terms.json'), 'refused').error).toMatchObject({
+        message: expect.stringContaining('Collection "nope" not found'),
+      });
     });
     it('leaves config untouched for a missing target directory', () => {
       const before = readFileSync(configPath(), 'utf8');
-      expect(() => changeCollectionTermsPointer('myApp', 'nope/terms.json')).toThrow('directory does not exist');
+      expect(failure(changeCollectionTermsPointer('myApp', 'nope/terms.json'), 'refused').error).toMatchObject({
+        message: expect.stringContaining('directory does not exist'),
+      });
       expect(readFileSync(configPath(), 'utf8')).toBe(before);
     });
   });
 
   it('adds, removes, and replaces terms through one edit interface', () => {
     writeFileSync(defaultPath(), '["iPhone"]');
-    expect(applyTermsEdit({}, { add: [' Node.js ', 'iPhone'] }).terms).toEqual(['iPhone', 'Node.js']);
-    expect(applyTermsEdit({}, { remove: ['iPhone'] }).terms).toEqual(['Node.js']);
-    expect(applyTermsEdit({}, { set: [' C++', ' C++ '] }).terms).toEqual(['C++']);
+    expect(written(applyTermsEdit({}, { add: [' Node.js ', 'iPhone'] }))?.protectedTermsResult?.terms).toEqual([
+      'iPhone',
+      'Node.js',
+    ]);
+    expect(written(applyTermsEdit({}, { remove: ['iPhone'] }))?.protectedTermsResult?.terms).toEqual(['Node.js']);
+    expect(written(applyTermsEdit({}, { set: [' C++', ' C++ '] }))?.protectedTermsResult?.terms).toEqual(['C++']);
     expect(readJson(defaultPath())).toEqual(['C++']);
   });
 
@@ -175,20 +171,24 @@ describe('protected terms edits', () => {
     const view = readProjectTermsView(project()).forTarget({});
     const result = applyTermsEdit({}, { add: ['Pixel'] });
     expect(view.globalTerms).toEqual(['iPhone']);
-    expect(result.terms).toEqual(['iPhone', 'Pixel']);
-    expect(result.filePath).toBe(join(tempDir(), 'config/terms.json'));
-    expect(readJson(result.filePath ?? '')).toEqual(['iPhone', 'Pixel']);
+    expect(written(result)?.protectedTermsResult?.terms).toEqual(['iPhone', 'Pixel']);
+    expect(written(result)?.protectedTermsResult?.filePath).toBe(join(tempDir(), 'config/terms.json'));
+    expect(readJson(written(result)?.protectedTermsResult?.filePath ?? '')).toEqual(['iPhone', 'Pixel']);
   });
 
   it('does not overwrite a malformed list during an edit', () => {
     writeFileSync(defaultPath(), '{broken');
-    expect(() => applyTermsEdit({}, { add: ['New'] })).toThrow('not valid JSON');
+    expect(failure(applyTermsEdit({}, { add: ['New'] }), 'refused').error).toMatchObject({
+      message: expect.stringContaining('not valid JSON'),
+    });
     expect(readFileSync(defaultPath(), 'utf8')).toBe('{broken');
   });
 
   it('rejects a non-string list before writing a term file', () => {
     const before = readFileSync(configPath(), 'utf8');
-    expect(() => replaceGlobalTerms(['iPhone', 42] as never)).toThrow('protectedTerms must be an array of strings');
+    expect(failure(replaceGlobalTerms(['iPhone', 42] as never), 'refused').error).toMatchObject({
+      message: expect.stringContaining('protectedTerms must be an array of strings'),
+    });
     expect(existsSync(defaultPath())).toBe(false);
     expect(readFileSync(configPath(), 'utf8')).toBe(before);
   });

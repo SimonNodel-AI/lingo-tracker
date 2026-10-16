@@ -14,7 +14,8 @@ import {
   PreferredTerminologyValidationError,
 } from '../errors/lingo-tracker-error';
 import { loadConfig } from './config-file-operations';
-import { type ProjectTermsUpdate, planProjectTermsUpdate, updateProjectTerms } from './update-project-terms';
+import { failure, written, view } from './project-terms-outcome.spec-helpers';
+import { type ProjectTermsUpdate, updateProjectTerms } from './update-project-terms';
 
 const actualWrite = vi.hoisted(() => ({ file: undefined as typeof import('node:fs').writeFileSync | undefined }));
 vi.mock('node:fs', async (importOriginal) => {
@@ -65,15 +66,15 @@ describe('updateProjectTerms', () => {
       const listed = updateProjectTerms(project(), {
         protectedTerms: { target: {}, change: { kind: 'edit', edit: {} }, list: true },
       });
-      expect(listed.lists.protectedTerms).toBe(true);
-      expect(listed.protectedTermsResult).toBeUndefined();
-      expect(listed.protectedTermsResult?.action).toBeUndefined();
+      expect(view(listed).lists.protectedTerms).toBe(true);
+      expect(written(listed)?.protectedTermsResult).toBeUndefined();
+      expect(written(listed)?.protectedTermsResult?.action).toBeUndefined();
       const pointed = updateProjectTerms(project(), {
         protectedTerms: { target: {}, change: { kind: 'edit', edit: {} }, file: 'pointed.json' },
       });
-      expect(pointed.protectedTermsFileChange?.filePath).toBe(join(cwd, 'pointed.json'));
-      expect(pointed.protectedTermsResult).toBeUndefined();
-      expect(pointed.protectedTermsResult?.action).toBeUndefined();
+      expect(view(pointed).protectedTermsFileChange?.filePath).toBe(join(cwd, 'pointed.json'));
+      expect(written(pointed)?.protectedTermsResult).toBeUndefined();
+      expect(written(pointed)?.protectedTermsResult?.action).toBeUndefined();
       config = loadConfig({ cwd });
     }
   });
@@ -84,8 +85,8 @@ describe('updateProjectTerms', () => {
       protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: [' '] } } },
     });
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual([]);
-    expect(report.protectedTermsResult?.action).toBe('cleared');
-    expect(report.protectedTermsResult?.terms).toEqual([]);
+    expect(written(report)?.protectedTermsResult?.action).toBe('cleared');
+    expect(written(report)?.protectedTermsResult?.terms).toEqual([]);
   });
 
   it('reports an empty completion when applied additions and removals cancel out', () => {
@@ -93,31 +94,34 @@ describe('updateProjectTerms', () => {
       protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'], remove: ['Old', 'Brand'] } } },
     });
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual([]);
-    expect(report.protectedTermsResult?.action).toBe('cleared');
-    expect(report.protectedTermsResult?.terms).toEqual([]);
+    expect(written(report)?.protectedTermsResult?.action).toBe('cleared');
+    expect(written(report)?.protectedTermsResult?.terms).toEqual([]);
   });
 
   it('refuses a populated add with set but accepts an empty add with set', () => {
-    expect(() =>
-      updateProjectTerms(project(), {
-        protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'], set: [] } } },
-      }),
-    ).toThrow(InvalidProjectTermsEditError);
+    expect(
+      failure(
+        updateProjectTerms(project(), {
+          protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'], set: [] } } },
+        }),
+        'refused',
+      ).error,
+    ).toBeInstanceOf(InvalidProjectTermsEditError);
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['Old']);
     const report = updateProjectTerms(project(), {
       protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: [], set: [] } } },
     });
-    expect(report.protectedTermsResult?.action).toBe('cleared');
-    expect(report.protectedTermsResult?.terms).toEqual([]);
+    expect(written(report)?.protectedTermsResult?.action).toBe('cleared');
+    expect(written(report)?.protectedTermsResult?.terms).toEqual([]);
   });
 
   it('keeps preferred list-only outcomes unchanged for empty and populated rule files', () => {
     for (const rules of [[], [{ discouraged: 'Old', preferred: 'New' }]]) {
       writeFileSync(preferredFile, JSON.stringify(rules));
       const report = updateProjectTerms(project(), { preferredTerminology: { list: true } });
-      expect(report.lists.preferredTerminology).toBe(true);
-      expect(report.preferredTerminologyResult).toBeUndefined();
-      expect(report.preferredTerminologyResult?.action).toBeUndefined();
+      expect(view(report).lists.preferredTerminology).toBe(true);
+      expect(written(report)?.preferredTerminologyResult).toBeUndefined();
+      expect(written(report)?.preferredTerminologyResult?.action).toBeUndefined();
     }
   });
 
@@ -127,7 +131,7 @@ describe('updateProjectTerms', () => {
       const report = updateProjectTerms(project(), {
         protectedTerms: { target: {}, change: { kind: 'replace', replace: [] } },
       });
-      expect(report.protectedTermsResult).toEqual({ action: 'cleared', terms: [], filePath: protectedFile });
+      expect(written(report)?.protectedTermsResult).toEqual({ action: 'cleared', terms: [], filePath: protectedFile });
     }
   });
 
@@ -135,8 +139,8 @@ describe('updateProjectTerms', () => {
     for (const rules of [[], [{ discouraged: 'Old', preferred: 'New' }]]) {
       writeFileSync(preferredFile, JSON.stringify(rules));
       const report = updateProjectTerms(project(), { preferredTerminology: { set: [] } });
-      expect(report.preferredTerminologyResult?.action).toBe('cleared');
-      expect(report.preferredTerminologyResult?.rules).toEqual([]);
+      expect(written(report)?.preferredTerminologyResult?.action).toBe('cleared');
+      expect(written(report)?.preferredTerminologyResult?.rules).toEqual([]);
       expect(JSON.parse(readFileSync(preferredFile, 'utf8'))).toEqual([]);
     }
   });
@@ -151,14 +155,17 @@ describe('updateProjectTerms', () => {
     [{ kind: 'edit', edit: { remove: ['Old'] } }, 'cleared', []],
     [{ kind: 'view' }, undefined, undefined],
   ] as const)('names protected completion and the requested preview: %j', (change, action, terms) => {
-    const plan = planProjectTermsUpdate(project(), { protectedTerms: { target: {}, change, list: true } });
-    expect(plan.view.lists).toEqual({ protectedTerms: true, preferredTerminology: false });
     const preview = vi.fn();
-    const report = plan.report(preview);
-    expect(preview).toHaveBeenCalledWith(plan.view);
-    expect(report.protectedTermsResult?.action).toBe(action);
-    expect(report.protectedTermsResult?.terms).toEqual(terms);
-    expect(report.preferredTerminologyResult).toBeUndefined();
+    const report = updateProjectTerms(
+      project(),
+      { protectedTerms: { target: {}, change, list: true } },
+      { onPreview: preview },
+    );
+    expect(view(report).lists).toEqual({ protectedTerms: true, preferredTerminology: false });
+    expect(preview).toHaveBeenCalledWith(view(report));
+    expect(written(report)?.protectedTermsResult?.action).toBe(action);
+    expect(written(report)?.protectedTermsResult?.terms).toEqual(terms);
+    expect(written(report)?.preferredTerminologyResult).toBeUndefined();
   });
 
   it.each([
@@ -170,18 +177,18 @@ describe('updateProjectTerms', () => {
     [{}, undefined],
   ] as const)('names preferred completion including replacements: %j', (edit, action) => {
     const report = updateProjectTerms(project(), { preferredTerminology: { ...edit, list: true } });
-    expect(report.preferredTerminologyResult?.action).toBe(action);
-    expect(report.protectedTermsResult).toBeUndefined();
-    expect(report.lists.preferredTerminology).toBe(true);
+    expect(written(report)?.preferredTerminologyResult?.action).toBe(action);
+    expect(written(report)?.protectedTermsResult).toBeUndefined();
+    expect(view(report).lists.preferredTerminology).toBe(true);
   });
 
   it('names a combined pointer and list edit without conflating the operations', () => {
     const report = updateProjectTerms(project(), {
       protectedTerms: { target: {}, file: 'new.json', change: { kind: 'edit', edit: { add: ['Brand'] } } },
     });
-    expect(report.protectedTermsResult?.action).toBe('updated');
-    expect(report.protectedTermsResult?.terms).toEqual(['Old', 'Brand']);
-    expect(report.protectedTermsFileChange?.filePath).toBe(join(cwd, 'new.json'));
+    expect(written(report)?.protectedTermsResult?.action).toBe('updated');
+    expect(written(report)?.protectedTermsResult?.terms).toEqual(['Old', 'Brand']);
+    expect(view(report).protectedTermsFileChange?.filePath).toBe(join(cwd, 'new.json'));
     config = {
       ...loadConfig({ cwd }),
       collections: { app: { translationsFolder: 'app', protectedTermsFile: 'new.json' } },
@@ -190,36 +197,40 @@ describe('updateProjectTerms', () => {
     const cleared = updateProjectTerms(project(), {
       protectedTerms: { target: { collection: 'app' }, file: '', change: { kind: 'view' } },
     });
-    expect(cleared.protectedTermsResult).toBeUndefined();
-    expect(cleared.protectedTermsFileChange?.filePath).toBeUndefined();
-    expect(cleared.protectedTermsFileChange?.message).toContain('cleared');
+    expect(written(cleared)?.protectedTermsResult).toBeUndefined();
+    expect(view(cleared).protectedTermsFileChange?.filePath).toBeUndefined();
+    expect(view(cleared).protectedTermsFileChange?.message).toContain('cleared');
   });
 
   it('prints the preview before a write fails and reports no successful outcomes', () => {
     const events: string[] = [];
-    const plan = planProjectTermsUpdate(project(), {
-      protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'] } } },
-    });
     vi.mocked(fileSystem.writeFileSync).mockImplementation(() => {
       events.push('write');
       throw new Error('write failed');
     });
-    const report = plan.report(() => events.push('preview'));
+    const report = updateProjectTerms(
+      project(),
+      { protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['Brand'] } } } },
+      { onPreview: () => events.push('preview') },
+    );
     expect(events[0]).toBe('preview');
     expect(events[1]).toBe('write');
     expect(report.status).toBe('failed');
-    expect(report.protectedTermsResult).toBeUndefined();
-    expect(report.preferredTerminologyResult).toBeUndefined();
+    expect(written(report)?.protectedTermsResult).toBeUndefined();
+    expect(written(report)?.preferredTerminologyResult).toBeUndefined();
   });
 
   it('leaves protected terms untouched when a submitted rule is invalid', () => {
     const before = readFileSync(protectedFile, 'utf8');
-    expect(() =>
-      updateProjectTerms(project(config), {
-        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
-        preferredTerminology: { set: [{ discouraged: 'Email', preferred: 'email' }] },
-      }),
-    ).toThrow(PreferredTerminologyValidationError);
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
+          preferredTerminology: { set: [{ discouraged: 'Email', preferred: 'email' }] },
+        }),
+        'refused',
+      ).error,
+    ).toBeInstanceOf(PreferredTerminologyValidationError);
     expect(readFileSync(protectedFile, 'utf8')).toBe(before);
   });
 
@@ -227,7 +238,7 @@ describe('updateProjectTerms', () => {
     const result = updateProjectTerms(project(config), {
       protectedTerms: { target: {}, change: { kind: 'replace', replace: [' iPhone ', 'iPhone', 'Node.js'] } },
     });
-    expect(result.protectedTermsResult?.terms).toEqual(['iPhone', 'Node.js']);
+    expect(written(result)?.protectedTermsResult?.terms).toEqual(['iPhone', 'Node.js']);
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['iPhone', 'Node.js']);
   });
 
@@ -235,12 +246,15 @@ describe('updateProjectTerms', () => {
     rmSync(protectedFile);
     mkdirSync(protectedFile);
     const before = readFileSync(preferredFile, 'utf8');
-    expect(() =>
-      updateProjectTerms(project(config), {
-        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
-        preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-      }),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
+          preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
+        }),
+        'failed',
+      ).error,
+    ).toBeDefined();
     expect(readFileSync(preferredFile, 'utf8')).toBe(before);
   });
 
@@ -248,12 +262,15 @@ describe('updateProjectTerms', () => {
     rmSync(preferredFile);
     rmSync(protectedFile);
     mkdirSync(protectedFile);
-    expect(() =>
-      updateProjectTerms(project(config), {
-        protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
-        preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-      }),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
+          preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
+        }),
+        'failed',
+      ).error,
+    ).toBeDefined();
     expect(existsSync(preferredFile)).toBe(false);
   });
 
@@ -269,11 +286,14 @@ describe('updateProjectTerms', () => {
       }
       return write(path, data, options);
     });
-    expect(() =>
-      updateProjectTerms(project(config), {
-        preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-      }),
-    ).toThrow('first write failed');
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
+        }),
+        'failed',
+      ).error,
+    ).toMatchObject({ message: expect.stringContaining('first write failed') });
     expect(readFileSync(preferredFile, 'utf8')).toBe(before);
   });
 
@@ -291,15 +311,13 @@ describe('updateProjectTerms', () => {
       }
       return write(path, data, options);
     });
-    let thrown: unknown;
-    try {
+    const thrown = failure(
       updateProjectTerms(project(config), {
         protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Changed'] } },
         preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-      });
-    } catch (error) {
-      thrown = error;
-    }
+      }),
+      'failed',
+    ).error;
     expect(thrown).toBe(original);
     expect(original.kind).toBe('invalid');
     expect(original.cause).toBeInstanceOf(Error);
@@ -315,15 +333,18 @@ describe('updateProjectTerms', () => {
     const updatedBefore = readFileSync(configPath, 'utf8');
     writeFileSync(protectedFile, '{bad json');
     const collectionFile = join(cwd, 'collection.json');
-    expect(() =>
-      updateProjectTerms(project(config), {
-        protectedTerms: {
-          target: { collection: 'app' },
-          change: { kind: 'edit', edit: { add: ['New'] } },
-          file: 'collection.json',
-        },
-      }),
-    ).toThrow('not valid JSON');
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          protectedTerms: {
+            target: { collection: 'app' },
+            change: { kind: 'edit', edit: { add: ['New'] } },
+            file: 'collection.json',
+          },
+        }),
+        'refused',
+      ).error,
+    ).toMatchObject({ message: expect.stringContaining('not valid JSON') });
     expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(JSON.parse(updatedBefore));
     expect(existsSync(collectionFile)).toBe(false);
     expect(before).not.toBe(updatedBefore);
@@ -333,24 +354,34 @@ describe('updateProjectTerms', () => {
     const configPath = join(cwd, '.lingo-tracker.json');
     const before = readFileSync(configPath, 'utf8');
     const newFile = join(cwd, 'new-protected.json');
-    const plan = planProjectTermsUpdate(project(config), {
-      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
-    });
-    expect(plan.view.protectedTermsFileChange?.filePath).toBe(newFile);
-    expect(plan.view.protectedTerms?.globalFilePath).toBe(newFile);
-    expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(JSON.parse(before));
-    expect(existsSync(newFile)).toBe(false);
+    const result = updateProjectTerms(
+      project(config),
+      {
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
+      },
+      {
+        onPreview: (preview) => {
+          expect(preview.protectedTermsFileChange?.filePath).toBe(newFile);
+          expect(preview.protectedTerms?.globalFilePath).toBe(newFile);
+          expect(JSON.parse(readFileSync(configPath, 'utf8'))).toEqual(JSON.parse(before));
+          expect(existsSync(newFile)).toBe(false);
+        },
+      },
+    );
+    expect(result.status).toBe('changed');
   });
 
   it('refuses a planned pointer edit when its loaded config changes before apply', () => {
     const configPath = join(cwd, '.lingo-tracker.json');
-    const plan = planProjectTermsUpdate(project(loadConfig({ cwd })), {
-      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
-    });
     const changed = `${JSON.stringify({ ...config, baseLocale: 'fr' })}\n`;
-    writeFileSync(configPath, changed);
-
-    expect(plan.report().error).toBeInstanceOf(ConfigChangedError);
+    const report = updateProjectTerms(
+      project(loadConfig({ cwd })),
+      {
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json', list: true },
+      },
+      { onPreview: () => writeFileSync(configPath, changed) },
+    );
+    expect(failure(report, 'failed').error).toBeInstanceOf(ConfigChangedError);
     expect(readFileSync(configPath, 'utf8')).toBe(changed);
     expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
   });
@@ -359,11 +390,14 @@ describe('updateProjectTerms', () => {
     const configPath = join(cwd, '.lingo-tracker.json');
     const destination = join(cwd, 'directory');
     mkdirSync(destination);
-    expect(() =>
-      updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'directory', list: true },
-      }),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(project(loadConfig({ cwd })), {
+          protectedTerms: { target: {}, change: { kind: 'view' }, file: 'directory', list: true },
+        }),
+        'failed',
+      ).error,
+    ).toBeDefined();
     const restored = JSON.parse(readFileSync(configPath, 'utf8')) as LingoTrackerConfig;
     expect(restored.protectedTermsFile).toBe('protected.json');
   });
@@ -374,12 +408,15 @@ describe('updateProjectTerms', () => {
     rmSync(preferredFile);
     mkdirSync(preferredFile);
 
-    expect(() =>
-      updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
-        preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-      }),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(project(loadConfig({ cwd })), {
+          protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
+          preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
+        }),
+        'failed',
+      ).error,
+    ).toBeDefined();
 
     expect(existsSync(carriedFile)).toBe(false);
     expect((JSON.parse(readFileSync(configPath, 'utf8')) as LingoTrackerConfig).protectedTermsFile).toBe(
@@ -390,49 +427,54 @@ describe('updateProjectTerms', () => {
   it('reports the original failure and confirmed pointer restoration', () => {
     const before = readFileSync(join(cwd, '.lingo-tracker.json'), 'utf8');
     mkdirSync(join(cwd, 'directory'));
-    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+    const report = updateProjectTerms(project(loadConfig({ cwd })), {
       protectedTerms: { target: {}, change: { kind: 'view' }, file: 'directory', list: true },
-    }).report();
+    });
     expect(report.status).toBe('failed');
-    expect(report.error).toBeInstanceOf(Error);
-    expect(report.reverted).toBe(true);
-    expect(report.protectedTerms?.globalFilePath).toBe(join(cwd, 'directory'));
-    expect(report.protectedTermsFileChange?.filePath).toBe(join(cwd, 'directory'));
+    expect(failure(report, 'failed').error).toBeInstanceOf(Error);
+    expect(report.status === 'failed' ? report.reverted : false).toBe(true);
+    expect(view(report).protectedTerms?.globalFilePath).toBe(join(cwd, 'directory'));
+    expect(view(report).protectedTermsFileChange?.filePath).toBe(join(cwd, 'directory'));
     expect(readFileSync(join(cwd, '.lingo-tracker.json'), 'utf8')).toBe(before);
   });
 
   it('does not claim a pointer was reverted when a stale config prevents writing', () => {
-    const plan = planProjectTermsUpdate(project(loadConfig({ cwd })), {
-      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
-    });
-    writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify({ ...config, baseLocale: 'fr' }));
-    const report = plan.report();
+    const report = updateProjectTerms(
+      project(loadConfig({ cwd })),
+      {
+        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
+      },
+      {
+        onPreview: () =>
+          writeFileSync(join(cwd, '.lingo-tracker.json'), JSON.stringify({ ...config, baseLocale: 'fr' })),
+      },
+    );
     expect(report.status).toBe('failed');
-    expect(report.error).toBeInstanceOf(ConfigChangedError);
-    expect(report.reverted).toBe(false);
+    expect(failure(report, 'failed').error).toBeInstanceOf(ConfigChangedError);
+    expect(report.status === 'failed' ? report.reverted : false).toBe(false);
     expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
   });
 
   it('reports list paths without claiming a write', () => {
-    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+    const report = updateProjectTerms(project(loadConfig({ cwd })), {
       protectedTerms: { target: {}, change: { kind: 'view' }, list: true },
       preferredTerminology: { list: true },
-    }).report();
-    expect(report.status).toBe('succeeded');
-    expect(report.protectedTerms?.globalFilePath).toBe(protectedFile);
-    expect(report.preferredTerminology?.filePath).toBe(preferredFile);
-    expect(report.reverted).toBe(false);
+    });
+    expect(report.status).toBe('listed');
+    expect(view(report).protectedTerms?.globalFilePath).toBe(protectedFile);
+    expect(view(report).preferredTerminology?.filePath).toBe(preferredFile);
+    expect(report).not.toHaveProperty('reverted');
   });
 
   it('reports completed edits with stored paths, terms and warnings', () => {
-    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), {
+    const report = updateProjectTerms(project(loadConfig({ cwd })), {
       protectedTerms: { target: {}, change: { kind: 'edit', edit: { add: ['New'] } }, file: 'new-protected.json' },
-    }).report();
-    expect(report.status).toBe('succeeded');
-    expect(report.protectedTermsResult?.filePath).toBe(join(cwd, 'new-protected.json'));
-    expect(report.protectedTermsResult?.terms).toContain('New');
-    expect(report.reverted).toBe(false);
-    expect(report.protectedTerms?.warnings).toEqual([]);
+    });
+    expect(report.status).toBe('changed');
+    expect(written(report)?.protectedTermsResult?.filePath).toBe(join(cwd, 'new-protected.json'));
+    expect(written(report)?.protectedTermsResult?.terms).toContain('New');
+    expect(report).not.toHaveProperty('reverted');
+    expect(view(report).protectedTerms?.warnings).toEqual([]);
   });
 
   it.each([
@@ -440,23 +482,25 @@ describe('updateProjectTerms', () => {
     { remove: 'Old' },
   ])('keeps broken-file rule-edit refusals typed without a synthetic cause: %j', (edit) => {
     writeFileSync(preferredFile, '{bad');
-    const report = planProjectTermsUpdate(project(loadConfig({ cwd })), { preferredTerminology: edit }).report();
+    const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: edit });
     expect(report.status).toBe('failed');
-    expect(report.error).toBeInstanceOf(CoreOperationError);
-    expect((report.error as CoreOperationError).cause).toBeUndefined();
-    expect((report.error as CoreOperationError).message).toBe(report.preferredTerminologyError?.message);
-    expect(report.reverted).toBe(false);
+    expect(failure(report, 'failed').error).toBeInstanceOf(CoreOperationError);
+    expect((failure(report, 'failed').error as CoreOperationError).cause).toBeUndefined();
+    expect((failure(report, 'failed').error as CoreOperationError).message).toBe(
+      view(report).preferredTerminologyError?.message,
+    );
+    expect(report.status === 'failed' ? report.reverted : false).toBe(false);
     expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
   });
 
   it('returns a broken preferred file as advisory data for a list-only core request', () => {
     writeFileSync(preferredFile, '{bad');
     const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: { list: true } });
-    expect(report.status).toBe('succeeded');
-    expect(report.preferredTerminologyError?.message).toContain('not valid JSON');
-    expect(report.preferredTerminologyError).toBeInstanceOf(CoreOperationError);
-    expect(report.preferredTerminology).not.toHaveProperty('error');
-    expect(report.error).toBeUndefined();
+    expect(report.status).toBe('failed');
+    expect(view(report).preferredTerminologyError?.message).toContain('not valid JSON');
+    expect(view(report).preferredTerminologyError).toBeInstanceOf(CoreOperationError);
+    expect(view(report).preferredTerminology).not.toHaveProperty('error');
+    expect(failure(report, 'failed').error).toBe(view(report).preferredTerminologyError);
   });
 
   it('does not let a preferred list-only failure block a combined protected replacement', () => {
@@ -465,10 +509,10 @@ describe('updateProjectTerms', () => {
       protectedTerms: { target: {}, change: { kind: 'replace', replace: ['Brand'] } },
       preferredTerminology: { list: true },
     });
-    expect(report.status).toBe('succeeded');
-    expect(report.preferredTerminologyError?.message).toContain('not valid JSON');
-    expect(report.preferredTerminologyError).toBeInstanceOf(CoreOperationError);
-    expect(report.preferredTerminology).not.toHaveProperty('error');
+    expect(report.status).toBe('changed');
+    expect(view(report).preferredTerminologyError?.message).toContain('not valid JSON');
+    expect(view(report).preferredTerminologyError).toBeInstanceOf(CoreOperationError);
+    expect(view(report).preferredTerminology).not.toHaveProperty('error');
     expect(JSON.parse(readFileSync(protectedFile, 'utf8'))).toEqual(['Brand']);
     expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
   });
@@ -489,33 +533,39 @@ describe('updateProjectTerms', () => {
         file: 'carried.json',
       },
     });
-    expect(report.status).toBe('succeeded');
+    expect(report.status).toBe('changed');
     expect(JSON.parse(readFileSync(join(cwd, 'carried.json'), 'utf8'))).toEqual(['New']);
     expect(readFileSync(protectedFile, 'utf8')).toBe('{bad');
     expect(readFileSync(ownFile, 'utf8')).toBe('["Own"]');
   });
 
   it('reports an unknown collection for a replacement with a collection pointer change', () => {
-    expect(() =>
-      updateProjectTerms(project(loadConfig({ cwd })), {
-        protectedTerms: {
-          target: { collection: 'missing' },
-          change: { kind: 'replace', replace: ['New'] },
-          file: 'new-protected.json',
-        },
-      }),
-    ).toThrow(CollectionNotFoundError);
+    expect(
+      failure(
+        updateProjectTerms(project(loadConfig({ cwd })), {
+          protectedTerms: {
+            target: { collection: 'missing' },
+            change: { kind: 'replace', replace: ['New'] },
+            file: 'new-protected.json',
+          },
+        }),
+        'refused',
+      ).error,
+    ).toBeInstanceOf(CollectionNotFoundError);
     expect(existsSync(join(cwd, 'new-protected.json'))).toBe(false);
   });
 
   it('does not rewrite config when a pointer setter fails before its config write', () => {
     const configPath = join(cwd, '.lingo-tracker.json');
     const before = readFileSync(configPath, 'utf8');
-    expect(() =>
-      updateProjectTerms(project(config), {
-        protectedTerms: { target: {}, change: { kind: 'view' }, file: 'missing/terms.json', list: true },
-      }),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(project(config), {
+          protectedTerms: { target: {}, change: { kind: 'view' }, file: 'missing/terms.json', list: true },
+        }),
+        'refused',
+      ).error,
+    ).toBeDefined();
     expect(readFileSync(configPath, 'utf8')).toBe(before);
   });
 
@@ -543,21 +593,16 @@ describe('updateProjectTerms', () => {
     const untypedApiInput: unknown = { protectedTerms: { target: {}, change: { kind: 'replace', replace: 'x' } } };
     const before = readFileSync(protectedFile, 'utf8');
     // API request bodies are untyped at runtime; core must validate this value.
-    expect(() => updateProjectTerms(project(config), untypedApiInput as ProjectTermsUpdate)).toThrow(
-      new InvalidCollectionError('protectedTerms must be an array of strings'),
-    );
+    expect(
+      failure(updateProjectTerms(project(config), untypedApiInput as ProjectTermsUpdate), 'refused').error,
+    ).toEqual(new InvalidCollectionError('protectedTerms must be an array of strings'));
     expect(readFileSync(protectedFile, 'utf8')).toBe(before);
   });
 
   it('uses a terminology error for an untyped preferred replacement shape', () => {
     const untypedApiInput: unknown = { preferredTerminology: { set: { discouraged: 'Email' } } };
     const before = readFileSync(preferredFile, 'utf8');
-    let thrown: unknown;
-    try {
-      updateProjectTerms(project(config), untypedApiInput as ProjectTermsUpdate);
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = failure(updateProjectTerms(project(config), untypedApiInput as ProjectTermsUpdate), 'refused').error;
     expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
     expect((thrown as InvalidProjectTermsEditError).kind).toBe('invalid');
     expect((thrown as InvalidProjectTermsEditError).problem).toBe('preferred-replacement-shape');
@@ -574,12 +619,10 @@ describe('updateProjectTerms', () => {
     const protectedBefore = readFileSync(protectedFile, 'utf8');
     const preferredBefore = readFileSync(preferredFile, 'utf8');
     for (const [input, problem] of cases) {
-      let thrown: unknown;
-      try {
-        updateProjectTerms(project(config), input as ProjectTermsUpdate);
-      } catch (error) {
-        thrown = error;
-      }
+      const thrown = failure(
+        updateProjectTerms(project(config), input as ProjectTermsUpdate),
+        problem === 'preferred-upsert-shape' ? 'failed' : 'refused',
+      ).error;
       expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
       expect((thrown as InvalidProjectTermsEditError).problem).toBe(problem);
       if (problem === 'preferred-upsert-shape') {
@@ -607,15 +650,35 @@ describe('updateProjectTerms', () => {
     ],
   ] as const)('rejects an invalid edit combination before writing: %j', (update, problem) => {
     const before = readFileSync(protectedFile, 'utf8');
-    let thrown: unknown;
-    try {
-      updateProjectTerms(project(config), update as unknown as ProjectTermsUpdate);
-    } catch (error) {
-      thrown = error;
-    }
+    const thrown = failure(
+      updateProjectTerms(project(config), update as unknown as ProjectTermsUpdate),
+      'refused',
+    ).error;
     expect(thrown).toBeInstanceOf(InvalidProjectTermsEditError);
     expect((thrown as InvalidProjectTermsEditError).kind).toBe('invalid');
     expect((thrown as InvalidProjectTermsEditError).problem).toBe(problem);
     expect(readFileSync(protectedFile, 'utf8')).toBe(before);
+  });
+  it('keeps a typed apply error failed with confirmed pointer restoration', () => {
+    const original = new InvalidProjectTermsEditError('write refused', 'protected-conflict');
+    const write = realWriteFileSync();
+    const destination = join(cwd, 'new-protected.json');
+    let attempted = false;
+    vi.mocked(fileSystem.writeFileSync).mockImplementation((path, data, options) => {
+      if (path === destination && !attempted) {
+        attempted = true;
+        throw original;
+      }
+      return write(path, data, options);
+    });
+    const result = updateProjectTerms(project(), {
+      protectedTerms: { target: {}, change: { kind: 'view' }, file: 'new-protected.json' },
+    });
+    expect(result.status).toBe('failed');
+    if (result.status !== 'failed') throw new Error('Expected apply failure');
+    expect(result.error).toBe(original);
+    expect(result.reverted).toBe(true);
+    expect(result.view?.protectedTermsFileChange?.filePath).toBe(destination);
+    expect(loadConfig({ cwd }).protectedTermsFile).toBe('protected.json');
   });
 });
