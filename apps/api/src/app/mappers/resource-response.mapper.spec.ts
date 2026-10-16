@@ -7,8 +7,6 @@ import type {
 import { collection, entry } from './resource.mapper.test-support';
 import {
   mapCreateResourcesResultToDto,
-  mapDeleteResourceResultToDto,
-  mapMoveResourcesResultToDto,
   mapTranslateResourceResultToDto,
   mapUpdateResourceResultToDto,
 } from './resource-response.mapper';
@@ -75,7 +73,6 @@ describe('mapCreateResourcesResultToDto', () => {
     expect(dto.skippedLocales).toBe(result.skippedLocales);
     expect(dto.terminology).toStrictEqual(result.terminology);
     expect(dto.terminology?.findings).not.toBe(result.terminology.findings);
-    expect(dto.terminology?.findings[0]).not.toBe(finding);
     expect(dto.terminology?.problems).not.toBe(result.terminology.problems);
   });
 
@@ -144,50 +141,5 @@ describe('mapUpdateResourceResultToDto', () => {
         'terminology',
       ]);
     }
-  });
-});
-
-describe('mapDeleteResourceResultToDto', () => {
-  it('retains undefined errors as an own field', () => {
-    const dto = mapDeleteResourceResultToDto({ outcome: 'succeeded', entriesDeleted: 1 });
-    expect(dto).toStrictEqual({ entriesDeleted: 1, errors: undefined });
-    expect(Object.keys(dto)).toEqual(['entriesDeleted', 'errors']);
-    expect(dto).not.toHaveProperty('outcome');
-  });
-
-  it('passes through empty and nonempty errors', () => {
-    for (const errors of [[], [{ key: 'app.save', error: 'Missing' }]]) {
-      expect(mapDeleteResourceResultToDto({ outcome: 'succeeded', entriesDeleted: 0, errors }).errors).toBe(errors);
-    }
-  });
-});
-
-describe('mapMoveResourcesResultToDto', () => {
-  it('always carries warnings and errors, including empty arrays', () => {
-    for (const result of [
-      { outcome: 'succeeded' as const, movedCount: 1, warnings: [], errors: [] },
-      { outcome: 'failed' as const, movedCount: 0, warnings: ['Exists'], errors: ['Missing'] },
-    ]) {
-      const dto = mapMoveResourcesResultToDto(result);
-      expect(dto).toStrictEqual({ movedCount: result.movedCount, warnings: result.warnings, errors: result.errors });
-      expect(Object.keys(dto)).toEqual(['movedCount', 'warnings', 'errors']);
-      expect(dto).not.toHaveProperty('outcome');
-      expect(dto.warnings).toBe(result.warnings);
-      expect(dto.errors).toBe(result.errors);
-    }
-  });
-});
-
-describe('resource move payload projection', () => {
-  it('omits folder counts from batches that contain folder selections', () => {
-    expect(
-      mapMoveResourcesResultToDto({
-        outcome: 'succeeded',
-        movedCount: 1,
-        foldersDeleted: 1,
-        warnings: [],
-        errors: [],
-      }),
-    ).toStrictEqual({ movedCount: 1, warnings: [], errors: [] });
   });
 });

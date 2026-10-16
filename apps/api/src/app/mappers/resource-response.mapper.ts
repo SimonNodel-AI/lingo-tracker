@@ -1,16 +1,12 @@
 import type {
   AddResourcesResult,
   Collection,
-  DeleteResourceResult,
   EditResourceResult,
-  MoveResult,
   TerminologyFindings,
   TranslateExistingResourceResult,
 } from '@simoncodes-ca/core';
 import type {
   CreateResourceResponseDto,
-  DeleteResourceResponseDto,
-  MoveResourceResponseDto,
   TerminologyFindingsDto,
   TranslateResourceResponseDto,
   UpdateResourceResponseDto,
@@ -33,7 +29,7 @@ export function mapTranslateResourceResultToDto(
 
 /** Maps a creation result, omitting empty skipped locales and empty terminology. */
 export function mapCreateResourcesResultToDto(result: AddResourcesResult): CreateResourceResponseDto {
-  const terminology = toTerminologyDto(result.terminology);
+  const terminology = terminologyToDto(result.terminology);
   return {
     entriesCreated: result.entriesCreated,
     created: result.created,
@@ -49,7 +45,7 @@ export function mapUpdateResourceResultToDto(
 ): UpdateResourceResponseDto {
   const resource =
     result.updated && result.entry ? buildResourceSummary(result.resolvedKey, result.entry, collection) : undefined;
-  const terminology = result.terminology && toTerminologyDto(result.terminology);
+  const terminology = terminologyToDto(result.terminology);
   return {
     resolvedKey: result.resolvedKey,
     updated: result.updated,
@@ -60,18 +56,10 @@ export function mapUpdateResourceResultToDto(
   };
 }
 
-/** Projects the public payload, excluding internal outcome; preserves present-undefined errors. */
-export function mapDeleteResourceResultToDto(result: DeleteResourceResult): DeleteResourceResponseDto {
-  return { entriesDeleted: result.entriesDeleted, errors: result.errors };
-}
-
-/** Projects the resource payload, excluding internal outcome and folder counts; keeps empty diagnostics. */
-export function mapMoveResourcesResultToDto(result: MoveResult): Required<MoveResourceResponseDto> {
-  return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
-}
-
-/** The advisory findings as the response carries them; undefined when there is nothing to report. */
-function toTerminologyDto(terminology: TerminologyFindings): TerminologyFindingsDto | undefined {
-  if (terminology.findings.length === 0 && terminology.problems.length === 0) return undefined;
-  return { findings: terminology.findings.map((finding) => ({ ...finding })), problems: [...terminology.problems] };
+/** Omits empty terminology and copies its arrays, retaining finding objects by reference. */
+function terminologyToDto(terminology?: TerminologyFindings): TerminologyFindingsDto | undefined {
+  if (terminology === undefined || (terminology.findings.length === 0 && terminology.problems.length === 0)) {
+    return undefined;
+  }
+  return { findings: [...terminology.findings], problems: [...terminology.problems] };
 }

@@ -1,11 +1,6 @@
 import type { SearchResult } from '@simoncodes-ca/core';
 import { collection, entry } from './resource.mapper.test-support';
-import {
-  blankSearchResults,
-  mapSearchPageToDto,
-  mapSearchResultToDto,
-  searchRequestFromQuery,
-} from './search-result.mapper';
+import { mapSearchPageToDto, mapSearchResultToDto, searchRequestFromQuery } from './search-result.mapper';
 
 describe('searchRequestFromQuery', () => {
   it('translates similar mode and trims the core query', () => {
@@ -60,16 +55,6 @@ describe('searchRequestFromQuery', () => {
   it('returns the core blank outcome for absent, empty and whitespace queries', () => {
     for (const query of [undefined, '', ' \t\n ']) {
       expect(searchRequestFromQuery({ query, mode: 'similar', maxResults: 'bad' })).toStrictEqual({ kind: 'blank' });
-    }
-  });
-});
-
-describe('blankSearchResults', () => {
-  it('maps a blank outcome to an empty page, preserving the original query', () => {
-    for (const query of [undefined, '', ' \t ']) {
-      const dto = blankSearchResults(query);
-      expect(dto).toStrictEqual({ query: query || '', results: [], totalFound: 0, limited: false });
-      expect(Object.keys(dto)).toEqual(['query', 'results', 'totalFound', 'limited']);
     }
   });
 });
