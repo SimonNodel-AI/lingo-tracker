@@ -113,8 +113,8 @@ describe('walkFolders (real filesystem)', () => {
     expect(visited).not.toContain(dirB);
   });
 
-  it('completes without cycle checks when visitedPaths is not provided', () => {
-    // Verifies the opt-in nature of cycle detection — normal traversal still works.
+  it('uses a fresh cycle guard when visitedPaths is not provided', () => {
+    // Verifies that the default cycle guard allows normal traversal.
     // We do NOT create an actual cycle here (that would hang indefinitely).
     const subDir = path.join(tempDir, 'sub');
     fs.mkdirSync(subDir);
@@ -126,6 +126,32 @@ describe('walkFolders (real filesystem)', () => {
 
     expect(visited).toContain(tempDir);
     expect(visited).toContain(subDir);
+  });
+
+  it('reports resource file names and retains excluded entries for pruning', () => {
+    fs.mkdirSync(path.join(tempDir, '.hidden'));
+    fs.mkdirSync(path.join(tempDir, 'resource_entries.json'));
+    fs.writeFileSync(path.join(tempDir, 'tracker_meta.json'), '{}');
+    fs.writeFileSync(path.join(tempDir, 'notes.txt'), 'notes');
+    const visit = walkFolders(tempDir, { maxDepth: 0 }).next().value;
+    expect(visit).toBeDefined();
+    expect(visit?.resourceFileNames).toEqual(['tracker_meta.json']);
+    expect(visit?.subdirectoryNames).toEqual(['resource_entries.json']);
+    expect(visit?.entries.map((entry) => entry.name).sort()).toEqual([
+      '.hidden',
+      'notes.txt',
+      'resource_entries.json',
+      'tracker_meta.json',
+    ]);
+  });
+
+  it('skips a child that disappears after its parent is scanned', () => {
+    const child = path.join(tempDir, 'child');
+    fs.mkdirSync(child);
+    const scan = walkFolders(tempDir);
+    expect(scan.next().value?.subdirectoryNames).toEqual(['child']);
+    fs.rmdirSync(child);
+    expect([...scan]).toEqual([]);
   });
 
   it('reports a root that is a file through onUnlistable and yields nothing', () => {

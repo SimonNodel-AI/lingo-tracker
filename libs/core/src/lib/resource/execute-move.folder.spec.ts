@@ -49,6 +49,7 @@ vi.mock('node:fs', () => {
     rmSync: vi.fn(),
     rmdirSync: vi.fn(),
     readdirSync: vi.fn(),
+    realpathSync: vi.fn(),
     statSync: vi.fn(),
     lstatSync: vi.fn(),
     unlinkSync: vi.fn(),
@@ -70,6 +71,8 @@ describe('Move Folder', () => {
     vi.clearAllMocks();
     mockFileSystem = new Map();
     mockDirectories = new Set();
+
+    vi.mocked(fs.realpathSync).mockImplementation((path) => path.toString());
 
     // Setup default mocks
     (fs.existsSync as Mock).mockImplementation((path: string) => {

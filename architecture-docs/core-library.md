@@ -21,6 +21,7 @@ Return to [architecture README](README.md).
   - [move-executor](#move-executor)
   - [Move Plan](#move-plan)
   - [Entry Relocation](#entry-relocation)
+- [Collection Tree Scan](#collection-tree-scan)
 - [Collection Reader](#collection-reader)
   - [Resource Tree Index](#resource-tree-index)
   - [Resource Search](#resource-search)
@@ -142,7 +143,7 @@ libs/core/src/
     │   ├── relocate-entries.ts   # Entry Relocation used by moves
     │   ├── checksum.ts           # MD5 checksums
     │   ├── resource-folder.ts    # openResourceFolder(): the Resource Folder (entries + metadata as a unit)
-    │   ├── iterative-folder-walker.ts # walkFolders(): depth-ordered directory traversal (hidden folders skipped)
+    │   ├── iterative-folder-walker.ts # walkFolders(): Collection Tree Scan, folder and resource file membership
     │   ├── collection-folders.ts # walkCollectionFolders(): which folders belong to a collection (reader and sweep)
     │   ├── read-collection.ts    # readCollection(), readCollectionFolders(): the Collection Reader
     │   ├── collection-sweep.ts   # sweepCollection(), sweepKeys(): the Collection Sweep (write side)
@@ -526,6 +527,16 @@ Callers: `executeMove` (key, pattern or folder), and `editResource` with a `move
 
 ---
 
+## Collection Tree Scan
+
+**Internal entry point:** `walkFolders(rootPath, options?)` in `lib/resource/iterative-folder-walker.ts`.
+
+The [Collection Tree Scan](glossary.md#collection-tree-scan) owns folder and resource file membership. Each visit supplies `absolutePath`, `depth`, `subdirectoryNames`, `entries`, and `resourceFileNames`. It skips dot-folders and their descendants, does not follow directory symlinks, and checks real paths against a visited set on every scan. Missing folders yield nothing. Unlistable folders are skipped and reported through `onUnlistable` when supplied. `maxDepth` limits descent. Resource files are `resource_entries.json` and `tracker_meta.json`; directories with those names do not count.
+
+`walkCollectionFolders` adds collection addresses, start-path symlink checks, and problem visits. The Collection Reader, Collection Sweep, tree loader, and Folder Pruning enumerate through this adapter. Pruning refreshes each folder through the scan before classification and uses all entries, including hidden folders and stray files, to protect content. Single-file reads and removal checks remain with their callers.
+
+`computeTreeFingerprint` projects the scan into folder count, resource file count, total size, and maximum mtime. It skips files that vanish before stat. Hidden resource files cannot change the fingerprint. The fingerprint has no private traversal.
+
 ## Collection Reader
 
 The read-model types (`ResourceTreeEntry`, `ResourceTreeNode`, `FolderChild`) live in `lib/resource/resource-tree-types.ts`, shared by the reader and tree loader without a dependency cycle. Core retains its public type exports.
@@ -547,7 +558,7 @@ The reader applies these rules for every caller:
 | Case | Rule |
 |---|---|
 | Base locale | Each folder is opened with the collection's base locale. |
-| Hidden folder (name starts with `.`) | Skipped, with everything below it. A key segment cannot start with `.`. This rule, the missing-folder rule and the unlistable-folder rule are the collection-folder policy (`walkCollectionFolders` in `lib/resource/collection-folders.ts`) that the [Collection Sweep](#collection-sweep) shares. |
+| Hidden folder (name starts with `.`) | Skipped, with everything below it. A key segment cannot start with `.`. The [Collection Tree Scan](#collection-tree-scan) owns this rule and the missing-folder and unlistable-folder rules. The reader and [Collection Sweep](#collection-sweep) use its `walkCollectionFolders` adapter in `lib/resource/collection-folders.ts`. |
 | Missing `translationsFolder` | An empty collection. It is not a problem for the reader. `runExport` adds a `translations folder not found` warning, so a mistyped folder is visible. |
 | Folder that exists but cannot be listed (permission denied, or the `translationsFolder` is a file) | Returned as a `CollectionReadProblem`. `walkFolders` reports it through its `onUnlistable` callback. `loadResourceTree` throws when its start folder is a file. |
 | Entry without a `tracker_meta.json` record, or folder without the file | Read with `metadata: {}`. Each locale then has no status, and callers treat that as `new`. This is the domain rule (`needsTranslation(undefined)` is true) applied the same way everywhere: locale runs also machine-translate such entries, which `loadResourceTree` used to leave out. |
@@ -570,7 +581,7 @@ The caller decides what a problem means:
 
 **Entry point:** `ResourceTreeIndex` in `lib/resource/resource-tree-index.ts`
 
-The [Resource Tree Index](glossary.md#resource-tree-index) owns one collection's tree and its disk fingerprint. The constructor takes a `Collection`, an optional tree, and an optional fingerprint. A supplied snapshot permits mutation, subtree, and search tests without disk access.
+The [Resource Tree Index](glossary.md#resource-tree-index) owns one collection's tree and its disk fingerprint, projected from the [Collection Tree Scan](#collection-tree-scan). The constructor takes a `Collection`, an optional tree, and an optional fingerprint. A supplied snapshot permits mutation, subtree, and search tests without disk access.
 
 Its interface contains these operations:
 
@@ -624,7 +635,7 @@ The Bundle Selection remains on `loadCollectionResources`: it selects one locale
 
 The [Collection Sweep](glossary.md#collection-sweep) is the write side of the [Resource Folder](glossary.md#resource-folder), the twin of the [Collection Reader](#collection-reader). It walks the collection folders under `startPath` (default: the root), parents before children, and yields each one opened with `openResourceFolder(folderPath, { baseLocale })`, with its address (`segments`, `folderPath`, `absolutePath`, `depth`). The caller changes the folder and saves it. The walk is lazy, so a folder is read only when the caller reaches it. `sweepKeys(collection, { startPath? })` is the sweep reduced to `{ keys, problems }`: the full key of every entry, and the folders it could not read.
 
-Which folders it visits is the one collection-folder policy it shares with the reader (`walkCollectionFolders` in `lib/resource/collection-folders.ts`): hidden folders and everything below them are not part of the collection, a missing translations or start folder is an empty collection, and a folder that cannot be listed is a problem. Before walking, each start segment is checked with `lstat`; the first symbolic link produces exactly one `unreadable` visit with no subfolders, then stops. Missing segments yield nothing. Folders without entries are swept too. A folder whose files are not valid JSON is not opened; it is yielded as a problem (`{ kind: 'unreadable', folderPath, absolutePath, message }`, the reader's problem shape), and the sweep continues.
+Which folders it visits comes from the [Collection Tree Scan](#collection-tree-scan), through the adapter it shares with the reader (`walkCollectionFolders` in `lib/resource/collection-folders.ts`): hidden folders and everything below them are not part of the collection, a missing translations or start folder is an empty collection, and a folder that cannot be listed is a problem. Before walking, each start segment is checked with `lstat`; the first symbolic link produces exactly one `unreadable` visit with no subfolders, then stops. Missing segments yield nothing. Folders without entries are swept too. A folder whose files are not valid JSON is not opened; it is yielded as a problem (`{ kind: 'unreadable', folderPath, absolutePath, message }`, the reader's problem shape), and the sweep continues.
 
 | Caller | What it does with a folder | What it does with a problem |
 |---|---|---|
@@ -641,7 +652,7 @@ Before the sweep, each of these walked the folders with `walkFolders` itself: ad
 
 **Entry point:** `pruneEmptyFolders(collection, { startPath?, dryRun?, onMutation? })` in `lib/resource/folder-pruning.ts` (internal)
 
-[Folder Pruning](glossary.md#folder-pruning) uses the shared collection-folder walk and inspects all remaining contents deepest first. A prunable folder contains only empty `resource_entries.json`, valid metadata with absent or empty entries, and the three known OS junk files. Other files, hidden directories, resource entries, and unreadable or malformed collection files protect the folder and its ancestors. Unlistable folders stay and produce problems. The shared walk also keeps a symlinked start or ancestor with reason `problem`; pruning no longer has its own `lstat` loop.
+[Folder Pruning](glossary.md#folder-pruning) uses the [Collection Tree Scan](#collection-tree-scan) through the collection-folder adapter and inspects all remaining contents deepest first. A prunable folder contains only empty `resource_entries.json`, valid metadata with absent or empty entries, and the three known OS junk files. Other files, hidden directories, resource entries, and unreadable or malformed collection files protect the folder and its ancestors. Unlistable folders stay and produce problems. The shared walk also keeps a symlinked start or ancestor with reason `problem`; pruning no longer has its own `lstat` loop.
 
 Classification reads contents without writes. Removal rechecks entries before deletes and again immediately before it unlinks `resource_entries.json` last. Then it calls `rmdir`. Removal problems have kind `not-removed`; partial-removal messages name the deleted files. It never removes the translations root or recursively deletes contents.
 

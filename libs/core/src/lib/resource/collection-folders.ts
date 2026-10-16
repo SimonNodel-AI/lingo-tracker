@@ -1,11 +1,11 @@
 import { join, relative, sep } from 'node:path';
 import { folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
 import { checkCollectionFolderPath } from './folder-address';
-import { walkFolders } from './iterative-folder-walker';
+import { type FolderVisit, walkFolders } from './iterative-folder-walker';
 
 /**
- * Which folders belong to a collection — the one policy the Collection Reader (reads) and the
- * Collection Sweep (writes) share:
+ * Collection addresses and problems for the Collection Tree Scan, shared by the
+ * Collection Reader (reads) and Collection Sweep (writes):
  *
  * - Every folder under the translations folder is a collection folder, except hidden ones (the
  *   name starts with `.`) and everything below them: a key segment cannot start with `.`.
@@ -51,7 +51,9 @@ export interface CollectionFolderAddress {
 }
 
 /** One folder visited by {@link walkCollectionFolders}. */
-export interface CollectionFolderVisit extends CollectionFolderAddress {
+export interface CollectionFolderVisit
+  extends CollectionFolderAddress,
+    Pick<FolderVisit, 'entries' | 'resourceFileNames'> {
   /** Subfolders (hidden ones excluded), whether or not the walk descends into them. */
   readonly subfolderNames: readonly string[];
   /** Set when the folder cannot be listed or is a symbolic link; `subfolderNames` is then empty. */
@@ -72,7 +74,7 @@ export interface WalkCollectionFoldersOptions {
 export function* walkCollectionFolders(
   translationsFolder: string,
   options: WalkCollectionFoldersOptions = {},
-): Generator<CollectionFolderVisit> {
+): Generator<CollectionFolderVisit, void> {
   const startSegments = folderPathSegments(options.startPath ?? '').filter((segment) => segment.length > 0);
   const addressOf = (absolutePath: string): CollectionFolderAddress => {
     const segments = segmentsOf(translationsFolder, absolutePath);
@@ -94,6 +96,8 @@ export function* walkCollectionFolders(
     unlistable.push({
       ...address,
       subfolderNames: [],
+      entries: [],
+      resourceFileNames: [],
       problem: {
         kind: 'unreadable',
         folderPath: address.folderPath,
@@ -105,14 +109,25 @@ export function* walkCollectionFolders(
 
   const startProblem = checkCollectionFolderPath(translationsFolder, join(translationsFolder, ...startSegments));
   if (startProblem) {
-    yield { ...addressOf(startProblem.absolutePath), subfolderNames: [], problem: startProblem };
+    yield {
+      ...addressOf(startProblem.absolutePath),
+      subfolderNames: [],
+      entries: [],
+      resourceFileNames: [],
+      problem: startProblem,
+    };
     return;
   }
 
   const walk = walkFolders(join(translationsFolder, ...startSegments), { maxDepth: options.maxDepth, onUnlistable });
   for (const visit of walk) {
     yield* unlistable.splice(0);
-    yield { ...addressOf(visit.absolutePath), subfolderNames: visit.subdirectoryNames };
+    yield {
+      ...addressOf(visit.absolutePath),
+      subfolderNames: visit.subdirectoryNames,
+      entries: visit.entries,
+      resourceFileNames: visit.resourceFileNames,
+    };
   }
   yield* unlistable.splice(0);
 }
