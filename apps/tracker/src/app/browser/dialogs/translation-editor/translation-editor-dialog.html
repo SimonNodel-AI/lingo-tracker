@@ -19,7 +19,7 @@
     </button>
   </header>
 
-  <form class="two" [formGroup]="session.form">
+  <form class="two" [formGroup]="session.entry.form">
     <!-- ───────────── Form column ───────────── -->
     <div class="bd">
       @if (session.isReadOnly()) {
@@ -50,7 +50,7 @@
             cdkOverlayOrigin
             #locationOrigin="cdkOverlayOrigin"
             [class.loc-pill--open]="session.panels.isFolderPopoverOpen()"
-            [class.loc-pill--flash]="session.locationAbsorbedFlash()"
+            [class.loc-pill--flash]="session.location.absorbedFlash()"
             [disabled]="session.isReadOnly()"
             [matTooltip]="presentation.locationDisabledTooltip()"
             matTooltipPosition="above"
@@ -61,10 +61,10 @@
           >
             <mat-icon class="loc-pill-lead" aria-hidden="true">folder_open</mat-icon>
             <span class="loc-pill-path">
-              @if (session.folderSegments().length === 0) {
+              @if (session.location.folderSegments().length === 0) {
                 {{ TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL | transloco }}
               }
-              @for (segment of session.folderSegments(); track $index) {
+              @for (segment of session.location.folderSegments(); track $index) {
                 @if ($index > 0) {
                   <i aria-hidden="true">›</i>
                 }
@@ -76,7 +76,7 @@
               {{ TOKENS.BROWSER.TRANSLATIONEDITOR.CHANGEFOLDER | transloco }}
             </span>
           </button>
-          <span class="sr-only" role="status">{{ session.locationAbsorbedMessage() }}</span>
+          <span class="sr-only" role="status">{{ session.location.absorbedMessage() }}</span>
         </div>
 
         <!-- Key -->
@@ -91,10 +91,10 @@
             <!-- The key is a move, not a rename; the dashed well and lock say so. -->
             <div class="text-input text-input--mono text-input--locked" data-testid="key-locked">
               <mat-icon aria-hidden="true">lock</mat-icon>
-              <span>{{ session.form.controls.key.value }}</span>
+              <span>{{ session.entry.form.controls.key.value }}</span>
             </div>
           } @else {
-            <div class="text-input text-input--mono" [class.text-input--invalid]="session.showKeyError() || session.keyCollision()">
+            <div class="text-input text-input--mono" [class.text-input--invalid]="session.entry.showKeyError() || session.location.keyCollision()">
               <input
                 [editorFocusAnchor]="'key'"
                 id="translation-editor-key"
@@ -103,19 +103,19 @@
                 required
                 autocomplete="off"
                 spellcheck="false"
-                [attr.aria-invalid]="session.showKeyError() || session.keyCollision()"
-                [attr.aria-describedby]="session.showKeyError() || session.keyCollision() ? 'translation-editor-key-error' : null"
+                [attr.aria-invalid]="session.entry.showKeyError() || session.location.keyCollision()"
+                [attr.aria-describedby]="session.entry.showKeyError() || session.location.keyCollision() ? 'translation-editor-key-error' : null"
               />
             </div>
           }
         </div>
       </div>
 
-      @if (session.showKeyError()) {
+      @if (session.entry.showKeyError()) {
         <p id="translation-editor-key-error" class="field-error field-error--row" role="alert">
           {{ presentation.getKeyErrorMessage() | transloco }}
         </p>
-      } @else if (session.keyCollision()) {
+      } @else if (session.location.keyCollision()) {
         <p
           id="translation-editor-key-error"
           class="field-error field-error--row field-error--icon"
@@ -125,7 +125,7 @@
           <mat-icon aria-hidden="true">error</mat-icon>
           <span>
             {{
-              TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.KEYEXISTSINFOLDERX | transloco: { key: session.fullKeyPreview() }
+              TOKENS.BROWSER.TRANSLATIONEDITOR.ERROR.KEYEXISTSINFOLDERX | transloco: { key: session.location.fullKeyPreview() }
             }}
           </span>
           <button type="button" class="field-error-act" data-testid="open-existing" (click)="session.openExistingResource()">
@@ -144,7 +144,7 @@
             <small>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEBADGE | transloco }}</small>
           </span>
         </label>
-        <div class="text-input text-input--area" [class.text-input--invalid]="session.showBaseValueError()">
+        <div class="text-input text-input--area" [class.text-input--invalid]="session.entry.showBaseValueError()">
           <textarea
             [editorFocusAnchor]="'base-value'"
             id="translation-editor-base-value"
@@ -157,20 +157,20 @@
             [placeholder]="
               TOKENS.BROWSER.TRANSLATIONEDITOR.ENTERTRANSLATIONX | transloco: { locale: presentation.baseLocaleName() }
             "
-            [attr.aria-invalid]="session.showBaseValueError()"
+            [attr.aria-invalid]="session.entry.showBaseValueError()"
             [attr.aria-describedby]="presentation.baseValueDescribedBy()"
           ></textarea>
         </div>
-        @if (session.showBaseValueError()) {
+        @if (session.entry.showBaseValueError()) {
           <p id="translation-editor-base-value-error" class="field-error" role="alert">
-            @if (session.form.controls.baseValue.hasError('required')) {
+            @if (session.entry.form.controls.baseValue.hasError('required')) {
               {{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEVALUEREQUIRED | transloco }}
             } @else {
               <!-- The params carry escaped markup; the name in them is translator input. -->
               <span
                 [innerHTML]="
                   TOKENS.BROWSER.TRANSLATIONEDITOR.BRACEDPLACEHOLDERX
-                    | transloco: presentation.bracedPlaceholderParams(session.form.controls.baseValue)
+                    | transloco: presentation.bracedPlaceholderParams(session.entry.form.controls.baseValue)
                 "
               ></span>
             }
@@ -186,9 +186,9 @@
             ></span>
           </p>
         }
-        @if (session.preferredTermFindings().length > 0) {
+        @if (session.advisories.preferredTermFindings().length > 0) {
           <app-preferred-term-advisories
-            [findings]="session.preferredTermFindings()"
+            [findings]="session.advisories.preferredTermFindings()"
             [advisoryId]="presentation.preferredTermAdvisoriesId"
             [readOnly]="session.isReadOnly()"
             (applyRule)="session.onApplyPreferredTerm($event)"
@@ -222,7 +222,7 @@
           {{ TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.LABEL | transloco }}
           <span class="field-label-opt">{{ TOKENS.BUNDLES.DIALOG.OPTIONAL | transloco }}</span>
         </span>
-        <div class="chip-well" [class.chip-well--empty]="session.tags().length === 0 && session.inheritedTagsList().length === 0">
+        <div class="chip-well" [class.chip-well--empty]="session.entry.tags().length === 0 && session.inheritedTagsList().length === 0">
           @for (tag of session.inheritedTagsList(); track tag) {
             <span
               class="chip chip--inherited"
@@ -233,7 +233,7 @@
               {{ tag }}
             </span>
           }
-          @for (tag of session.tags(); track tag) {
+          @for (tag of session.entry.tags(); track tag) {
             <span class="chip">
               <span class="chip-text">{{ tag }}</span>
               @if (!session.isReadOnly()) {
@@ -249,12 +249,12 @@
             </span>
           }
           @if (!session.isReadOnly()) {
-            <span class="chip-add" [class.chip-add--pill]="session.tags().length > 0">
-              @if (session.tags().length > 0) {
+            <span class="chip-add" [class.chip-add--pill]="session.entry.tags().length > 0">
+              @if (session.entry.tags().length > 0) {
                 <mat-icon aria-hidden="true">add</mat-icon>
               }
               @let tagPlaceholder =
-                (session.tags().length > 0
+                (session.entry.tags().length > 0
                   ? TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.ADDSHORT
                   : TOKENS.BROWSER.TRANSLATIONEDITOR.TAGS.ADDPLACEHOLDER
                 ) | transloco;
@@ -268,7 +268,7 @@
                 aria-labelledby="translation-editor-tags-label"
                 [placeholder]="tagPlaceholder"
                 [matAutocomplete]="tagAuto"
-                [appChipInput]="session.tags()"
+                [appChipInput]="session.entry.tags()"
                 (chipAdd)="session.addTagValue($event)"
                 (chipRemove)="session.removeTag($event)"
                 (input)="onTagInputChange($event)"
@@ -305,7 +305,7 @@
         <span class="linkrow-sum">
           {{ presentation.otherLocalesSummary() }}
           <span class="dots" aria-hidden="true">
-            @for (locale of session.localeSummaries(); track locale.locale) {
+            @for (locale of session.entry.localeSummaries(); track locale.locale) {
               <span [class]="'dot dot--' + locale.status"></span>
             }
           </span>
@@ -367,13 +367,13 @@
           </button>
         </header>
 
-        @if (session.form.controls.baseValue.value) {
+        @if (session.entry.form.controls.baseValue.value) {
           <div class="base-ref">
             <span class="base-tag">
               {{ data.baseLocale }}
               <small>{{ TOKENS.BROWSER.TRANSLATIONEDITOR.BASEBADGE | transloco }}</small>
             </span>
-            <span class="base-ref-text">{{ session.form.controls.baseValue.value }}</span>
+            <span class="base-ref-text">{{ session.entry.form.controls.baseValue.value }}</span>
           </div>
         }
 
@@ -385,9 +385,9 @@
         }
 
         <div class="lrows">
-          @for (localeControl of session.form.controls.translations.controls; track localeControl.value.locale; let i = $index) {
-            <div class="lrow" [formGroup]="session.getLocaleFormGroup(i)">
-              @let localeGroup = session.getLocaleFormGroup(i);
+          @for (localeControl of session.entry.form.controls.translations.controls; track localeControl.value.locale; let i = $index) {
+            <div class="lrow" [formGroup]="session.entry.getLocaleFormGroup(i)">
+              @let localeGroup = session.entry.getLocaleFormGroup(i);
               @let localeCode = localeGroup.controls.locale.value;
               @let localeStatus = localeGroup.controls.status.value;
               <div class="lrow-who">
@@ -423,7 +423,7 @@
               <div class="text-input text-input--area lrow-value">
                 <textarea
                   [editorFocusAnchor]="
-                    i === session.firstInvalidLocaleIndex() ? 'invalid-locale-value' : i === 0 ? 'drawer-first-control' : null
+                    i === session.entry.firstInvalidLocaleIndex() ? 'invalid-locale-value' : i === 0 ? 'drawer-first-control' : null
                   "
                   cdkTextareaAutosize
                   cdkAutosizeMinRows="1"
@@ -440,11 +440,11 @@
                       : TOKENS.BROWSER.TRANSLATIONEDITOR.LEAVEEMPTYTOAUTOTRANSLATE
                     ) | transloco
                   "
-                  [attr.aria-invalid]="session.showLocaleValueError(i)"
-                  [attr.aria-describedby]="session.showLocaleValueError(i) ? 'translation-editor-locale-error-' + i : null"
+                  [attr.aria-invalid]="session.entry.showLocaleValueError(i)"
+                  [attr.aria-describedby]="session.entry.showLocaleValueError(i) ? 'translation-editor-locale-error-' + i : null"
                 ></textarea>
               </div>
-              @if (session.showLocaleValueError(i)) {
+              @if (session.entry.showLocaleValueError(i)) {
                 <p [id]="'translation-editor-locale-error-' + i" class="field-error lrow-error" role="alert">
                   <span
                     [innerHTML]="
@@ -464,27 +464,27 @@
   <!-- ───────────── Footer ───────────── -->
   <footer class="dialog-footer">
     <div class="footer-meta" data-testid="footer-meta">
-      <mat-icon aria-hidden="true" [class.footer-meta-icon--idle]="!session.isFormValid()">
-        {{ session.isFormValid() ? 'check_circle' : 'radio_button_unchecked' }}
+      <mat-icon aria-hidden="true" [class.footer-meta-icon--idle]="!session.entry.isFormValid()">
+        {{ session.entry.isFormValid() ? 'check_circle' : 'radio_button_unchecked' }}
       </mat-icon>
       <!-- The footer key is the only place the full key is shown, so the collision shows here too,
            and it is the one place worth copying from: the whole thing is a copy button. -->
       <button
         type="button"
         class="mono footer-key"
-        [class.mono--dup]="session.keyCollision()"
+        [class.mono--dup]="session.location.keyCollision()"
         data-testid="footer-key"
         [matTooltip]="TOKENS.COMMON.ACTIONS.CLICKTOCOPY | transloco"
         matTooltipPosition="above"
-        [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.COPYKEYARIALABELX | transloco: { key: session.fullKeyPreview() }"
+        [attr.aria-label]="TOKENS.BROWSER.TRANSLATIONITEM.COPYKEYARIALABELX | transloco: { key: session.location.fullKeyPreview() }"
         (click)="session.copyFullKey()"
       >
-        <span class="footer-key-text">{{ session.fullKeyPreview() }}</span>
+        <span class="footer-key-text">{{ session.location.fullKeyPreview() }}</span>
         <mat-icon class="footer-key-icon" aria-hidden="true">{{ session.keyJustCopied() ? 'check' : 'content_copy' }}</mat-icon>
       </button>
     </div>
     <div class="footer-spacer"></div>
-    <button mat-button type="button" class="cancel-button" [disabled]="session.isSubmitting()" (click)="session.onCancel()">
+    <button mat-button type="button" class="cancel-button" [disabled]="session.submit.isSubmitting()" (click)="session.onCancel()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
     @if (!session.isReadOnly()) {
@@ -494,12 +494,12 @@
         type="button"
         class="submit-button"
         data-testid="submit"
-        [disabled]="session.isSubmitting()"
+        [disabled]="session.submit.isSubmitting()"
         [matTooltip]="TOKENS.BROWSER.TRANSLATIONEDITOR.SAVESHORTCUTHINT | transloco"
         matTooltipPosition="above"
         (click)="session.onSubmit()"
       >
-        @if (session.isSubmitting()) {
+        @if (session.submit.isSubmitting()) {
           <mat-spinner diameter="18" class="submit-spinner"></mat-spinner>
           {{ TOKENS.BROWSER.TRANSLATIONEDITOR.SAVING | transloco }}
         } @else {
@@ -577,7 +577,7 @@
       <span class="blk-note">{{ data.collectionName }}</span>
     </h4>
     <div class="ftree" data-testid="context-tree">
-      @for (node of session.contextTree(); track node.path + node.kind) {
+      @for (node of session.location.contextTree(); track node.path + node.kind) {
         <div
           [class]="'ftree-n ftree-n--d' + node.depth"
           [class.ftree-n--here]="node.here"
@@ -618,8 +618,8 @@
       </h4>
       <app-similar-translations
         variant="context"
-        [results]="session.similarResources()"
-        [isLoading]="session.isSearchingSimilar()"
+        [results]="session.advisories.similarResources()"
+        [isLoading]="session.advisories.isSearchingSimilar()"
         [hasSearchQuery]="session.hasSearchQuery()"
         [exactKey]="session.exactMatchKey()"
         (resourceClicked)="session.onSimilarResourceClick($event)"
@@ -643,7 +643,7 @@
       </h4>
       <!-- Only the locales that still owe work; a caught-up entry says so in one line. -->
       <div class="lsum" data-testid="locale-summary">
-        @for (locale of session.localesNeedingWork(); track locale.locale) {
+        @for (locale of session.entry.localesNeedingWork(); track locale.locale) {
           <div class="lsum-r">
             <span class="lc">{{ locale.locale }}</span>
             @if (locale.value) {
