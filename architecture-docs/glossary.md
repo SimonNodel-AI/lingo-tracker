@@ -96,9 +96,17 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
 ---
 
+### Bundle Draft
+
+The Tracker bundle form's plain values and rules in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-draft.ts`. `toBundleDraft` reads normalized definitions and supplies initial choices. `toBundleDefinition` and `toBundleResult` build payloads from those choices. `bundleDraftErrors(result, collectionNames, nameEditable)` applies the shared domain check, with key validation only while the name is editable. `bundleDryRunRequest` requires a name, output folder and pattern. The module has no Angular dependency.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
+
+---
+
 ### Bundle Form
 
-The Tracker bundle dialog's form model, `BundleForm`, in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-form.ts`. It owns the typed Angular form, population and validation, section state and errors, definition building, and the form-to-signal bridge. An injected dry-run function supplies its debounced preview, including stale results and error recovery. `submitResult()` prepares an attempted submit: it validates and builds the result once. `submit({ dialog, write })` is the form's submit entry point. It delegates the attempt to a [Form Submit Attempt](#form-submit-attempt) (which composes [Dialog Config Submit](#dialog-config-submit)), supplying a single preparation callback and refusal rendering: a taken name opens the Output section, any other refusal lands in `submitErrors`. It exposes the module's `saving` signal. Its `destroyRef` cancels an in-flight write and releases form subscriptions (`destroy()` also releases form subscriptions). The dialog keeps DOM handling; `injectBundleFormSubmit()` supplies the submit environment and store write wiring.
+The Tracker bundle dialog's form model, `BundleForm`, in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-form.ts`. It owns the typed Angular form, editing mutators, field validators, section state and errors, and the form-to-signal bridge. It delegates population, definition building and domain validation to [Bundle Draft](#bundle-draft). [Bundle Output Preview](#bundle-output-preview) owns the preview signals and refresh lifecycle. The form exposes one readonly `preview` part and releases its subscription with the form subscriptions. Templates and specs read preview signals through that part. `submitResult()` prepares an attempted submit: it validates and builds the result once. `submit({ dialog, write })` is the form's submit entry point. It delegates the attempt to a [Form Submit Attempt](#form-submit-attempt) (which composes [Dialog Config Submit](#dialog-config-submit)), supplying a single preparation callback and refusal rendering: a taken name opens the Output section, any other refusal lands in `submitErrors`. It exposes the module's `saving` signal. Its `destroyRef` cancels an in-flight write and releases form subscriptions (`destroy()` also releases form subscriptions). The dialog keeps DOM handling; `injectBundleFormSubmit()` supplies the submit environment and store write wiring.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -106,7 +114,7 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ### Bundle Output Preview
 
-The pure projection of the [Bundle Form](#bundle-form)'s draft output choices, project locales, and optional API dry-run plan. `bundleOutputPreview({ draft, locales, plan? })` in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-output-preview.ts` returns the output summary, locale filenames, type filename, and folders with file kinds, existing-file flags, and path segments for wrapping. The form owns the signals and selects the draft fallback when the dry run fails.
+The output projections and preview lifecycle in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-output-preview.ts`. `bundleOutputPreview({ draft, locales, plan? })` returns the output summary, locale filenames, type filename, and folders with file kinds, existing-file flags and path segments. `BundlePreview` takes draft and config callbacks plus a dry-run function. It owns preview signals, the 300 ms debounce, cancellation, stale results and local fallback after errors. `connect(changes)` returns the subscription that [Bundle Form](#bundle-form) releases on destruction. Tests supply plain draft values and a fake dry-run function.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 

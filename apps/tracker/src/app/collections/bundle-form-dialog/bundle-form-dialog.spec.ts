@@ -389,7 +389,7 @@ describe('BundleFormDialog — dry run', () => {
     fillOutput(component);
     component.model.form.controls.dist.setValue('./dist/i18n');
     expect(store.dryRunBundle).not.toHaveBeenCalled();
-    expect(component.model.previewStale()).toBe(true);
+    expect(component.model.preview.previewStale()).toBe(true);
 
     vi.advanceTimersByTime(299);
     expect(store.dryRunBundle).not.toHaveBeenCalled();
@@ -400,11 +400,11 @@ describe('BundleFormDialog — dry run', () => {
       name: 'admin',
       bundle: expect.objectContaining({ bundleName: 'admin.{locale}', dist: './dist/i18n' }),
     });
-    expect(component.model.dryRun()).toEqual(dryRunResult);
-    expect(component.model.previewStatus()).toBe('ready');
-    expect(component.model.previewStale()).toBe(false);
-    expect(component.model.previewFileCount()).toBe(3);
-    expect(component.model.keysPerLocale()).toBe(12);
+    expect(component.model.preview.dryRun()).toEqual(dryRunResult);
+    expect(component.model.preview.previewStatus()).toBe('ready');
+    expect(component.model.preview.previewStale()).toBe(false);
+    expect(component.model.preview.previewFileCount()).toBe(3);
+    expect(component.model.preview.keysPerLocale()).toBe(12);
   });
 
   it('should not call the API until name, folder and pattern are all present', async () => {
@@ -413,7 +413,7 @@ describe('BundleFormDialog — dry run', () => {
     vi.advanceTimersByTime(300);
 
     expect(store.dryRunBundle).not.toHaveBeenCalled();
-    expect(component.model.previewStatus()).toBe('waiting');
+    expect(component.model.preview.previewStatus()).toBe('waiting');
   });
 
   it('should fall back to the client-side tree when the dry run fails', async () => {
@@ -426,10 +426,10 @@ describe('BundleFormDialog — dry run', () => {
     component.model.form.controls.typeDistFile.setValue('./dist/i18n-types/admin.ts');
     vi.advanceTimersByTime(300);
 
-    expect(component.model.previewStatus()).toBe('error');
-    expect(component.model.dryRun()).toBeUndefined();
+    expect(component.model.preview.previewStatus()).toBe('error');
+    expect(component.model.preview.dryRun()).toBeUndefined();
     expect(
-      component.model.previewTree().map((folder) => ({
+      component.model.preview.previewTree().map((folder) => ({
         path: folder.path,
         files: folder.files.map((file) => ({ name: file.name, kind: file.kind, exists: file.exists })),
       })),
@@ -454,7 +454,7 @@ describe('BundleFormDialog — dry run', () => {
     fillOutput(component);
     vi.advanceTimersByTime(300);
 
-    const folder = component.model.previewTree()[0];
+    const folder = component.model.preview.previewTree()[0];
     expect(folder).toBeDefined();
     expect(folder?.pathParts).toEqual(['dist/', 'i18n']);
     expect(folder?.files[0]?.nameParts).toEqual(['admin.', 'en.', 'json']);
@@ -466,7 +466,7 @@ describe('BundleFormDialog — dry run', () => {
     fillOutput(component);
     vi.advanceTimersByTime(300);
 
-    component.model.dryRun.set({
+    component.model.preview.dryRun.set({
       ...dryRunResult,
       exampleKey: {
         collectionName: 'trackerResources',
@@ -476,8 +476,8 @@ describe('BundleFormDialog — dry run', () => {
       },
     });
 
-    expect(component.model.tokenPathParts()).toEqual(['TRACKER_', 'TOKENS.', 'APP.', 'SKIPTOMAINCONTENT']);
-    expect(component.model.tokenPathParts().join('')).toBe('TRACKER_TOKENS.APP.SKIPTOMAINCONTENT');
+    expect(component.model.preview.tokenPathParts()).toEqual(['TRACKER_', 'TOKENS.', 'APP.', 'SKIPTOMAINCONTENT']);
+    expect(component.model.preview.tokenPathParts().join('')).toBe('TRACKER_TOKENS.APP.SKIPTOMAINCONTENT');
   });
 
   it('should surface hierarchical key collisions as an error in the preview', async () => {
@@ -488,11 +488,11 @@ describe('BundleFormDialog — dry run', () => {
 
     expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="hierarchical-conflicts"]')).toBeNull();
 
-    component.model.dryRun.set({ ...dryRunResult, hierarchicalConflicts: ['buttons.ok', 'menu.file'] });
+    component.model.preview.dryRun.set({ ...dryRunResult, hierarchicalConflicts: ['buttons.ok', 'menu.file'] });
     fixture.detectChanges();
 
-    expect(component.model.hierarchicalConflicts()).toEqual(['buttons.ok', 'menu.file']);
-    expect(component.model.hierarchicalConflictList()).toBe('buttons.ok, menu.file');
+    expect(component.model.preview.hierarchicalConflicts()).toEqual(['buttons.ok', 'menu.file']);
+    expect(component.model.preview.hierarchicalConflictList()).toBe('buttons.ok, menu.file');
 
     // The message itself is translated (asserted via the token), so the test checks
     // that the error line appears at all and that it is announced.
@@ -705,13 +705,11 @@ describe('BundleForm — migrated dialog form cases', () => {
     model.form.controls.dist.setValue(' ./dist//i18n/ ');
     model.form.controls.bundleName.setValue('{locale}/admin');
 
-    expect(model.outputSummary()).toBe('dist/i18n/{locale}/admin.json');
-    expect(model.patternFiles()).toEqual(['en/admin.json', 'fr-ca/admin.json', 'es/admin.json']);
-    expect(model.localTree().flatMap((folder) => folder.files.map((file) => `${folder.path}/${file.name}`))).toEqual([
-      'dist/i18n/en/admin.json',
-      'dist/i18n/fr-ca/admin.json',
-      'dist/i18n/es/admin.json',
-    ]);
+    expect(model.preview.outputSummary()).toBe('dist/i18n/{locale}/admin.json');
+    expect(model.preview.patternFiles()).toEqual(['en/admin.json', 'fr-ca/admin.json', 'es/admin.json']);
+    expect(
+      model.preview.localTree().flatMap((folder) => folder.files.map((file) => `${folder.path}/${file.name}`)),
+    ).toEqual(['dist/i18n/en/admin.json', 'dist/i18n/fr-ca/admin.json', 'dist/i18n/es/admin.json']);
   });
 
   it('should pre-populate the definition', () => {
