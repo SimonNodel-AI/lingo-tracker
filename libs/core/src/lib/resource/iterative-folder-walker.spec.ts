@@ -25,6 +25,7 @@ function makeDirectoryDirent(name: string): FakeDirent {
 type MockFilesystem = Record<string, FakeDirent[]>;
 
 function installMockFilesystem(mockFs: MockFilesystem): void {
+  vi.mocked(fs.realpathSync).mockImplementation((p) => p.toString());
   vi.mocked(fs.existsSync).mockImplementation((p) => posix(p.toString()) in mockFs);
 
   mockedReaddirSync().mockImplementation((p, _opts) => {
