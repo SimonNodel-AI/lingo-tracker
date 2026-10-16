@@ -1,13 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
-import { hasFsErrorCode } from '../file-io/fs-error';
 
 export interface WalkFoldersOptions {
   /** Maximum traversal depth. 0 = root only, 1 = root + immediate children. Defaults to Infinity. */
   maxDepth?: number;
-  /** Previously visited real paths. Defaults to a fresh set for each scan. */
-  visitedPaths?: Set<string>;
   /**
    * Called for a directory (the root included) that exists but cannot be listed — permission
    * denied, or a file where a directory was expected. The directory is skipped either way.
@@ -22,10 +19,30 @@ export interface FolderVisit {
   depth: number;
   /** Names of subdirectories that will be visited (hidden ones excluded). */
   subdirectoryNames: string[];
-  /** All entries, including hidden folders and stray files, for pruning safety checks. */
-  entries: readonly fs.Dirent[];
   /** Resource and metadata file names present in this folder. Directories are excluded. */
   resourceFileNames: readonly string[];
+}
+
+/** One folder listing, including content that protects a folder from pruning. */
+export interface FolderScan extends Pick<FolderVisit, 'subdirectoryNames' | 'resourceFileNames'> {
+  readonly entries: readonly fs.Dirent[];
+}
+
+/** Lists one folder by the collection membership rules. Throws the original filesystem error. */
+export function scanFolder(absolutePath: string): FolderScan {
+  const entries = fs.readdirSync(absolutePath, { withFileTypes: true });
+  return {
+    entries,
+    subdirectoryNames: entries
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => entry.name),
+    resourceFileNames: entries
+      .filter(
+        (entry) =>
+          !entry.isDirectory() && (entry.name === RESOURCE_ENTRIES_FILENAME || entry.name === TRACKER_META_FILENAME),
+      )
+      .map((entry) => entry.name),
+  };
 }
 
 interface StackEntry {
@@ -59,7 +76,7 @@ interface StackEntry {
  */
 export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Generator<FolderVisit, void> {
   const maxDepth = options?.maxDepth ?? Infinity;
-  const visitedPaths = options?.visitedPaths ?? new Set<string>();
+  const visitedPaths = new Set<string>();
 
   if (!fs.existsSync(rootPath)) {
     return;
@@ -75,37 +92,27 @@ export function* walkFolders(rootPath: string, options?: WalkFoldersOptions): Ge
     try {
       realPath = fs.realpathSync(current.absolutePath);
     } catch (error) {
-      if (!hasFsErrorCode(error, 'ENOENT')) options?.onUnlistable?.(current.absolutePath, error);
+      options?.onUnlistable?.(current.absolutePath, error);
       continue;
     }
     if (visitedPaths.has(realPath)) continue;
     visitedPaths.add(realPath);
 
-    let dirEntries: fs.Dirent[];
+    let folder: FolderScan;
     try {
-      dirEntries = fs.readdirSync(current.absolutePath, { withFileTypes: true });
+      folder = scanFolder(current.absolutePath);
     } catch (error) {
       // Cannot be listed (permission denied, not a directory, or gone since the check) — skip
       options?.onUnlistable?.(current.absolutePath, error);
       continue;
     }
 
-    const visitableSubdirectoryNames = dirEntries
-      .filter((entry) => entry.isDirectory())
-      .filter((entry) => !entry.name.startsWith('.'))
-      .map((entry) => entry.name);
-
+    const visitableSubdirectoryNames = folder.subdirectoryNames;
     yield {
       absolutePath: current.absolutePath,
       depth: current.depth,
       subdirectoryNames: visitableSubdirectoryNames,
-      entries: dirEntries,
-      resourceFileNames: dirEntries
-        .filter(
-          (entry) =>
-            !entry.isDirectory() && (entry.name === RESOURCE_ENTRIES_FILENAME || entry.name === TRACKER_META_FILENAME),
-        )
-        .map((entry) => entry.name),
+      resourceFileNames: folder.resourceFileNames,
     };
 
     if (current.depth >= maxDepth) {

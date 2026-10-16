@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { walkFolders } from './iterative-folder-walker';
+import { scanFolder, walkFolders } from './iterative-folder-walker';
 
 /**
  * Creating a symlink needs a privilege the process does not always hold — on Windows it
@@ -66,7 +66,7 @@ describe('walkFolders (real filesystem)', () => {
 
   it.skipIf(!canCreateSymlinks)('does not follow symlinks to directories even when multiple symlinks exist', () => {
     // Node.js 18+: Dirent.isDirectory() is false for symlinks, so neither link1 nor link2
-    // is pushed onto the stack regardless of visitedPaths.
+    // is pushed onto the stack.
     const realDir = path.join(tempDir, 'real');
     fs.mkdirSync(realDir);
     fs.mkdirSync(path.join(realDir, 'nested'));
@@ -90,30 +90,22 @@ describe('walkFolders (real filesystem)', () => {
     expect(visited).not.toContain(link2);
   });
 
-  it('skips directories whose realpath is already in visitedPaths (cycle detection)', () => {
-    // This test exercises the visitedPaths branch in walkFolders by pre-populating
-    // visitedPaths with the realpath of a real subdirectory before the walk begins.
-    // When the walker pops that directory from the stack it finds its realpath already
-    // present in the set and skips it — actually reaching the cycle-detection code path.
+  it.skipIf(!canCreateSymlinks)('skips a directory replaced by a link to an already visited realpath', () => {
     const dirA = path.join(tempDir, 'a');
     const dirB = path.join(tempDir, 'b');
     fs.mkdirSync(dirA);
     fs.mkdirSync(dirB);
+    const scan = walkFolders(tempDir);
+    expect(scan.next().value?.absolutePath).toBe(tempDir);
+    expect(scan.next().value?.absolutePath).toBe(dirA);
 
-    const realPathOfB = fs.realpathSync(dirB);
-    const visitedPaths = new Set<string>([realPathOfB]);
-    const visited: string[] = [];
-
-    for (const visit of walkFolders(tempDir, { visitedPaths })) {
-      visited.push(visit.absolutePath);
-    }
-
-    // dirA was not pre-visited so it should be walked; dirB was pre-marked so it is skipped
-    expect(visited).toContain(dirA);
-    expect(visited).not.toContain(dirB);
+    // The parent listed b as a directory; replace it before the scan reaches it.
+    fs.rmdirSync(dirB);
+    fs.symlinkSync(dirA, dirB);
+    expect([...scan]).toEqual([]);
   });
 
-  it('uses a fresh cycle guard when visitedPaths is not provided', () => {
+  it('uses a fresh cycle guard for each walk', () => {
     // Verifies that the default cycle guard allows normal traversal.
     // We do NOT create an actual cycle here (that would hang indefinitely).
     const subDir = path.join(tempDir, 'sub');
@@ -133,7 +125,7 @@ describe('walkFolders (real filesystem)', () => {
     fs.mkdirSync(path.join(tempDir, 'resource_entries.json'));
     fs.writeFileSync(path.join(tempDir, 'tracker_meta.json'), '{}');
     fs.writeFileSync(path.join(tempDir, 'notes.txt'), 'notes');
-    const visit = walkFolders(tempDir, { maxDepth: 0 }).next().value;
+    const visit = scanFolder(tempDir);
     expect(visit).toBeDefined();
     expect(visit?.resourceFileNames).toEqual(['tracker_meta.json']);
     expect(visit?.subdirectoryNames).toEqual(['resource_entries.json']);
@@ -152,6 +144,26 @@ describe('walkFolders (real filesystem)', () => {
     expect(scan.next().value?.subdirectoryNames).toEqual(['child']);
     fs.rmdirSync(child);
     expect([...scan]).toEqual([]);
+  });
+
+  it('reports a child that disappears mid-walk through onUnlistable', () => {
+    const child = path.join(tempDir, 'child');
+    fs.mkdirSync(child);
+    const problems: { absolutePath: string; error: unknown }[] = [];
+    const scan = walkFolders(tempDir, {
+      onUnlistable: (absolutePath, error) => problems.push({ absolutePath, error }),
+    });
+    expect(scan.next().value?.subdirectoryNames).toEqual(['child']);
+    fs.rmdirSync(child);
+    expect([...scan]).toEqual([]);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.absolutePath).toBe(child);
+    expect(problems[0]?.error).toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('single-folder scan throws the original filesystem error for a missing folder', () => {
+    const missing = path.join(tempDir, 'missing');
+    expect(() => scanFolder(missing)).toThrow(/ENOENT:.*scandir/);
   });
 
   it('reports a root that is a file through onUnlistable and yields nothing', () => {

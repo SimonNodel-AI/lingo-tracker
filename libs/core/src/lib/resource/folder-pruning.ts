@@ -5,7 +5,7 @@ import type { Collection } from '../config/open-collection';
 import { readJsonFile } from '../file-io/json-file-operations';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
 import { assertCollectionFolderPath, validateFolderAddress } from './folder-address';
-import { type FolderVisit, walkFolders } from './iterative-folder-walker';
+import { scanFolder } from './iterative-folder-walker';
 import { folderMutation, type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
 
 /** The only non-collection files that pruning may delete. */
@@ -164,17 +164,7 @@ function classifyFolder(
 
   try {
     // Refresh after child removals and before classifying; another writer may have added content.
-    let current: FolderVisit | undefined;
-    for (const folder of walkFolders(absolutePath, {
-      maxDepth: 0,
-      onUnlistable: (_absolutePath, error) => {
-        throw error;
-      },
-    })) {
-      current = folder;
-      break;
-    }
-    if (current === undefined) throw new Error(`Folder disappeared: ${absolutePath}`);
+    const current = scanFolder(absolutePath);
     const { resourceFileNames } = current;
     const entries = current.entries.filter(
       (entry) => !(entry.isDirectory() && removedPaths.has(join(absolutePath, entry.name))),

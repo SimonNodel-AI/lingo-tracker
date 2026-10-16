@@ -1,7 +1,7 @@
 import { join, relative, sep } from 'node:path';
 import { folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
 import { checkCollectionFolderPath } from './folder-address';
-import { type FolderVisit, walkFolders } from './iterative-folder-walker';
+import { walkFolders } from './iterative-folder-walker';
 
 /**
  * Collection addresses and problems for the Collection Tree Scan, shared by the
@@ -51,9 +51,7 @@ export interface CollectionFolderAddress {
 }
 
 /** One folder visited by {@link walkCollectionFolders}. */
-export interface CollectionFolderVisit
-  extends CollectionFolderAddress,
-    Pick<FolderVisit, 'entries' | 'resourceFileNames'> {
+export interface CollectionFolderVisit extends CollectionFolderAddress {
   /** Subfolders (hidden ones excluded), whether or not the walk descends into them. */
   readonly subfolderNames: readonly string[];
   /** Set when the folder cannot be listed or is a symbolic link; `subfolderNames` is then empty. */
@@ -96,8 +94,6 @@ export function* walkCollectionFolders(
     unlistable.push({
       ...address,
       subfolderNames: [],
-      entries: [],
-      resourceFileNames: [],
       problem: {
         kind: 'unreadable',
         folderPath: address.folderPath,
@@ -112,8 +108,6 @@ export function* walkCollectionFolders(
     yield {
       ...addressOf(startProblem.absolutePath),
       subfolderNames: [],
-      entries: [],
-      resourceFileNames: [],
       problem: startProblem,
     };
     return;
@@ -125,8 +119,6 @@ export function* walkCollectionFolders(
     yield {
       ...addressOf(visit.absolutePath),
       subfolderNames: visit.subdirectoryNames,
-      entries: visit.entries,
-      resourceFileNames: visit.resourceFileNames,
     };
   }
   yield* unlistable.splice(0);
