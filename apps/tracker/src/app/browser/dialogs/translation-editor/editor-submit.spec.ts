@@ -199,7 +199,7 @@ describe('editor submit gate through its session', () => {
     mode: 'create',
     draft: { ...draft, comment: '' },
     readOnly: true,
-    invalid: true,
+    validation: { invalid: true, keyInvalid: true, baseValueInvalid: true, firstInvalidLocaleIndex: -1 },
     collision: true,
   };
   const setup = () => {
@@ -229,26 +229,34 @@ describe('editor submit gate through its session', () => {
   });
   it('returns invalid before collision', async () => {
     const { submit, chooseConflict } = setup();
-    expect(await submit.trigger({ ...blocked, readOnly: false })).toEqual({ kind: 'invalid' });
+    expect(await submit.trigger({ ...blocked, readOnly: false })).toEqual({
+      kind: 'invalid',
+      reveal: { focus: 'key', panels: 'close-all' },
+    });
     expect(chooseConflict).not.toHaveBeenCalled();
   });
   it('returns collision before confirmation', async () => {
     const { submit, chooseConflict, confirmMissingComment } = setup();
-    expect(await submit.trigger({ ...blocked, readOnly: false, invalid: false })).toEqual({ kind: 'ignored' });
+    expect(await submit.trigger({ ...blocked, readOnly: false, validation: { invalid: false } })).toEqual({
+      kind: 'ignored',
+    });
     expect(chooseConflict).toHaveBeenCalledExactlyOnceWith('common.buttons.ok');
     expect(confirmMissingComment).not.toHaveBeenCalled();
   });
   it('requests comment confirmation last', async () => {
     const { submit, confirmMissingComment } = setup();
-    expect(await submit.trigger({ ...blocked, readOnly: false, invalid: false, collision: false })).toEqual({
+    expect(
+      await submit.trigger({ ...blocked, readOnly: false, validation: { invalid: false }, collision: false }),
+    ).toEqual({
       kind: 'focus-comment',
+      reveal: { focus: 'comment', panels: 'keep' },
     });
     expect(confirmMissingComment).toHaveBeenCalledTimes(1);
   });
   it('allows a valid confirmed submission', async () => {
     const { submit, fake } = setup();
     expect(
-      await submit.trigger({ ...blocked, draft, readOnly: false, invalid: false, collision: false }),
+      await submit.trigger({ ...blocked, draft, readOnly: false, validation: { invalid: false }, collision: false }),
     ).toMatchObject({ kind: 'outcome' });
     expect(fake.create).toHaveBeenCalledTimes(1);
   });

@@ -3,28 +3,19 @@ import type { AbstractControl } from '@angular/forms';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import type { TokenTranslator } from '../../../shared/translate-token';
 import { statusLabelTokenFor } from '../../../shared/translation-status/translation-status-presentation';
+import type { EditorAdvisories } from './editor-advisories';
+import type { EditorEntryForm } from './editor-entry-form';
+import type { EditorLocation } from './editor-location';
 
 /** Read-only state needed to derive the editor's text, markup and aria IDs. */
 export interface EditorPresentationState {
   readonly isEditMode: Signal<boolean>;
   readonly isReadOnly: Signal<boolean>;
-  readonly showBaseValueError: Signal<boolean>;
   readonly otherLocales: Signal<readonly string[]>;
   readonly similarCount: Signal<number>;
-  readonly entry: {
-    readonly needWorkCount: Signal<number>;
-    readonly form: {
-      readonly controls: {
-        readonly key: { hasError(code: string): boolean };
-      };
-    };
-  };
-  readonly advisories: {
-    readonly preferredTermFindings: Signal<readonly unknown[]>;
-  };
-  readonly location: {
-    readonly selectedFolderPath: Signal<string>;
-  };
+  readonly entry: Pick<EditorEntryForm, 'needWorkCount' | 'form' | 'showBaseValueError'>;
+  readonly preferredTermFindings: EditorAdvisories['preferredTermFindings'];
+  readonly location: Pick<EditorLocation, 'selectedFolderPath'>;
 }
 
 export interface EditorPresentationOptions {
@@ -42,28 +33,28 @@ export class EditorPresentation {
    */
   readonly baseValueDescribedBy = computed(() => {
     const ids = [
-      this.session.showBaseValueError() ? 'translation-editor-base-value-error' : 'translation-editor-icu-hint',
+      this.inputs.entry.showBaseValueError() ? 'translation-editor-base-value-error' : 'translation-editor-icu-hint',
     ];
-    if (this.session.advisories.preferredTermFindings().length > 0) {
+    if (this.inputs.preferredTermFindings().length > 0) {
       ids.push(this.preferredTermAdvisoriesId);
     }
     return ids.join(' ');
   });
 
   readonly dialogTitle = computed(() =>
-    this.session.isEditMode()
+    this.inputs.isEditMode()
       ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITTITLE
       : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATETITLE,
   );
 
   readonly dialogSubtitle = computed(() =>
-    this.session.isEditMode()
+    this.inputs.isEditMode()
       ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.EDITSUBTITLEX
       : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CREATESUBTITLEX,
   );
 
   readonly saveButtonLabel = computed(() =>
-    this.session.isEditMode()
+    this.inputs.isEditMode()
       ? TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.UPDATEBUTTON
       : TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.SAVEBUTTON,
   );
@@ -73,16 +64,14 @@ export class EditorPresentation {
 
   /** Explains a disabled Other locales row instead of leaving it silently grey. */
   readonly otherLocalesDisabledTooltip = computed(() =>
-    this.session.otherLocales().length === 0
+    this.inputs.otherLocales().length === 0
       ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NOOTHERLOCALESTOOLTIP)
       : '',
   );
 
   /** Explains a disabled location trigger instead of leaving it silently grey. */
   readonly locationDisabledTooltip = computed(() =>
-    this.session.isReadOnly()
-      ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.READONLYTABTOOLTIP)
-      : '',
+    this.inputs.isReadOnly() ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.READONLYTABTOOLTIP) : '',
   );
 
   /** The base locale under a name a reader recognises ("English"), for the value label. */
@@ -90,12 +79,12 @@ export class EditorPresentation {
 
   /** The right-hand summary on the "Other locales" row, already localized. */
   readonly otherLocalesSummary = computed(() =>
-    this.session.isEditMode()
+    this.inputs.isEditMode()
       ? this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.NEEDWORKX, {
-          count: this.session.entry.needWorkCount(),
+          count: this.inputs.entry.needWorkCount(),
         })
       : this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.AUTOTRANSLATEDX, {
-          count: this.session.otherLocales().length,
+          count: this.inputs.otherLocales().length,
         }),
   );
 
@@ -104,13 +93,13 @@ export class EditorPresentation {
     // The key itself is not summarised here: the footer carries it in full, and
     // the form's own key error carries the collision.
     const parts = [
-      this.session.location.selectedFolderPath() ||
+      this.inputs.location.selectedFolderPath() ||
         this.options.translate(TRACKER_TOKENS.BROWSER.FOLDERPICKER.ROOTLABEL),
     ];
-    if (this.session.similarCount() > 0) {
+    if (this.inputs.similarCount() > 0) {
       parts.push(
         this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.SIMILARCOUNTX, {
-          count: this.session.similarCount(),
+          count: this.inputs.similarCount(),
         }),
       );
     }
@@ -160,7 +149,7 @@ export class EditorPresentation {
   }
 
   getKeyErrorMessage(): string {
-    const keyControl = this.session.entry.form.controls.key;
+    const keyControl = this.inputs.entry.form.controls.key;
 
     if (keyControl.hasError('required')) {
       return TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.KEYREQUIRED;
@@ -174,7 +163,7 @@ export class EditorPresentation {
   }
 
   constructor(
-    private readonly session: EditorPresentationState,
+    private readonly inputs: EditorPresentationState,
     private readonly data: { readonly baseLocale: string },
     private readonly options: EditorPresentationOptions,
   ) {}

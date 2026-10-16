@@ -12,7 +12,7 @@ const input: EditorSubmitTrigger = {
   mode: 'create',
   draft: { key: ' ok ', folderPath: 'common', baseValue: 'OK', comment: 'Context', tags: [], translations: [] },
   readOnly: false,
-  invalid: false,
+  validation: { invalid: false },
   collision: false,
 };
 
@@ -107,7 +107,10 @@ describe('EditorSubmitSession', () => {
     const harness = session({ confirmMissingComment });
     const withoutComment = { ...input, draft: { ...input.draft, comment: '' } };
 
-    expect(await harness.submit.trigger(withoutComment)).toEqual({ kind: 'focus-comment' });
+    expect(await harness.submit.trigger(withoutComment)).toEqual({
+      kind: 'focus-comment',
+      reveal: { focus: 'comment', panels: 'keep' },
+    });
     expect(await harness.submit.trigger(withoutComment)).toMatchObject({ kind: 'outcome' });
     expect(confirmMissingComment).toHaveBeenCalledTimes(2);
   });
@@ -207,8 +210,55 @@ describe('EditorSubmitSession', () => {
 
   it('returns validation focus before prompts or writes', async () => {
     const harness = session();
-    expect(await harness.submit.trigger({ ...input, invalid: true, collision: true })).toEqual({ kind: 'invalid' });
+    expect(
+      await harness.submit.trigger({
+        ...input,
+        validation: { invalid: true, keyInvalid: true, baseValueInvalid: true, firstInvalidLocaleIndex: -1 },
+        collision: true,
+      }),
+    ).toEqual({
+      kind: 'invalid',
+      reveal: { focus: 'key', panels: 'close-all' },
+    });
     expect(harness.chooseConflict).not.toHaveBeenCalled();
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    { keyInvalid: true, baseValueInvalid: true, firstInvalidLocaleIndex: 1, focus: 'key', panels: 'close-all' },
+    { keyInvalid: true, baseValueInvalid: false, firstInvalidLocaleIndex: 1, focus: 'key', panels: 'close-all' },
+    { keyInvalid: false, baseValueInvalid: true, firstInvalidLocaleIndex: 1, focus: 'base-value', panels: 'close-all' },
+    {
+      keyInvalid: false,
+      baseValueInvalid: false,
+      firstInvalidLocaleIndex: 1,
+      focus: 'invalid-locale-value',
+      panels: 'locales',
+    },
+    {
+      keyInvalid: false,
+      baseValueInvalid: false,
+      firstInvalidLocaleIndex: -1,
+      focus: 'base-value',
+      panels: 'close-all',
+    },
+  ])('carries the reveal target for invalid fields: %o', async ({ focus, panels, ...validation }) => {
+    const harness = session();
+    expect(await harness.submit.trigger({ ...input, validation: { invalid: true, ...validation } })).toEqual({
+      kind: 'invalid',
+      reveal: { focus, panels },
+    });
+    expect(harness.confirmMissingComment).not.toHaveBeenCalled();
+    expect(harness.create).not.toHaveBeenCalled();
+  });
+
+  it('reveals the base value for a form-level error with no invalid field', async () => {
+    const harness = session();
+    expect(
+      await harness.submit.trigger({
+        ...input,
+        validation: { invalid: true, keyInvalid: false, baseValueInvalid: false, firstInvalidLocaleIndex: -1 },
+      }),
+    ).toEqual({ kind: 'invalid', reveal: { focus: 'base-value', panels: 'close-all' } });
     expect(harness.create).not.toHaveBeenCalled();
   });
 });

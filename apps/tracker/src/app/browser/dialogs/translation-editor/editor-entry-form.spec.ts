@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import type { ResourceSummaryDto } from '@simoncodes-ca/data-transfer';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EditorEntryForm } from './editor-entry-form';
@@ -168,5 +169,62 @@ describe('EditorEntryForm', () => {
   it('detects a folder-path change as unsaved work', () => {
     form.seed(['en', 'fr', 'de'], 'en', resource(), 'common.buttons');
     expect(form.hasUnsavedChanges('common.labels')).toBe(true);
+  });
+
+  it('derives live validity from the fields and the supplied collision signal', () => {
+    const collision = signal(false);
+    form.destroy();
+    form = new EditorEntryForm(collision);
+    form.seed(['en', 'fr'], 'en', undefined, '');
+    expect(form.isFormValid()).toBe(false);
+    form.form.patchValue({ key: 'ok', baseValue: 'OK' });
+    expect(form.isFormValid()).toBe(true);
+    collision.set(true);
+    expect(form.isFormValid()).toBe(false);
+    collision.set(false);
+    expect(form.isFormValid()).toBe(true);
+    form.getLocaleFormGroup(0).controls.value.setValue('Salut {{{name}}}');
+    expect(form.isFormValid()).toBe(false);
+    form.getLocaleFormGroup(0).controls.value.setValue('');
+    expect(form.isFormValid()).toBe(true);
+  });
+
+  it('shows errors on touched invalid fields and hides them after correction', () => {
+    form.seed(['en', 'fr'], 'en', undefined, '');
+    expect(form.showKeyError()).toBe(false);
+    expect(form.showBaseValueError()).toBe(false);
+    expect(form.showLocaleValueError(0)).toBe(false);
+    form.form.controls.key.markAsTouched();
+    form.form.controls.baseValue.markAsTouched();
+    form.getLocaleFormGroup(0).controls.value.markAsTouched();
+    form.form.patchValue({ key: 'bad key', baseValue: 'Hi {{{name}}}' });
+    form.getLocaleFormGroup(0).controls.value.setValue('Salut {{{name}}}');
+    expect(form.showKeyError()).toBe(true);
+    expect(form.showBaseValueError()).toBe(true);
+    expect(form.showLocaleValueError(0)).toBe(true);
+    form.form.patchValue({ key: 'ok', baseValue: 'OK' });
+    form.getLocaleFormGroup(0).controls.value.setValue('');
+    expect(form.showKeyError()).toBe(false);
+    expect(form.showBaseValueError()).toBe(false);
+    expect(form.showLocaleValueError(0)).toBe(false);
+  });
+
+  it('reveals untouched invalid fields after a submit attempt and tracks the first invalid locale', () => {
+    form.seed(['en', 'fr', 'de'], 'en', undefined, '');
+    form.getLocaleFormGroup(1).controls.value.setValue('Hallo {{{name}}}');
+    expect(form.firstInvalidLocaleIndex()).toBe(1);
+    expect(form.showKeyError()).toBe(false);
+    expect(form.showBaseValueError()).toBe(false);
+    expect(form.showLocaleValueError(1)).toBe(false);
+    form.submitAttempted.set(true);
+    expect(form.showKeyError()).toBe(true);
+    expect(form.showBaseValueError()).toBe(true);
+    expect(form.showLocaleValueError(1)).toBe(true);
+    form.getLocaleFormGroup(0).controls.value.setValue('Salut {{{name}}}');
+    expect(form.firstInvalidLocaleIndex()).toBe(0);
+    form.getLocaleFormGroup(0).controls.value.setValue('');
+    form.getLocaleFormGroup(1).controls.value.setValue('');
+    expect(form.firstInvalidLocaleIndex()).toBe(-1);
+    expect(form.showLocaleValueError(1)).toBe(false);
   });
 });

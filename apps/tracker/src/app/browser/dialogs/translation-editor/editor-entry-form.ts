@@ -44,10 +44,57 @@ export class EditorEntryForm {
   );
   readonly needWorkCount = computed(() => this.localesNeedingWork().length);
 
+  /** Set once the user attempts to save, so errors surface on untouched fields too. */
+  readonly submitAttempted = signal(false);
+
+  /** Live form validity, for the footer's earned check glyph. */
+  readonly isFormValid = computed(() => {
+    this.formState();
+    return this.form.valid && !this.keyCollision();
+  });
+
+  /** True once the key control is both invalid and worth complaining about. */
+  readonly showKeyError = computed(() => {
+    this.formState();
+    return this.form.controls.key.invalid && (this.form.controls.key.touched || this.submitAttempted());
+  });
+
+  /** True once the English value is both invalid (missing or braced) and worth complaining about. */
+  readonly showBaseValueError = computed(() => {
+    this.formState();
+    return this.form.controls.baseValue.invalid && (this.form.controls.baseValue.touched || this.submitAttempted());
+  });
+
+  /** True once the translation row's value is invalid and worth complaining about. */
+  showLocaleValueError(index: number): boolean {
+    this.formState();
+    const value = this.getLocaleFormGroup(index).controls.value;
+    return value.invalid && (value.touched || this.submitAttempted());
+  }
+
+  /** The first translation row whose value is invalid, -1 when none is. */
+  readonly firstInvalidLocaleIndex = computed(() => {
+    this.formState();
+    return this.form.controls.translations.controls.findIndex((group) => group.controls.value.invalid);
+  });
+
+  /** The typed locale fields shared by the drawer and save path. */
+  getLocaleFormGroup(index: number): FormGroup<{
+    locale: FormControl<string>;
+    value: FormControl<string>;
+    status: FormControl<TranslationStatus>;
+  }> {
+    return this.form.controls.translations.at(index) as FormGroup<{
+      locale: FormControl<string>;
+      value: FormControl<string>;
+      status: FormControl<TranslationStatus>;
+    }>;
+  }
+
   readonly #changes: Subscription;
   #initialDraft: ResourceEntryDraft | undefined;
 
-  constructor() {
+  constructor(private readonly keyCollision: () => boolean = () => false) {
     this.#changes = merge(this.form.valueChanges, this.form.statusChanges).subscribe(() => this.publishSnapshot());
   }
 
