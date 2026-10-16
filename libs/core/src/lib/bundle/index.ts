@@ -1,4 +1,3 @@
-export { bundleFindings } from './bundle-findings';
 // The bundle module: plan or generate bundles, and edit the bundle definitions in config.
 
 export {
@@ -9,8 +8,6 @@ export {
 } from './bundle-definition-operations';
 export {
   type BundleProgressEvent,
-  type BundleTypeOutcome,
-  type BundleWarning,
   type GenerateBundleParams,
   type GenerateBundleResult,
   generatePreparedBundle,

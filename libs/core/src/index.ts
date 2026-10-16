@@ -31,8 +31,6 @@ export type {
   BundlePlanFile,
   BundleProgressEvent,
   BundleRunOutcome,
-  BundleTypeOutcome,
-  BundleWarning,
   GenerateBundleParams,
   GenerateBundleResult,
   GenerateBundlesOptions,
@@ -43,7 +41,6 @@ export type {
 // Operations: bundles
 export {
   addBundleDefinition,
-  bundleFindings,
   deleteBundleDefinition,
   generateBundles,
   generatePreparedBundle,

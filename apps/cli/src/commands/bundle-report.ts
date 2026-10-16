@@ -1,4 +1,4 @@
-import { bundleFindings, type GenerateBundlesOptions, type GenerateBundlesResult } from '@simoncodes-ca/core';
+import type { GenerateBundlesOptions, GenerateBundlesResult } from '@simoncodes-ca/core';
 import { printCliError } from '../runner/cli-error-wording';
 import { CommandOutput } from '../runner/command-output';
 import { flagName } from '../runner/flag-record';
@@ -25,9 +25,9 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     return;
   }
   const { outcome } = event;
-  const findings = bundleFindings(outcome.result ? outcome.result : { warnings: outcome.warnings });
+  const findings = outcome.findings;
   for (const message of findings.byOrigin.config) CommandOutput.warn(message);
-  if ('warnings' in outcome) {
+  if ('error' in outcome) {
     printCliError(outcome.error, { fallbackMessage: 'Failed to generate bundle' });
     return;
   }
@@ -37,13 +37,22 @@ export function printBundleEvent(event: BundleEvent, options: BundlePresentation
     ConsoleFormatter.indent(`✅ Locales: ${result.localesProcessed.join(', ')}`);
   }
   const { types } = findings;
-  if (types.failure !== undefined) {
-    ConsoleFormatter.error(`Type generation failed: ${types.failure}`);
-  } else if (!options.quiet) {
-    if (types.written) {
-      ConsoleFormatter.indent(`└─ Types: ${types.written.path} (${types.written.keysCount} keys)`);
-    } else if (types.skipped !== undefined) {
-      ConsoleFormatter.indent(`└─ Types: Skipped (${types.skipped})`);
+  switch (types.status) {
+    case 'failed':
+      ConsoleFormatter.error(`Type generation failed: ${types.reason}`);
+      break;
+    case 'written':
+      if (!options.quiet) ConsoleFormatter.indent(`└─ Types: ${types.path} (${types.keysCount} keys)`);
+      break;
+    case 'skipped':
+      if (!options.quiet) ConsoleFormatter.indent(`└─ Types: Skipped (${types.reason})`);
+      break;
+    case 'none':
+      if (!options.quiet) ConsoleFormatter.indent('└─ Types: Skipped (no typeDistFile configured)');
+      break;
+    default: {
+      const unhandled: never = types;
+      throw new Error(`Unknown bundle type outcome: ${unhandled}`);
     }
   }
   // Type warnings are represented by the type tree/failure above. Only generation
@@ -63,7 +72,7 @@ export function printBundleSummary(run: GenerateBundlesResult, options: BundlePr
     ConsoleFormatter.section(`Summary (${run.totals.bundlesProcessed} bundles)`);
     ConsoleFormatter.keyValue('Total files generated', run.totals.filesGenerated);
   }
-  const warnings = run.outcomes.flatMap((item) => (item.result ? bundleFindings(item.result).byOrigin.generation : []));
+  const warnings = run.outcomes.flatMap((item) => item.findings.byOrigin.generation);
   if (warnings.length > 0) {
     ConsoleFormatter.keyValue('Total warnings', warnings.length);
     if (!options.verbose) ConsoleFormatter.indent(`Run with ${flagName(BUNDLE_FLAGS.verbose)} to see warning details`);

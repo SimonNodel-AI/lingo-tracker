@@ -10,9 +10,9 @@ import { BundleNotFoundError, type InvalidBundleLocalesError } from '../errors/i
 import {
   type BundleProgressEvent,
   type BundleTypeOutcome,
-  type GenerateBundleResult,
   bundleTypeOutcomeDetail,
   type GenerateBundleParams,
+  type GenerateBundleResult,
   generatePreparedBundle,
 } from './generate-bundle';
 import { prepareBundleRun, validateBundleLocales } from './prepare-bundle-run';
@@ -44,8 +44,8 @@ describe('bundleTypeOutcomeDetail', () => {
   });
 });
 
-function generationWarnings(result: GenerateBundleResult): string[] {
-  return result.warnings.filter((warning) => warning.origin === 'generation').map((warning) => warning.message);
+function generationWarnings(result: GenerateBundleResult): readonly string[] {
+  return result.findings.byOrigin.generation;
 }
 
 async function generateBundleByName(params: GenerateBundleParams) {
@@ -345,7 +345,7 @@ describe('generatePreparedBundle (real fs)', () => {
 
     expect(existsSync(join(root(), 'dist/bundles/en.json'))).toBe(true);
     expect(existsSync(join(root(), 'types/tokens.ts'))).toBe(true);
-    expect(result.typeOutcome).toMatchObject({ status: 'written', path: 'types/tokens.ts' });
+    expect(result.findings.types).toMatchObject({ status: 'written', path: 'types/tokens.ts' });
     expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'types/tokens.ts']);
   });
 
@@ -401,12 +401,17 @@ describe('generatePreparedBundle (real fs)', () => {
                     "Type generation failed for 'main': typeDistFile must end with a .ts extension (e.g. './src/types/tokens.ts'), but got: types/invalid.txt",
                   ]
                 : [];
-          expect(result.typeOutcome.status).toBe(status);
-          expect(result.warnings).toEqual([
-            ...ordinary.map((message) => ({ origin: 'generation', message })),
-            ...(legacy ? [{ origin: 'config', message: preparedWarning }] : []),
-            ...outcomeWarning.map((message) => ({ origin: 'type', message })),
+          expect(result.findings.types.status).toBe(status === 'not-configured' ? 'none' : status);
+          expect(result.findings.messages).toEqual([
+            ...ordinary,
+            ...(legacy ? [preparedWarning] : []),
+            ...outcomeWarning,
           ]);
+          expect(result.findings.byOrigin).toEqual({
+            generation: ordinary,
+            config: legacy ? [preparedWarning] : [],
+            type: outcomeWarning,
+          });
         }
       }
     });
@@ -421,9 +426,9 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome.status).toBe('written');
-      expect(result.typeOutcome).toMatchObject({ status: 'written', keysCount: 2 });
-      expect(result.typeOutcome).toMatchObject({ status: 'written', path: 'types/main.ts' });
+      expect(result.findings.types.status).toBe('written');
+      expect(result.findings.types).toMatchObject({ status: 'written', keysCount: 2 });
+      expect(result.findings.types).toMatchObject({ status: 'written', path: 'types/main.ts' });
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(true);
     });
 
@@ -437,7 +442,7 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome.status).toBe('not-configured');
+      expect(result.findings.types.status).toBe('none');
     });
 
     it('supports deprecated typeDist and returns its deprecation warning', async () => {
@@ -452,11 +457,9 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome.status).toBe('written');
+      expect(result.findings.types.status).toBe('written');
       expect(existsSync(join(root(), 'types/legacy.ts'))).toBe(true);
-      expect(result.warnings.find((warning) => warning.origin === 'config')?.message).toContain(
-        "'typeDist' is deprecated",
-      );
+      expect(result.findings.byOrigin.config[0]).toContain("'typeDist' is deprecated");
       expect(generationWarnings(result)).toEqual([]);
       expect(warn).not.toHaveBeenCalled();
     });
@@ -506,12 +509,10 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome).toMatchObject({ status: 'failed' });
+      expect(result.findings.types).toMatchObject({ status: 'failed' });
       expect(result.outcome).toBe('failed');
       expect(generationWarnings(result)).toEqual([]);
-      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toMatch(
-        /^Type generation failed for 'main': /,
-      );
+      expect(result.findings.byOrigin.type[0]).toMatch(/^Type generation failed for 'main': /);
     });
 
     it('describes a rejected type file path as a failed outcome', async () => {
@@ -523,12 +524,13 @@ describe('generatePreparedBundle (real fs)', () => {
         locales: ['en'],
         cwd: root(),
       });
-      expect(result.typeOutcome).toMatchObject({ status: 'failed', reason: expect.stringContaining('.ts extension') });
+      expect(result.findings.types).toMatchObject({
+        status: 'failed',
+        reason: expect.stringContaining('.ts extension'),
+      });
       expect(result.outcome).toBe('failed');
       expect(generationWarnings(result)).toEqual([]);
-      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toMatch(
-        /^Type generation failed for 'main': /,
-      );
+      expect(result.findings.byOrigin.type[0]).toMatch(/^Type generation failed for 'main': /);
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
     });
 
@@ -542,7 +544,7 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json']);
-      expect(result.typeOutcome).toMatchObject({
+      expect(result.findings.types).toMatchObject({
         status: 'failed',
         reason: expect.stringContaining('Invalid tokenConstantName'),
       });
@@ -559,11 +561,9 @@ describe('generatePreparedBundle (real fs)', () => {
         cwd: root(),
       });
 
-      expect(result.typeOutcome).toEqual({ status: 'skipped', reason: 'empty-bundle' });
+      expect(result.findings.types).toEqual({ status: 'skipped', reason: 'bundle is empty' });
       expect(generationWarnings(result)).toEqual([]);
-      expect(result.warnings.find((warning) => warning.origin === 'type')?.message).toBe(
-        "Type generation skipped for 'main': bundle is empty",
-      );
+      expect(result.findings.byOrigin.type[0]).toBe("Type generation skipped for 'main': bundle is empty");
       expect(existsSync(join(root(), 'types/main.ts'))).toBe(false);
     });
 
@@ -712,7 +712,7 @@ describe('generatePreparedBundle (real fs)', () => {
       });
 
       expect(result.writtenFiles).toEqual(['dist/bundles/en.json', 'dist/bundles/99.json', 'types/main.ts']);
-      expect(result.typeOutcome).toEqual({ status: 'written', path: 'types/main.ts', keysCount: 1 });
+      expect(result.findings.types).toEqual({ status: 'written', path: 'types/main.ts', keysCount: 1 });
     });
 
     it('emits one extra file whose values equal their keys', async () => {
@@ -1085,5 +1085,83 @@ describe('generatePreparedBundle (real fs)', () => {
         expect(warning).toContain('cannot be carried to a Transloco runtime');
       }
     });
+  });
+});
+
+describe('generated bundle findings', () => {
+  const root = useTempDir('bundle-findings-');
+  const config = (typeDistFile?: string): LingoTrackerConfig => ({
+    exportFolder: 'export',
+    importFolder: 'import',
+    baseLocale: 'en',
+    locales: ['en'],
+    collections: { app: { translationsFolder: 'resources' } },
+    bundles: { main: { bundleName: '{locale}', dist: 'out', collections: 'All', typeDistFile } },
+  });
+
+  it('preserves ordered and repeated findings without mutating prepared advisories', async () => {
+    const prepared = prepareBundleRun({ source: 'saved', bundleKey: 'main', config: config('types.ts'), cwd: root() });
+    const warnings = Object.freeze([
+      { origin: 'config' as const, message: 'same advisory' },
+      { origin: 'config' as const, message: 'same advisory' },
+    ]);
+    const result = await generatePreparedBundle({ ...prepared, warnings });
+    expect(result.findings).toEqual({
+      messages: [
+        "Bundle 'main' for locale 'en' is empty",
+        'same advisory',
+        'same advisory',
+        "Type generation skipped for 'main': bundle is empty",
+      ],
+      byOrigin: {
+        generation: ["Bundle 'main' for locale 'en' is empty"],
+        config: ['same advisory', 'same advisory'],
+        type: ["Type generation skipped for 'main': bundle is empty"],
+      },
+      types: { status: 'skipped', reason: 'bundle is empty' },
+    });
+    expect(warnings).toEqual([
+      { origin: 'config', message: 'same advisory' },
+      { origin: 'config', message: 'same advisory' },
+    ]);
+    expect(result).not.toHaveProperty('warnings');
+    expect(result).not.toHaveProperty('typeOutcome');
+  });
+
+  const cases = [
+    {
+      status: 'written',
+      path: 'types.ts',
+      populated: true,
+      expected: { status: 'written', path: 'types.ts', keysCount: 1 },
+    },
+    {
+      status: 'failed',
+      path: 'types.txt',
+      populated: true,
+      expected: { status: 'failed', reason: expect.stringContaining('.ts extension') },
+    },
+    {
+      status: 'skipped',
+      path: 'types.ts',
+      populated: false,
+      expected: { status: 'skipped', reason: 'bundle is empty' },
+    },
+    { status: 'none', path: undefined, populated: true, expected: { status: 'none' } },
+  ];
+  it.each(cases)('returns $status type findings on the finished result', async ({ path, populated, expected }) => {
+    if (populated)
+      seedResources(testCollection(join(root(), 'resources'), { name: 'app', locales: ['en'] }), {
+        hello: { source: 'Hello' },
+      });
+    const result = await generatePreparedBundle(
+      prepareBundleRun({ source: 'saved', bundleKey: 'main', config: config(path), cwd: root() }),
+    );
+    expect(result.findings.types).toEqual(expected);
+    expect(result.findings.byOrigin.config).toEqual([]);
+    expect(result.findings.messages).toEqual([
+      ...result.findings.byOrigin.generation,
+      ...result.findings.byOrigin.type,
+    ]);
   });
 });
