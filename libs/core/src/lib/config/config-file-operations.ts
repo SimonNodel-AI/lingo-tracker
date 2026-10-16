@@ -33,7 +33,7 @@ function readConfigContent(configPath: string): { content: string; version: stri
     const content = readFileSync(configPath, 'utf8');
     return { content, version: configContentHash(content) };
   } catch (error) {
-    if (hasFsErrorCode(error, 'ENOENT')) return undefined;
+    if (hasFsErrorCode(error, 'ENOENT') || hasFsErrorCode(error, 'ENOTDIR')) return undefined;
     throw error;
   }
 }

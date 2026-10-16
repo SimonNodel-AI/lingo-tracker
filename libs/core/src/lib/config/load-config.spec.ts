@@ -49,6 +49,16 @@ describe('loadConfig', () => {
     expect((error as ConfigNotFoundError).name).toBe('ConfigNotFoundError');
   });
 
+  it('throws ConfigNotFoundError with the searched path when cwd is a regular file', () => {
+    const cwd = join(dir, 'some-file');
+    writeFileSync(cwd, 'regular file');
+
+    const error = captureError(() => loadConfig({ cwd }));
+
+    expect(error).toBeInstanceOf(ConfigNotFoundError);
+    expect((error as ConfigNotFoundError).configPath).toBe(join(cwd, CONFIG_FILENAME));
+  });
+
   it.each([
     ['invalid JSON', '{ invalid json'],
     ['an empty file', ''],

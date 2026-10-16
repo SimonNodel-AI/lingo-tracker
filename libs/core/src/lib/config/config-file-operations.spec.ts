@@ -1,4 +1,4 @@
-import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
@@ -106,6 +106,20 @@ describe('ConfigFileOperations version check', () => {
     expect(() => handle.write(snapshot)).toThrow(ConfigChangedError);
     unlinkSync(configPath());
     expect(() => handle.write(snapshot)).toThrow(ConfigChangedError);
+  });
+
+  it('refuses a guarded write when the config parent directory becomes a regular file', () => {
+    const cwd = join(tempDir(), 'project');
+    mkdirSync(cwd);
+    writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify(config()));
+    const handle = createConfigFileOperations({ cwd });
+    const snapshot = handle.read();
+    renameSync(cwd, join(tempDir(), 'previous-project'));
+    writeFileSync(cwd, 'external file');
+
+    expect(() => handle.assertUnchanged()).toThrow(ConfigChangedError);
+    expect(() => handle.write(snapshot)).toThrow(ConfigChangedError);
+    expect(readFileSync(cwd, 'utf8')).toBe('external file');
   });
 
   it('refuses a stale opened project and keeps the other writer’s bytes', () => {
