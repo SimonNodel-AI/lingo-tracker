@@ -1027,7 +1027,7 @@ describe('ResourcesController response contracts', () => {
 
   it('returns blank searches in wire order with the original query or an empty fallback', async () => {
     for (const query of [undefined, '', ' \t ']) {
-      const dto = await controller.search(collection, { query });
+      const dto = await controller.search(opened, { query });
       expect(Object.keys(dto)).toEqual(['query', 'results', 'totalFound', 'limited']);
       expect(JSON.stringify(dto)).toBe(
         JSON.stringify({ query: query || '', results: [], totalFound: 0, limited: false }),
@@ -1039,7 +1039,7 @@ describe('ResourcesController response contracts', () => {
     jest
       .spyOn(core, 'deleteResource')
       .mockReturnValue({ outcome: 'succeeded', entriesDeleted: 1, warnings: ['Internal'] });
-    const dto = await controller.delete(collection, { keys: ['app.save'] });
+    const dto = await controller.delete(opened, { keys: ['app.save'] });
     expect(dto).toStrictEqual({ entriesDeleted: 1, errors: undefined });
     expect(Object.keys(dto)).toEqual(['entriesDeleted', 'errors']);
     expect(JSON.stringify(dto)).toBe('{"entriesDeleted":1}');
@@ -1048,7 +1048,7 @@ describe('ResourcesController response contracts', () => {
   it('passes through empty and nonempty deletion errors in wire order', async () => {
     for (const errors of [[], [{ key: 'app.save', error: 'Missing' }]]) {
       jest.spyOn(core, 'deleteResource').mockReturnValue({ outcome: 'succeeded', entriesDeleted: 0, errors });
-      const dto = await controller.delete(collection, { keys: ['app.save'] });
+      const dto = await controller.delete(opened, { keys: ['app.save'] });
       expect(dto.errors).toBe(errors);
       expect(JSON.stringify(dto)).toBe(JSON.stringify({ entriesDeleted: 0, errors }));
     }
