@@ -672,9 +672,9 @@ The CLI calls normalize through `normalizeCollections`. The API has no normalize
 
 Returns a `NormalizeResult` with counts: `entriesProcessed`, `localesAdded`, `valuesConverted`, `tagsNormalized`, `filesCreated`, `filesUpdated`, `foldersRemoved`, `dryRun`, and `problems` (the folders it could not read).
 
-`normalizeCollections` runs the selected opened collections and returns a Run Outcome, per-collection results, string errors, warnings, and totals. A named selection with a read-only collection returns `status: 'failed'` before processing any collection. Its outcome is `failed`, with empty results and zero totals. All mode skips read-only collections.
+`normalizeCollections` returns a discriminated union. A named selection with a read-only collection returns the `failed` arm before processing any collection. That arm carries a failed Run Outcome, a worded `error`, `details`, and `warnings`, without collections or totals. All mode skips read-only collections.
 
-A completed run returns `status: 'complete'`; collection failures still give it a failed outcome. Core supplies error wording and computes totals from one list of seven numeric fields. The CLI prints events and reports the result; an event callback error propagates instead of becoming a normalization failure.
+A run that processes the selection returns the `complete` arm with collections, totals, string errors, warnings, and a Run Outcome. Collection errors fail that outcome, including in dry runs. Folder problems and read-only skips alone do not fail it. Core supplies error wording and computes totals from one list of seven numeric fields. The CLI prints events and reports the result; an event callback error propagates instead of becoming a normalization failure.
 
 `filesUpdated` can be higher than with earlier versions on the first run. A folder is now rewritten when its only drift is a stray base-locale property, the key order of its metadata, or a translation made from an older base. This is a one-time rewrite; the next run reports 0 for those folders.
 
@@ -994,7 +994,7 @@ The function never stops at the first failure — it validates all resources and
 
 Core returns a [Run Outcome](glossary.md#run-outcome) with each completed export, import, translate-locale, validate, bundle, move, and normalize run. Bundle runs also report it per bundle. `succeeded` exits 0 in the CLI, while `failed` exits 1, even when some output was produced.
 
-`executeMove` and `executeMoves` fail when their result contains errors. `normalizeCollections` fails when a collection raises an error, including in dry runs. Normalize folder problems and read-only skips in all mode do not fail the run. API move responses omit the outcome through explicit field mapping.
+`executeMove` and `executeMoves` fail when their result contains errors. The [Normalization Pipeline](#normalization-pipeline) defines normalize outcomes. API move responses omit the outcome through explicit field mapping.
 
 Export ignores errors and hierarchical conflicts in a dry run; import still fails for errors or failed resources in a dry run. A failed bundle type generation now gives the CLI exit code 1. Validate retains its `status` field for in-band precondition failures and uses `outcome` for the final success decision. The `--allow-translated` flag maps directly to `options.allowTranslated`.
 

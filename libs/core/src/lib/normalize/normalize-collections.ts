@@ -33,33 +33,23 @@ export interface NormalizeCollectionsOptions extends NormalizeOptions {
   ) => void;
 }
 
-export interface NormalizeCollectionsResult {
-  /** A refused selection fails before processing; a complete run can still contain errors. */
-  readonly status: 'failed' | 'complete';
-  readonly outcome: RunOutcome;
-  readonly collections: CollectionNormalizeResult[];
-  readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
-  readonly warnings: readonly string[];
-  readonly errors: readonly string[];
-}
-
-/** Empty report before any collection is processed. */
-function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
-  return {
-    status: 'complete',
-    outcome: 'succeeded',
-    collections: [],
-    totals: {
-      ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
-        (typeof NUMERIC_FIELDS)[number],
-        number
-      >),
-      collectionsProcessed: 0,
-    },
-    errors: [],
-    warnings: [],
-  };
-}
+/** A refused selection has diagnostics only; a completed run carries its processed results. */
+export type NormalizeCollectionsResult =
+  | {
+      readonly status: 'failed';
+      readonly outcome: 'failed';
+      readonly error: string;
+      readonly details: readonly string[];
+      readonly warnings: readonly string[];
+    }
+  | {
+      readonly status: 'complete';
+      readonly outcome: RunOutcome;
+      readonly collections: CollectionNormalizeResult[];
+      readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
+      readonly warnings: readonly string[];
+      readonly errors: readonly string[];
+    };
 
 /** Applies the CLI's named versus all read-only rule and totals a whole run. */
 export async function normalizeCollections(
@@ -70,10 +60,11 @@ export async function normalizeCollections(
     const readOnly = collections.find((collection) => collection.readOnly);
     if (readOnly) {
       return {
-        ...emptyNormalizeCollectionsResult(),
         status: 'failed',
         outcome: 'failed',
-        errors: [new ReadOnlyCollectionError(readOnly.name).message],
+        error: new ReadOnlyCollectionError(readOnly.name).message,
+        details: [],
+        warnings: [],
       };
     }
   }
@@ -105,7 +96,13 @@ export async function normalizeCollections(
     options.onEvent?.({ kind: 'result', result: item });
   }
 
-  const totals = { ...emptyNormalizeCollectionsResult().totals, collectionsProcessed: results.length };
+  const totals = {
+    ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
+      (typeof NUMERIC_FIELDS)[number],
+      number
+    >),
+    collectionsProcessed: results.length,
+  };
   for (const result of results) {
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }

@@ -23,7 +23,9 @@ const COUNT_FIELDS = [
 ] as const;
 
 function normalizeCounts(
-  counts: NormalizeCollectionsResult['totals'] | NormalizeCollectionsResult['collections'][number],
+  counts:
+    | Extract<NormalizeCollectionsResult, { status: 'complete' }>['totals']
+    | Extract<NormalizeCollectionsResult, { status: 'complete' }>['collections'][number],
 ) {
   return COUNT_FIELDS.filter(([field]) => field !== 'tagsNormalized' || counts[field] > 0).map(([field, label]) => ({
     label,
@@ -78,24 +80,37 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
         }
       },
     });
-    const summary = result.totals;
+    const summary = result.status === 'complete' ? result.totals : undefined;
     const showSummary = result.status === 'complete' && collections.length > 1;
     return reportRun({
       presentation: answers.json
-        ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
+        ? {
+            kind: 'json',
+            payload:
+              result.status === 'complete'
+                ? { collections: result.collections, totals: result.totals }
+                : {
+                    collections: [],
+                    totals: {
+                      ...Object.fromEntries(COUNT_FIELDS.map(([field]) => [field, 0])),
+                      collectionsProcessed: 0,
+                    },
+                  },
+          }
         : { kind: 'text' },
-      section: showSummary ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
-      counts: showSummary
-        ? Object.fromEntries(
-            normalizeCounts(summary).map(({ label, value }) => [
-              `Total ${label[0]?.toLowerCase()}${label.slice(1)}`,
-              value,
-            ]),
-          )
-        : undefined,
+      section: showSummary && summary ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
+      counts:
+        showSummary && summary
+          ? Object.fromEntries(
+              normalizeCounts(summary).map(({ label, value }) => [
+                `Total ${label[0]?.toLowerCase()}${label.slice(1)}`,
+                value,
+              ]),
+            )
+          : undefined,
       notice: answers.dryRun ? 'Dry run completed - no changes were made.' : undefined,
       warnings: result.warnings,
-      errors: result.errors,
+      errors: result.status === 'failed' ? [result.error, ...result.details] : result.errors,
       outcome: result.outcome,
       dryRun: answers.dryRun,
     });
