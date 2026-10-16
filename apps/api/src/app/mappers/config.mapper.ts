@@ -1,6 +1,5 @@
 import type {
   LingoTrackerCollection,
-  LingoTrackerConfig,
   LoadPreferredTerminologyResult,
   ProjectTermsConfigView,
   ResolvedProtectedTerms,
@@ -9,7 +8,6 @@ import type {
   LingoTrackerCollectionDto,
   LingoTrackerConfigDto,
   PreferredTermRuleDto,
-  UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
 import { mapCollectionToDto } from './collection.mapper';
 
@@ -68,27 +66,4 @@ export function mapConfigToDto(snapshot: ProjectTermsConfigView): LingoTrackerCo
     ...mapPreferredTerminology(terminology),
     ...(projectName && { projectName }),
   };
-}
-
-/**
- * Maps a writable top-level config update to the corresponding core fields.
- * Only supported writeable globals are mapped — `collections`, `locales`, and
- * `baseLocale` are intentionally never written through this path.
- */
-export function mapDtoToConfigUpdate(dto: UpdateConfigDto): Partial<LingoTrackerConfig> & ConfigFileUpdate {
-  const update: ConfigFileUpdate = {};
-  if (dto.protectedTerms !== undefined) {
-    update.protectedTerms = dto.protectedTerms;
-  }
-  if (dto.preferredTerminology !== undefined) {
-    update.preferredTerminology = dto.preferredTerminology;
-  }
-  return update;
-}
-
-/** Writable lists that live in their own files rather than in `.lingo-tracker.json`. */
-export interface ConfigFileUpdate {
-  protectedTerms?: string[];
-  /** Passed through untouched for core to shape-check and validate. */
-  preferredTerminology?: PreferredTermRuleDto[];
 }

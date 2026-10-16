@@ -1,6 +1,6 @@
 import type { LingoTrackerConfig, ProjectTermsConfigView, ResolvedProtectedTerms } from '@simoncodes-ca/core';
 import { mapCollectionToDto, mapDtoToCollection } from './collection.mapper';
-import { mapConfigToDto, mapDtoToConfigUpdate } from './config.mapper';
+import { mapConfigToDto } from './config.mapper';
 
 describe('config.mapper', () => {
   describe('mapConfigToDto', () => {
@@ -220,28 +220,6 @@ describe('config.mapper', () => {
     it('exposes projectName only when provided', () => {
       expect(mapConfigToDto(snapshot({ config, projectName: 'lingo-tracker' })).projectName).toBe('lingo-tracker');
       expect('projectName' in mapConfigToDto(snapshot({ config }))).toBe(false);
-    });
-  });
-
-  describe('mapDtoToConfigUpdate', () => {
-    it('maps protectedTerms', () => {
-      expect(mapDtoToConfigUpdate({ protectedTerms: ['iPhone'] })).toEqual({ protectedTerms: ['iPhone'] });
-    });
-
-    it('maps preferredTerminology', () => {
-      const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
-      expect(mapDtoToConfigUpdate({ preferredTerminology: rules })).toEqual({ preferredTerminology: rules });
-    });
-
-    it('returns an empty update when no writable fields present', () => {
-      expect(mapDtoToConfigUpdate({})).toEqual({});
-    });
-
-    it('never maps collections, locales, or baseLocale', () => {
-      const update = mapDtoToConfigUpdate({ protectedTerms: ['iPhone'] });
-      expect('collections' in update).toBe(false);
-      expect('locales' in update).toBe(false);
-      expect('baseLocale' in update).toBe(false);
     });
   });
 });

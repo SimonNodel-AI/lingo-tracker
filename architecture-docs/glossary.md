@@ -749,7 +749,7 @@ Explained in context: [`core-library.md`](core-library.md#folder-pruning)
 
 ### Folder Response Mapper
 
-The pure API projection in `apps/api/src/app/mappers/folder-response.mapper.ts`. `mapCreateFolderResultToDto(result, folderName)` builds a loaded empty insertion node with the submitted name and core's resolved [Folder Address](#folder-address), even for an already-existing folder. `mapDeleteFolderResultToDto(result)` adds the successful deletion marker. `mapMoveFolderResultToDto(result)` reuses the resource move projection to exclude internal [Run Outcome](#run-outcome) and preserve diagnostic arrays, then supplies zero when the folder count is absent. These functions perform no validation or I/O; core errors propagate before mapping.
+The pure API projection in `apps/api/src/app/mappers/folder-response.mapper.ts`. `mapCreateFolderResultToDto(result, folderName)` builds a loaded empty insertion node with the submitted name and core's resolved [Folder Address](#folder-address), even for an already-existing folder. The delete and move controllers use one-line payload projections. Deletion adds the successful deletion marker. Moves exclude internal [Run Outcome](#run-outcome), preserve diagnostic arrays and default an absent folder count to zero. The mapper performs no validation or I/O.
 
 Explained in context: [`api.md`](api.md#mapper-layer)
 
@@ -1272,7 +1272,7 @@ The shared read-model types in `libs/core/src/lib/resource/resource-tree-types.t
 
 ### Response Contracts
 
-The compile-time payload checks in `apps/api/src/app/mappers/response-contracts.ts`. `ResponseContractChecks` asserts equality of core's independently owned locale result types and the response DTOs, normalizing readonly properties. It also checks delete payloads without internal `outcome`, and move payloads without `outcome` or `foldersDeleted`, requiring the always-present diagnostic arrays. It also checks `TreeAnswer['body']` against the tree/status DTO union and the non-ready `TreeRead` statuses against the exact states handled by the tree mapper. A changed payload field or new index state fails API typecheck. This module emits no runtime behavior and keeps core independent of HTTP contracts; locale controllers return results directly, while delete and move mappers project internal fields away.
+The compile-time payload checks in `apps/api/src/app/mappers/response-contracts.ts`. `ResponseContractChecks` asserts equality of core's independently owned locale result types and the response DTOs, normalizing readonly properties. It also checks delete payloads without internal `outcome`, and move payloads without `outcome` or `foldersDeleted`, requiring the always-present diagnostic arrays. It also checks `TreeAnswer['body']` against the tree/status DTO union and the non-ready `TreeRead` statuses against the exact states handled by the tree mapper. A changed payload field or new index state fails API typecheck. This module emits no runtime behavior and keeps core independent of HTTP contracts; locale controllers return results directly, while delete and move controllers project internal fields away. Folder payload and terminology checks also preserve the DTO boundary.
 
 Explained in context: [`api.md`](api.md#mapper-layer), [`core-library.md`](core-library.md#collection-bound-operations)
 

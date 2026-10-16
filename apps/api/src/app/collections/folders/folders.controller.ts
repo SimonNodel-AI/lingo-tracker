@@ -8,11 +8,7 @@ import type {
   MoveFolderDto,
   MoveFolderResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import {
-  mapCreateFolderResultToDto,
-  mapDeleteFolderResultToDto,
-  mapMoveFolderResultToDto,
-} from '../../mappers/folder-response.mapper';
+import { mapCreateFolderResultToDto } from '../../mappers/folder-response.mapper';
 import { createFolderBody, deleteFolderBody, moveFolderBody } from '../../validation/dto-schemas';
 import { ValidBody } from '../../validation/valid-body';
 import { RouteCollection } from '../route-collection';
@@ -37,7 +33,7 @@ export class FoldersController {
   ): Promise<DeleteFolderResponseDto> {
     const result = deleteFolder(collection, deleteFolderDto);
 
-    return mapDeleteFolderResultToDto(result);
+    return { deleted: true, folderPath: result.folderPath, resourcesDeleted: result.resourcesDeleted };
   }
 
   /**
@@ -58,6 +54,7 @@ export class FoldersController {
       nestUnderDestination: moveFolderDto.nestUnderDestination,
     });
 
-    return mapMoveFolderResultToDto(result);
+    const { movedCount, warnings, errors } = result;
+    return { movedCount, foldersDeleted: result.foldersDeleted ?? 0, warnings, errors };
   }
 }

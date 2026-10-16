@@ -43,12 +43,10 @@ import type { Response } from 'express';
 import { CollectionIndex } from '../../cache/collection-index.service';
 import {
   mapCreateResourcesResultToDto,
-  mapDeleteResourceResultToDto,
-  mapMoveResourcesResultToDto,
   mapTranslateResourceResultToDto,
   mapUpdateResourceResultToDto,
 } from '../../mappers/resource-response.mapper';
-import { blankSearchResults, mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
+import { mapSearchPageToDto, searchRequestFromQuery } from '../../mappers/search-result.mapper';
 import { describeTreeRead } from '../../mappers/tree-response.mapper';
 import { TranslationJobService } from '../../translation-job/translation-job.service';
 import {
@@ -105,7 +103,7 @@ export class ResourcesController {
   ): Promise<DeleteResourceResponseDto> {
     const result = deleteResource(collection, dto);
 
-    return mapDeleteResourceResultToDto(result);
+    return { entriesDeleted: result.entriesDeleted, errors: result.errors };
   }
 
   @Post('move')
@@ -114,7 +112,7 @@ export class ResourcesController {
     @ValidBody(moveResourcesBody) dto: MoveResourceDto,
   ): Promise<MoveResourceResponseDto> {
     const result = executeMoves(collection, dto.moves);
-    return mapMoveResourcesResultToDto(result);
+    return { movedCount: result.movedCount, warnings: result.warnings, errors: result.errors };
   }
 
   @Patch()
@@ -161,7 +159,7 @@ export class ResourcesController {
   ): Promise<SearchResultsDto> {
     const request = searchRequestFromQuery(dto);
     if (request.kind === 'blank') {
-      return blankSearchResults(dto.query);
+      return { query: dto.query || '', results: [], totalFound: 0, limited: false };
     }
 
     const page = this.#index.searchPage(collection, request);

@@ -24,11 +24,6 @@ export function searchRequestFromQuery(dto: SearchQuery): NormalizedSearchReques
   );
 }
 
-/** Maps the normalized blank-query outcome, preserving the original query. */
-export function blankSearchResults(query: string | undefined): SearchResultsDto {
-  return { query: query || '', results: [], totalFound: 0, limited: false };
-}
-
 /** Maps a search page, preserving the original query. */
 export function mapSearchPageToDto(
   query: string | undefined,
@@ -37,7 +32,7 @@ export function mapSearchPageToDto(
 ): SearchResultsDto {
   return {
     query: query ?? '',
-    results: mapSearchResultsToDto(page.results, collection),
+    results: page.results.map((result) => mapSearchResultToDto(result, collection)),
     totalFound: page.totalFound,
     limited: page.limited,
   };
@@ -51,9 +46,4 @@ export function mapSearchResultToDto(searchResult: SearchResult, collection: Col
     matchedLocales: searchResult.matchedLocales,
     ...(searchResult.similarity !== undefined && { similarity: searchResult.similarity }),
   };
-}
-
-/** Maps search hits to DTOs, keeping their order. */
-export function mapSearchResultsToDto(searchResults: SearchResult[], collection: Collection): SearchResultDto[] {
-  return searchResults.map((result) => mapSearchResultToDto(result, collection));
 }

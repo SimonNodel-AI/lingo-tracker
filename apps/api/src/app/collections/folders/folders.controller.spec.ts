@@ -8,6 +8,8 @@ import { Test } from '@nestjs/testing';
 import { addResource, type LingoTrackerConfig, loadConfig, openCollection } from '@simoncodes-ca/core';
 import { AppModule } from '../../app.module';
 import { ConfigService } from '../../config/config.service';
+import { collection as contractCollection } from '../../mappers/resource.mapper.test-support';
+import { FoldersController } from './folders.controller';
 
 /** Real Nest routes, request pipes, exception filter, index and core; no delegation mocks. */
 describe('FoldersController HTTP (real project)', () => {
@@ -282,9 +284,91 @@ describe('FoldersController HTTP (real project)', () => {
     });
     expect(existsSync(join(cwd, 'translations/test/apps/common/buttons'))).toBe(false);
   });
+  it('serializes the absent move count default and successful deletion marker through the routes', async () => {
+    await seed('apps.common.buttons', 2);
+    const address = server.address() as AddressInfo | null;
+    if (address === null) throw new Error('HTTP server has no address');
+    const url = `http://localhost:${address.port}/collections/test-collection/folders`;
+    // Core currently supplies folder counts; supply an absent count to exercise the route fallback.
+    const executeMove = jest.spyOn(core, 'executeMove').mockReturnValueOnce({
+      outcome: 'succeeded',
+      movedCount: 0,
+      warnings: [],
+      errors: [],
+    });
+    try {
+      const response = await fetch(`${url}/move`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ sourceFolderPath: 'apps.common.buttons', destinationFolderPath: 'apps.shared' }),
+      });
+      expect(response.status).toBe(201);
+      expect(await response.text()).toBe('{"movedCount":0,"foldersDeleted":0,"warnings":[],"errors":[]}');
+    } finally {
+      executeMove.mockRestore();
+    }
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ folderPath: 'apps.common.buttons' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('{"deleted":true,"folderPath":"apps.common.buttons","resourcesDeleted":2}');
+  });
   it('answers 404 when core reports that the folder does not exist', async () => {
     const result = await request('DELETE', { folderPath: 'apps.missing' });
     expect(result.status).toBe(404);
     expect(result.body.statusCode).toBe(404);
+  });
+});
+
+// Keep real core operations by default; individual return-contract cases supply edge results.
+jest.mock('@simoncodes-ca/core', () => ({
+  ...jest.requireActual<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core'),
+}));
+
+const core = jest.requireMock<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
+
+describe('FoldersController response contracts', () => {
+  const controller = new FoldersController();
+  const opened = {
+    ...contractCollection,
+    projectRoot: '/t',
+    sourceConfig: {
+      collections: {},
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+    },
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('adds the successful deletion marker in wire order', async () => {
+    jest.spyOn(core, 'deleteFolder').mockReturnValue({ folderPath: 'apps.common', resourcesDeleted: 2 });
+    const dto = await controller.delete(contractCollection, { folderPath: 'apps.common' });
+    expect(Object.keys(dto)).toEqual(['deleted', 'folderPath', 'resourcesDeleted']);
+    expect(JSON.stringify(dto)).toBe('{"deleted":true,"folderPath":"apps.common","resourcesDeleted":2}');
+  });
+
+  it('defaults absent folder counts to zero and preserves counts and diagnostics in wire order', async () => {
+    for (const result of [
+      { outcome: 'succeeded' as const, movedCount: 2, foldersDeleted: 1, warnings: [], errors: [] },
+      { outcome: 'failed' as const, movedCount: 0, warnings: ['Warning'], errors: ['Failed'] },
+    ]) {
+      jest.spyOn(core, 'executeMove').mockReturnValue(result);
+      const dto = await controller.move(opened, { sourceFolderPath: 'apps.common', destinationFolderPath: 'shared' });
+      expect(Object.keys(dto)).toEqual(['movedCount', 'foldersDeleted', 'warnings', 'errors']);
+      expect(dto.warnings).toBe(result.warnings);
+      expect(dto.errors).toBe(result.errors);
+      expect(JSON.stringify(dto)).toBe(
+        JSON.stringify({
+          movedCount: result.movedCount,
+          foldersDeleted: 'foldersDeleted' in result ? result.foldersDeleted : 0,
+          warnings: result.warnings,
+          errors: result.errors,
+        }),
+      );
+    }
   });
 });
