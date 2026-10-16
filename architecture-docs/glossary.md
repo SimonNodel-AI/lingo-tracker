@@ -424,9 +424,19 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 ---
 
+### Config File
+
+`libs/core/src/lib/config/config-file-operations.ts` owns reading, parsing, hashing, serializing and writing `.lingo-tracker.json`. `loadConfig({ cwd? })` returns the parsed file without validation or normalization. Its exact content version stays in a private WeakMap. The same content reader supplies the version check before a guarded write; missing or changed bytes raise `ConfigChangedError`, including invalid JSON from another writer.
+
+`guardedConfigWrite(project)` keeps the existing read, write, create, update, version-check and transaction interface. Each write validates first, serializes once, writes that string and advances its baseline from the same string. Exclusive creation refuses an existing file. The [Config Write Transaction](#config-write-transaction) supplies companion snapshots and rollback; Config File owns the guard and write-state decisions used during restoration.
+
+Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
+
+---
+
 ### Config Write Transaction
 
-`guardedConfigWrite(project).transaction(config, companions, onOutcome?)` writes optional config and staged companion files together. The shared transaction returns `{ status }` on success or `{ status, error, reverted }` after failure. The optional observer receives this outcome before the config writer throws the original error; Project Terms carries the restore fact separately from error identity. `CompanionFileWrite` supplies a destination path and a write callback. The shared implementation is `libs/core/src/lib/config/config-write-transaction.ts`.
+`guardedConfigWrite(project).transaction(config, companions, onOutcome?)` writes optional config and staged companion files together. The shared transaction returns `{ status }` on success or `{ status, error, reverted }` after failure. The optional observer receives this outcome before the config writer throws the original error; Project Terms carries the restore fact separately from error identity. `CompanionFileWrite` supplies a destination path and a write callback. The snapshot and rollback implementation is `libs/core/src/lib/config/config-write-transaction.ts`; [Config File](#config-file) owns the version baseline and decides whether config restoration is allowed.
 
 The transaction snapshots every destination before the first write. It restores attempted destinations in reverse order after a failure. Existing files regain their exact bytes; new files disappear; existing directories stay intact. After a completed config write, the config guard checks for concurrent changes before any restoration. If config changed, the transaction preserves companion files that the current config can still reference. Validation and version-check failures leave config untouched. Once the config write starts, a failed write restores its previous bytes. Restoration failures become the original error's cause.
 
@@ -438,7 +448,7 @@ Collection Lifecycle uses this transaction only when no locale file write was at
 
 One write to `.lingo-tracker.json` from the Tracker UI, and the one way its outcome comes back. In code, `injectConfigWrite(store)` in `apps/tracker/src/app/collections/store/config-write.ts` returns the function that runs one, and every mutation of `CollectionsStore` is: `createCollection`, `updateCollection`, `deleteCollection`, `updateGlobalConfig`, and the bundle feature's `createBundle`, `updateBundle`, `deleteBundle`. Each sends its request, reloads `GET /api/config`, stores the config, and returns an Observable of that config, so the caller hears back only once the store already holds what the server holds; if that reload fails, the write still happened, so the Observable resolves with `null` and the store reports the load failure in `error`; a rejected write errors with the [API Error](#api-error) of the request (`conflict` for a taken name, `invalid` with the rule messages or the per-row preferred-terminology errors as `details`, anything else) and leaves the store as it was. The Observable is cold, like the browser store's entry writes: nothing is sent until the caller subscribes, and the caller owns the reaction. The collection and bundle form dialogs delegate their store writes to [Dialog Config Submit](#dialog-config-submit), cannot be closed while the write is in flight, and close only on success; a taken name lands on the name field, any other refusal on an error line in the dialog (the bundle dialog lists the server's rule messages). The collections manager toasts a create or edit only when a dialog closes with a saved result, and awaits a delete's outcome before it toasts. Settings Draft handles the save outcome: the saved config reseeds both lists, while the page gives one toast (a failed reload still earns the toast); a refusal keeps every edit and maps rule errors onto the rows that were sent, while the page shows its message. The store's `error` signal reports only a failed load (the initial one, or the reload after a write).
 
-Core config writes can stage companion term files through `guardedConfigWrite(project).transaction(config, companions)`. See [Config Write Transaction](#config-write-transaction) for its rollback scope.
+Core [Config File](#config-file) writes can stage companion term files through `guardedConfigWrite(project).transaction(config, companions)`. See [Config Write Transaction](#config-write-transaction) for its rollback scope.
 
 Explained in context: [`frontend.md`](frontend.md#collectionsstore)
 

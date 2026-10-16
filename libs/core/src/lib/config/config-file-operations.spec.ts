@@ -1,17 +1,16 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { ConfigChangedError, InvalidConfigError } from '../errors/lingo-tracker-error';
-import { writeJsonFile } from '../file-io/json-file-operations';
-import { createConfigFileOperations, guardedConfigWrite } from './config-file-operations';
-import { loadConfig } from './load-config';
+import { ErrorMessages } from '../errors/error-messages';
+import { ConfigChangedError, CoreOperationError, InvalidConfigError } from '../errors/lingo-tracker-error';
+import { createConfigFileOperations, guardedConfigWrite, loadConfig } from './config-file-operations';
 
-vi.mock('../file-io/json-file-operations', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../file-io/json-file-operations')>();
-  return { ...actual, writeJsonFile: vi.fn(actual.writeJsonFile) };
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, writeFileSync: vi.fn(actual.writeFileSync) };
 });
 
 describe('ConfigFileOperations version check', () => {
@@ -72,6 +71,43 @@ describe('ConfigFileOperations version check', () => {
     expect(JSON.parse(readFileSync(configPath(), 'utf8')).exportFolder).toBe('second');
   });
 
+  it('uses the written bytes as the baseline with one serialization per guarded write', () => {
+    writeFileSync(configPath(), JSON.stringify(config()));
+    const sourceConfig = loadConfig({ cwd: tempDir() });
+    const handle = guardedConfigWrite({ projectRoot: tempDir(), sourceConfig });
+    let serializations = 0;
+    const nextConfig = {
+      ...sourceConfig,
+      toJSON: () => ({ ...sourceConfig, exportFolder: `written-${++serializations}` }),
+    };
+
+    handle.write(nextConfig);
+    expect(serializations).toBe(1);
+    expect(readFileSync(configPath(), 'utf8')).toBe(
+      JSON.stringify({ ...sourceConfig, exportFolder: 'written-1' }, null, 2),
+    );
+    handle.write(nextConfig);
+    expect(serializations).toBe(2);
+    expect(loadConfig({ cwd: tempDir() }).exportFolder).toBe('written-2');
+
+    // Even a whitespace-only external edit must invalidate the exact-byte baseline.
+    const external = `${readFileSync(configPath(), 'utf8')}\n`;
+    writeFileSync(configPath(), external);
+    expect(() => handle.write(nextConfig)).toThrow(ConfigChangedError);
+    expect(serializations).toBe(2);
+    expect(readFileSync(configPath(), 'utf8')).toBe(external);
+  });
+
+  it('refuses a missing or malformed file after reading without parsing external edits', () => {
+    writeFileSync(configPath(), JSON.stringify(config()));
+    const handle = createConfigFileOperations({ cwd: tempDir() });
+    const snapshot = handle.read();
+    writeFileSync(configPath(), '{invalid');
+    expect(() => handle.write(snapshot)).toThrow(ConfigChangedError);
+    unlinkSync(configPath());
+    expect(() => handle.write(snapshot)).toThrow(ConfigChangedError);
+  });
+
   it('refuses a stale opened project and keeps the other writer’s bytes', () => {
     writeFileSync(configPath(), JSON.stringify(config()));
     const sourceConfig = loadConfig({ cwd: tempDir() });
@@ -101,6 +137,15 @@ describe('ConfigFileOperations version check', () => {
     expect(() => guardedConfigWrite({ projectRoot: tempDir(), sourceConfig })).toThrow(InvalidConfigError);
   });
 
+  it('refuses an exclusive create if another writer creates the file after the handle is opened', () => {
+    const handle = createConfigFileOperations({ cwd: tempDir() });
+    const external = '{"external":true}';
+    writeFileSync(configPath(), external);
+
+    expect(() => handle.create(config())).toThrow(new InvalidConfigError(ErrorMessages.configAlreadyExists()));
+    expect(readFileSync(configPath(), 'utf8')).toBe(external);
+  });
+
   it('restores exact config bytes when a transaction config write fails part-way', () => {
     writeFileSync(configPath(), `${JSON.stringify(config())}\n`);
     const sourceConfig = loadConfig({ cwd: tempDir() });
@@ -110,8 +155,8 @@ describe('ConfigFileOperations version check', () => {
     writeFileSync(companionPath, '["Original"]\n');
     const companionBefore = readFileSync(companionPath);
     const ioError = new Error('ENOSPC');
-    // Use the existing one-call writer mock; truncation and restoration use real filesystem writes.
-    vi.mocked(writeJsonFile).mockImplementationOnce(({ filePath }) => {
+    // Inject a partial write; truncation and restoration use real filesystem writes.
+    vi.mocked(writeFileSync).mockImplementationOnce((filePath) => {
       writeFileSync(filePath, '{"baseLocale":');
       throw ioError;
     });
@@ -119,7 +164,11 @@ describe('ConfigFileOperations version check', () => {
       handle.transaction({ ...sourceConfig, exportFolder: 'ours' }, [
         { path: companionPath, write: () => writeFileSync(companionPath, '["Changed"]\n') },
       ]),
-    ).toThrow(new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: ioError }));
+    ).toThrow(
+      new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, {
+        cause: new CoreOperationError(`Failed to write file ${configPath()}: ENOSPC`),
+      }),
+    );
     expect(readFileSync(configPath())).toEqual(before);
     expect(readFileSync(companionPath)).toEqual(companionBefore);
     handle.write({ ...sourceConfig, exportFolder: 'retry' });
@@ -131,7 +180,7 @@ describe('ConfigFileOperations version check', () => {
     const sourceConfig = loadConfig({ cwd: tempDir() });
     const before = readFileSync(configPath(), 'utf8');
     const ioError = new Error('ENOSPC');
-    vi.mocked(writeJsonFile).mockImplementationOnce(() => {
+    vi.mocked(writeFileSync).mockImplementationOnce(() => {
       throw ioError;
     });
     expect(() => guardedConfigWrite({ projectRoot: tempDir(), sourceConfig }).write(sourceConfig)).toThrow(

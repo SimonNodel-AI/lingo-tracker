@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../constants';
-import { loadConfig } from '../lib/config/load-config';
+import { loadConfig } from '../lib/config/config-file-operations';
 import { CollectionAlreadyExistsError, ConfigChangedError } from '../lib/errors/lingo-tracker-error';
 import { useTempDir } from '../testing/temp-dir.spec-helpers';
 import { addCollection } from './add-collection';

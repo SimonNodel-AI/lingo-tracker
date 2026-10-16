@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG_FILENAME } from '../../constants';
 import { ConfigNotFoundError, ConfigParseError, LingoTrackerError } from '../errors/lingo-tracker-error';
-import { loadConfig } from './load-config';
+import { loadConfig } from './config-file-operations';
 
 describe('loadConfig', () => {
   let dir: string;

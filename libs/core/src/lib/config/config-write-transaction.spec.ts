@@ -9,9 +9,8 @@ import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { ConfigChangedError, CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
-import { guardedConfigWrite } from './config-file-operations';
+import { guardedConfigWrite, loadConfig } from './config-file-operations';
 import { runConfigWriteTransaction } from './config-write-transaction';
-import { loadConfig } from './load-config';
 import { openCollection } from './open-collection';
 import { updateProjectTerms } from './update-project-terms';
 

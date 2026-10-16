@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILENAME } from '../../constants';
 import { InvalidConfigError } from '../errors/lingo-tracker-error';
+import { loadConfig } from './config-file-operations';
 import { initProject } from './init-project';
-import { loadConfig } from './load-config';
 
 describe('initProject', () => {
   let cwd: string;

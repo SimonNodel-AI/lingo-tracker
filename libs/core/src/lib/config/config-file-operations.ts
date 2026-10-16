@@ -1,19 +1,84 @@
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { ErrorMessages } from '../errors/error-messages';
-import { ConfigChangedError, InvalidConfigError, LingoTrackerError } from '../errors/lingo-tracker-error';
+import {
+  ConfigChangedError,
+  ConfigNotFoundError,
+  ConfigParseError,
+  CoreOperationError,
+  InvalidConfigError,
+  LingoTrackerError,
+} from '../errors/lingo-tracker-error';
 import { hasFsErrorCode } from '../file-io/fs-error';
-import { writeJsonFile } from '../file-io/json-file-operations';
 import {
   type CompanionFileWrite,
   type ConfigWriteOutcome,
   runConfigWriteTransaction,
 } from './config-write-transaction';
-import { configContentHash, configReadVersion, loadConfig } from './load-config';
 import type { OpenedProject } from './open-collection';
+
+const readVersions = new WeakMap<LingoTrackerConfig, string>();
+
+function configContentHash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
+/** Read exact bytes and their version without parsing so guards detect malformed external edits. */
+function readConfigContent(configPath: string): { content: string; version: string } | undefined {
+  try {
+    const content = readFileSync(configPath, 'utf8');
+    return { content, version: configContentHash(content) };
+  } catch (error) {
+    if (hasFsErrorCode(error, 'ENOENT')) return undefined;
+    throw error;
+  }
+}
+
+export interface LoadConfigOptions {
+  /** Directory that holds `.lingo-tracker.json`. Default: `process.cwd()`. */
+  readonly cwd?: string;
+}
+
+/**
+ * Reads and parses `.lingo-tracker.json`. This is the only config reader: the CLI, the
+ * API, and core's own config writers all go through it.
+ *
+ * The result is the file as written. It is not validated and no fallbacks are applied;
+ * call {@link openCollection} to get a collection's effective settings.
+ *
+ * @throws {ConfigNotFoundError} The file does not exist.
+ * @throws {ConfigParseError} The file is not valid JSON, or not a JSON object.
+ * Other I/O failures (for example, permission denied) propagate unchanged.
+ */
+export function loadConfig(options: LoadConfigOptions = {}): LingoTrackerConfig {
+  const configPath = resolve(options.cwd ?? process.cwd(), CONFIG_FILENAME);
+
+  if (!existsSync(configPath)) {
+    throw new ConfigNotFoundError(configPath);
+  }
+
+  const file = readConfigContent(configPath);
+  if (file === undefined) throw new ConfigNotFoundError(configPath);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(file.content);
+  } catch (error) {
+    throw new ConfigParseError(configPath, error instanceof Error ? error.message : String(error));
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new ConfigParseError(configPath, 'the configuration must be a JSON object');
+  }
+
+  const config = parsed as LingoTrackerConfig;
+  readVersions.set(config, file.version);
+  return config;
+}
 
 export interface ConfigFileOperations {
   /** Read the configuration file */
@@ -57,20 +122,17 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
   const cwd = params.cwd ?? process.cwd();
   const validate = params.validate ?? true;
   const configPath = resolve(cwd, CONFIG_FILENAME);
-  let expectedVersion = params.snapshot === undefined ? undefined : configReadVersion(params.snapshot);
+  let expectedVersion = params.snapshot === undefined ? undefined : readVersions.get(params.snapshot);
 
   const assertUnchanged = (): void => {
     if (expectedVersion === undefined) return;
-    let currentContent: string;
+    let current: ReturnType<typeof readConfigContent>;
     try {
-      currentContent = readFileSync(configPath, 'utf8');
+      current = readConfigContent(configPath);
     } catch (error) {
-      if (hasFsErrorCode(error, 'ENOENT')) {
-        throw new ConfigChangedError();
-      }
       throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
     }
-    if (configContentHash(currentContent) !== expectedVersion) throw new ConfigChangedError();
+    if (current?.version !== expectedVersion) throw new ConfigChangedError();
   };
 
   const writeConfig = (config: LingoTrackerConfig, createOnly: boolean, onWriteStarted?: () => void): void => {
@@ -78,14 +140,18 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
     assertUnchanged();
     try {
       onWriteStarted?.();
-      writeJsonFile({ filePath: configPath, data: config, pretty: true, createOnly });
+      // Serialize once: the new baseline must describe exactly the string passed to fs.
+      const content = JSON.stringify(config, null, 2);
+      writeFileSync(configPath, content, createOnly ? { encoding: 'utf8', flag: 'wx' } : 'utf8');
+      expectedVersion = configContentHash(content);
     } catch (error) {
       if (createOnly && hasFsErrorCode(error, 'EEXIST')) {
         throw new InvalidConfigError(ErrorMessages.configAlreadyExists());
       }
-      throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause: error });
+      const reason = error instanceof Error ? error.message : String(error);
+      const cause = new CoreOperationError(ErrorMessages.fileWriteFailed(configPath, reason));
+      throw new InvalidConfigError(`Could not write ${CONFIG_FILENAME}`, { cause });
     }
-    expectedVersion = configContentHash(JSON.stringify(config, null, 2));
   };
 
   return {
@@ -99,7 +165,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
         throw new InvalidConfigError(`Could not read ${CONFIG_FILENAME}`, { cause: error });
       }
 
-      expectedVersion = configReadVersion(config);
+      expectedVersion = readVersions.get(config);
 
       if (validate) {
         prepareConfigSnapshot(config);

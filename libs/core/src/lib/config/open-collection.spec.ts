@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
-import { loadConfig } from './load-config';
+import { loadConfig } from './config-file-operations';
 import { openCollection } from './open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from './preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from './protected-terms-file';
