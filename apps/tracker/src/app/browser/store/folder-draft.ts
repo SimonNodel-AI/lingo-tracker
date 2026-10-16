@@ -40,7 +40,6 @@ export class FolderDraftSession {
   readonly isCreating = computed(() => this.#pending() > 0);
   readonly #local = signal(initialFolderDraft);
   readonly state = computed(() => this.adapter.state?.read() ?? this.#local());
-  #revision = 0;
 
   constructor(private readonly adapter: FolderDraftAdapter) {}
 
@@ -49,20 +48,19 @@ export class FolderDraftSession {
     this.#write({
       isAddingFolder: true,
       addFolderParentPath: parentPath,
-      folderDraftId: ++this.#revision,
+      folderDraftId: this.state().folderDraftId + 1,
       folderCreateError: null,
     });
-    if (parentPath !== null) this.adapter.revealParent?.(parentPath);
+    if (parentPath) this.adapter.revealParent?.(parentPath);
   }
 
   cancel(): void {
-    this.#write({ ...initialFolderDraft, folderDraftId: ++this.#revision });
+    this.#write({ ...initialFolderDraft, folderDraftId: this.state().folderDraftId + 1 });
   }
 
-  /** Retires pending confirmations while restoring the store's initial collection state. */
+  /** Clears collection state while advancing the draft identity past pending confirmations. */
   reset(): void {
-    ++this.#revision;
-    this.#write(initialFolderDraft);
+    this.cancel();
   }
 
   edit(): void {
@@ -73,7 +71,6 @@ export class FolderDraftSession {
   confirm(name: string, parentPath?: string | null): Observable<CreateFolderOutcome> {
     return defer(() => {
       const draft = this.state();
-      const revision = this.#revision;
       const parent = parentPath === undefined ? draft.addFolderParentPath : parentPath;
       this.#pending.update((count) => count + 1);
       let pending = true;
@@ -85,7 +82,7 @@ export class FolderDraftSession {
       return defer(() => this.adapter.create(name, parent || null)).pipe(
         tap((outcome) => {
           release();
-          this.#settle(revision, outcome);
+          this.#settle(draft.folderDraftId, outcome);
           if (outcome.kind === 'created') {
             this.adapter.created?.(outcome.folder);
             if (parent) this.adapter.revealParent?.(parent);
@@ -101,9 +98,9 @@ export class FolderDraftSession {
     else this.#local.set(draft);
   }
 
-  #settle(revision: number, outcome: CreateFolderOutcome): void {
+  #settle(draftId: number, outcome: CreateFolderOutcome): void {
     const draft = this.state();
-    if (this.#revision !== revision) return;
+    if (draft.folderDraftId !== draftId) return;
     if (outcome.kind === 'stale-session') {
       if (this.adapter.staleDraft === 'cancel') this.cancel();
       return;

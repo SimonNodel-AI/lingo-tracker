@@ -1,5 +1,5 @@
 import { computed, DestroyRef, inject } from '@angular/core';
-import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
+import { patchState, signalStoreFeature, type, withComputed, withMethods, withState } from '@ngrx/signals';
 import { folderPathFromSegments, folderPathLeaf, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
 import { defer, finalize, type Observable, of } from 'rxjs';
 import { createRestartableDelay } from '../../../shared/timed-transients';
@@ -35,12 +35,16 @@ export interface FolderWritesState extends FolderDraft {
   movesInFlight: number;
 }
 
-export const initialFolderWritesState: FolderWritesState = {
-  ...initialFolderDraft,
+const initialFolderOperationsState: Omit<FolderWritesState, keyof FolderDraft> = {
   newlyCreatedFolderPath: null,
   isDeletingFolder: false,
   deletingFolderPath: null,
   movesInFlight: 0,
+};
+
+export const initialFolderWritesState: FolderWritesState = {
+  ...initialFolderDraft,
+  ...initialFolderOperationsState,
 };
 
 export type {
@@ -68,7 +72,9 @@ export function withFolderWritesFeature<_>() {
         rollbackMirrorMove(rollback: MirrorRollback): void;
       }>(),
     },
-    withCollectionState(initialFolderWritesState),
+    withCollectionState(initialFolderOperationsState),
+    // Folder Draft Session resets these fields while advancing their identity.
+    withState(initialFolderDraft),
     withComputed(({ movesInFlight }) => ({
       isMoving: computed(() => movesInFlight() > 0),
     })),

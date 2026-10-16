@@ -3,12 +3,14 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   type OnInit,
   output,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
@@ -42,6 +44,7 @@ import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 })
 export class FolderPicker implements OnInit {
   readonly #store = inject(BrowserStore);
+  readonly #destroyRef = inject(DestroyRef);
   readonly #feedback = injectFeedback();
   readonly #transloco = inject(TranslocoService);
   readonly TOKENS = TRACKER_TOKENS;
@@ -159,7 +162,10 @@ export class FolderPicker implements OnInit {
 
   onFolderNameConfirmed(folderName: string): void {
     if (this.addFolderParentPath() === null) return;
-    this.#draftSession.confirm(folderName).subscribe((outcome) => this.#feedback.toast(outcome.feedback));
+    this.#draftSession
+      .confirm(folderName)
+      .pipe(takeUntilDestroyed(this.#destroyRef))
+      .subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   onFolderNameEdited(): void {

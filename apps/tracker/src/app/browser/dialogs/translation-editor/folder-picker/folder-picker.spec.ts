@@ -3,7 +3,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
 import { toApiError } from '../../../../shared/api-error/api-error';
@@ -202,6 +202,29 @@ describe('FolderPicker', () => {
       expect(component.selectedPath()).toBe('common.new');
       expect(component.isCreatingFolder()).toBe(false);
       expect(spectator.inject(NotificationService).success).not.toHaveBeenCalled();
+    });
+
+    it('unsubscribes from a pending create when the picker is destroyed', () => {
+      const late = new Subject<ReturnType<typeof decideCreateFolder>>();
+      mockStore.createFolder.mockReturnValue(late);
+      const created = vi.fn();
+      component.folderCreated.subscribe(created);
+      component.onAddFolder('common');
+      component.onFolderNameConfirmed('new');
+      expect(late.observed).toBe(true);
+
+      fixture.destroy();
+      expect(late.observed).toBe(false);
+      expect(component.isCreatingFolder()).toBe(false);
+      late.next(
+        decideCreateFolder({
+          kind: 'created',
+          folder: { name: 'new', fullPath: 'common.new', loaded: false },
+          created: false,
+        }),
+      );
+      expect(created).not.toHaveBeenCalled();
+      expect(spectator.inject(NotificationService).info).not.toHaveBeenCalled();
     });
 
     it('toasts an existing folder as info and still selects it', () => {

@@ -173,14 +173,14 @@ describe.each(['sidebar', 'picker'] as const)('Folder Draft Session: %s adapter'
   });
 
   it('keeps identities distinct after collection storage resets', () => {
-    const { session, create, stored } = harness(surface);
+    const { session, create } = harness(surface);
     const late = new Subject<CreateFolderOutcome>();
     create.mockReturnValue(late);
     session.start('common');
     session.confirm('new').subscribe();
-    stored.set(initialFolderDraft);
+    const previousId = session.state().folderDraftId;
     session.reset();
-    expect(session.state()).toEqual(initialFolderDraft);
+    expect(session.state()).toEqual({ ...initialFolderDraft, folderDraftId: previousId + 1 });
     session.start('errors');
     late.next(refusal);
     expect(session.state().addFolderParentPath).toBe('errors');
@@ -224,7 +224,7 @@ describe.each(['sidebar', 'picker'] as const)('Folder Draft Session: %s adapter'
   });
 });
 
-it('reveals the picker parent at start and again after creation', () => {
+it('reveals a non-root picker parent at start and again after creation', () => {
   const { session, expanded, create } = harness('picker');
   const late = new Subject<CreateFolderOutcome>();
   create.mockReturnValue(late);
@@ -234,6 +234,34 @@ it('reveals the picker parent at start and again after creation', () => {
   expanded.set(new Set());
   late.next(created);
   expect(expanded()).toEqual(new Set(['common']));
+  expect(expanded().has('')).toBe(false);
+});
+
+it('keeps the picker root out of expanded paths at start and after creation', () => {
+  const { session, expanded, create } = harness('picker');
+  const late = new Subject<CreateFolderOutcome>();
+  create.mockReturnValue(late);
+  session.start('');
+  expect(expanded().has('')).toBe(false);
+  session.confirm('new').subscribe();
+  late.next({ ...created, folder: { ...folder, fullPath: 'new' } });
+  expect(expanded()).toEqual(new Set());
+});
+
+it('uses the adapter identity when a draft is replaced directly in storage', () => {
+  const { session, stored, create } = harness('sidebar');
+  const late = new Subject<CreateFolderOutcome>();
+  create.mockReturnValue(late);
+  session.start('common');
+  session.confirm('new').subscribe();
+  stored.set({ ...session.state(), folderDraftId: 42, addFolderParentPath: 'errors' });
+  late.next(refusal);
+  expect(session.state().folderCreateError).toBeNull();
+  expect(session.state().addFolderParentPath).toBe('errors');
+  session.start('other');
+  expect(session.state().folderDraftId).toBe(43);
+  session.cancel();
+  expect(session.state().folderDraftId).toBe(44);
 });
 
 it('keeps sidebar and picker sessions independent', () => {
