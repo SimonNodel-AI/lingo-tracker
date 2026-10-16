@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG_FILENAME } from '../constants';
-import { loadConfig } from '../lib/config/load-config';
+import { loadConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import { ConfigChangedError, InvalidCollectionError } from '../lib/errors/lingo-tracker-error';
 import { editCollectionTags } from './edit-collection-tags';

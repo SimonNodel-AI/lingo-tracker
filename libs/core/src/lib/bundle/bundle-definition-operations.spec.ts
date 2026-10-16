@@ -5,7 +5,7 @@ import type { BundleDefinition } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
-import { loadConfig } from '../config/load-config';
+import { loadConfig } from '../config/config-file-operations';
 import { ConfigChangedError, InvalidBundleDefinitionError, InvalidNameError } from '../errors/lingo-tracker-error';
 import { addBundleDefinition, deleteBundleDefinition, updateBundleDefinition } from './bundle-definition-operations';
 

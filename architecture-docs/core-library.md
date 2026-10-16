@@ -75,10 +75,9 @@ libs/core/src/
     │
     ├── collection-set/           # whole-collection read model for export, validate, glossary
     ├── config/                   # Config file I/O and collection resolution
-    │   ├── load-config.ts        # loadConfig(): the only reader of .lingo-tracker.json
     │   ├── open-collection.ts    # openCollection(): a collection's effective settings (Collection)
     │   ├── collection-entry.ts   # Collection Entry: toCollectionEntry() / addCollectionEntry() / patchCollectionEntry(), pure
-    │   ├── config-file-operations.ts # read/write/update .lingo-tracker.json (reads via loadConfig)
+    │   ├── config-file-operations.ts # Config File: loadConfig(), guarded reads/writes, private versions and serialization
     │   ├── term-file.ts              # The term-file module: pointer resolution, read (problems reported), write (typed errors)
     │   ├── protected-terms-file.ts   # The protected-terms kind: string list, global + per-collection files
     │   ├── preferred-terminology-file.ts # The preferred-terminology kind: validated rule objects, one global file
@@ -294,6 +293,8 @@ Core owns the config file and opens collections with domain's [Collection Settin
 - **`openCollection(config, name, { cwd?, writable?, forDeletion? })`** returns a `Collection`: `name`, the absolute `translationsFolder` (resolved against `cwd`, or empty for a malformed entry opened with `forDeletion: true`), `baseLocale` (collection, else global, else `en`; an empty string counts as unset), `locales` (non-empty collection list, else global, else `[]`; an empty collection list inherits), `targetLocales` (`locales` without `baseLocale`), `translationConfig` (collection, else global; not merged), normalized `tags`, `termFiles` (the absolute paths of the protected-terms and preferred-terminology files, resolved but not read; see [Project Terms](#project-terms)), `readOnly`, and the raw entry as `config`. The `OpenedCollection` return value is also an `OpenedProject`: it carries `sourceConfig` and `projectRoot` for guarded registration and locale writes. It throws `CollectionNotFoundError` for an unknown name and, when `writable` is set, `ReadOnlyCollectionError` for a read-only collection.
 
 `openCollection` calls `inheritCollectionSettings` from domain for `baseLocale`, `locales`, `translation` and `readOnly`. Core adds the absolute paths, target locales, tags and term files. The Tracker calls the same domain rule. It adds raw `translationsFolder` (`''` when the collection is unknown) and `translationEnabled` (`translation?.enabled === true`). Both callers use domain's `findCollectionEntry` for own-property lookup.
+
+The [Config File](glossary.md#config-file) module, `config-file-operations.ts`, owns `loadConfig`, the private version WeakMap, content hashing, and config serialization. Loading and guarded re-reading share one content reader. A write serializes once and computes its new baseline from exactly the string written. The public barrel still exports `loadConfig` and `LoadConfigOptions`; the hash and version lookup are private.
 
 Each config writer receives an `OpenedProject` or `OpenedCollection` and calls core-internal `guardedConfigWrite(source)`. The guard validates the opened snapshot and compares the file with the exact bytes `loadConfig()` read. A change or disappearance raises `ConfigChangedError`; a successful write advances the baseline. An in-memory snapshot without a read version, used by tests, has no concurrency check. Collection locale changes check before touching resource files and again at the config write. `initConfig` uses an exclusive create. The [Config Write Transaction](glossary.md#config-write-transaction) restores config bytes after a failed companion write.
 

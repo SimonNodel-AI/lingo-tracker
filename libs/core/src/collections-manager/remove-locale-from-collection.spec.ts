@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { loadConfig } from '../lib/config/load-config';
+import { loadConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import {
   BaseLocaleImmutableError,

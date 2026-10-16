@@ -5,7 +5,7 @@ import type { LingoTrackerCollection } from '../config/lingo-tracker-collection'
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import type { TranslationConfig } from '../config/translation-config';
 import { CONFIG_FILENAME, RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
-import { loadConfig } from '../lib/config/load-config';
+import { loadConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import {
   CollectionAlreadyExistsError,

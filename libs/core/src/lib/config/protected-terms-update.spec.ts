@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
-import { loadConfig } from './load-config';
+import { loadConfig } from './config-file-operations';
 import { readProjectTermsView } from './project-terms-view';
 import type { ProtectedTermsEdit, ProtectedTermsEditResult } from './protected-terms-request';
 import { updateProjectTerms } from './update-project-terms';

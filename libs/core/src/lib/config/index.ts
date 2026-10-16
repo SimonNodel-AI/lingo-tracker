@@ -6,8 +6,8 @@ export {
   patchCollectionEntry,
   toCollectionEntry,
 } from './collection-entry';
+export { type LoadConfigOptions, loadConfig } from './config-file-operations';
 export { initConfig } from './init-config';
-export { type LoadConfigOptions, loadConfig } from './load-config';
 export {
   type Collection,
   type OpenCollectionOptions,
