@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
@@ -15,6 +15,24 @@ describe('normalize', () => {
   const readJson = (folder: string, file: string) => JSON.parse(readFileSync(join(folder, file), 'utf8'));
   const meta = (folder: string) => readJson(folder, 'tracker_meta.json');
   const entries = (folder: string) => readJson(folder, 'resource_entries.json');
+
+  it.skipIf(process.getuid?.() === 0)('reports a pruning removal failure and retains the empty folder', async () => {
+    const root = dir();
+    const empty = join(root, 'empty');
+    mkdirSync(empty);
+    chmodSync(root, 0o555);
+    try {
+      const result = await normalize(collection());
+      const problem = result.problems[0];
+      expect(problem).toBeDefined();
+      expect(problem).toMatchObject({ kind: 'not-removed', folderPath: 'empty', absolutePath: empty });
+      expect(problem?.message).toContain('EACCES');
+      expect(result.foldersRemoved).toBe(0);
+      expect(existsSync(empty)).toBe(true);
+    } finally {
+      chmodSync(root, 0o755);
+    }
+  });
 
   it.each([
     ['{p, plural, offset:2other{x}}', 'collapsed-case-body'],

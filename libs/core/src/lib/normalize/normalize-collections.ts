@@ -29,34 +29,27 @@ export interface NormalizeCollectionsOptions extends NormalizeOptions {
       | { kind: 'skip'; name: string }
       | { kind: 'start'; name: string }
       | { kind: 'result'; result: CollectionNormalizeResult }
-      | { kind: 'error'; name: string; error: unknown },
+      | { kind: 'error'; name: string; error: string },
   ) => void;
 }
 
-export interface NormalizeCollectionsResult {
-  readonly outcome: RunOutcome;
-  readonly collections: CollectionNormalizeResult[];
-  readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
-  readonly warnings: readonly string[];
-  readonly errors: readonly { name: string; error: unknown }[];
-}
-
-/** Empty report before any collection is processed. */
-export function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
-  return {
-    outcome: 'succeeded',
-    collections: [],
-    totals: {
-      ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
-        (typeof NUMERIC_FIELDS)[number],
-        number
-      >),
-      collectionsProcessed: 0,
-    },
-    errors: [],
-    warnings: [],
-  };
-}
+/** A refused selection has diagnostics only; a completed run carries its processed results. */
+export type NormalizeCollectionsResult =
+  | {
+      readonly status: 'failed';
+      readonly outcome: 'failed';
+      readonly error: string;
+      readonly details: readonly string[];
+      readonly warnings: readonly string[];
+    }
+  | {
+      readonly status: 'complete';
+      readonly outcome: RunOutcome;
+      readonly collections: CollectionNormalizeResult[];
+      readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
+      readonly warnings: readonly string[];
+      readonly errors: readonly string[];
+    };
 
 /** Applies the CLI's named versus all read-only rule and totals a whole run. */
 export async function normalizeCollections(
@@ -65,12 +58,20 @@ export async function normalizeCollections(
 ): Promise<NormalizeCollectionsResult> {
   if (!options.all) {
     const readOnly = collections.find((collection) => collection.readOnly);
-    if (readOnly) throw new ReadOnlyCollectionError(readOnly.name);
+    if (readOnly) {
+      return {
+        status: 'failed',
+        outcome: 'failed',
+        error: new ReadOnlyCollectionError(readOnly.name).message,
+        details: [],
+        warnings: [],
+      };
+    }
   }
 
   const results: CollectionNormalizeResult[] = [];
   const warnings: string[] = [];
-  const errors: { name: string; error: unknown }[] = [];
+  const errors: string[] = [];
   for (const collection of collections) {
     const { name } = collection;
     if (collection.readOnly) {
@@ -85,8 +86,9 @@ export async function normalizeCollections(
       const { dryRun: _dryRun, ...report } = result;
       item = { collectionName: name, ...report };
     } catch (error) {
-      errors.push({ name, error });
-      options.onEvent?.({ kind: 'error', name, error });
+      const message = `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`;
+      errors.push(message);
+      options.onEvent?.({ kind: 'error', name, error: message });
       continue;
     }
     warnings.push(...item.problems.map((problem) => describeFolderProblem(problem, { collectionName: name })));
@@ -94,11 +96,18 @@ export async function normalizeCollections(
     options.onEvent?.({ kind: 'result', result: item });
   }
 
-  const totals = { ...emptyNormalizeCollectionsResult().totals, collectionsProcessed: results.length };
+  const totals = {
+    ...(Object.fromEntries(NUMERIC_FIELDS.map((field) => [field, 0])) as Record<
+      (typeof NUMERIC_FIELDS)[number],
+      number
+    >),
+    collectionsProcessed: results.length,
+  };
   for (const result of results) {
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }
   return {
+    status: 'complete',
     outcome: errors.length > 0 ? 'failed' : 'succeeded',
     collections: results,
     totals,

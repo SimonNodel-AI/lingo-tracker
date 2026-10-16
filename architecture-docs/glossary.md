@@ -1326,7 +1326,9 @@ Explained in context: [`cli.md`](cli.md#command-inventory)
 
 Core's `RunOutcome` is `succeeded` or `failed`. Its producers are `runExport`, `runImport`, the locale-bound run, `runValidate`, `generateBundles`, `generatePreparedBundle`, `executeMove`, `executeMoves`, `normalizeCollections`, and `deleteResource`. The CLI maps completed outcomes to exit codes through `exitForRunOutcome`. A `failed` outcome gives exit code 1, even with partial output. A warning or intentional skip alone does not fail a run. `deleteResource` fails when any key could not be deleted (the same errors-present rule as a [Move Report](#move-report)), even if others were deleted; the API's delete response does not carry it. Preconditions that throw have no run outcome.
 
-Move fails when its result contains errors. Normalize fails when a collection raises an error, including in dry runs. Folder problems and read-only skips under `--all` do not fail normalize. Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
+Move fails when its result contains errors. The [Normalization Pipeline](core-library.md#normalization-pipeline) defines normalize's refused and completed result arms and their outcome rules.
+
+Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
 
 Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#errors-and-exit-codes)
 
