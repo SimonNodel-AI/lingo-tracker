@@ -1,5 +1,5 @@
 import type { Collection } from '../config/open-collection';
-import { ReadOnlyCollectionError } from '../errors';
+import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import { describeFolderProblem } from '../resource/collection-folders';
 import type { RunOutcome } from '../run-outcome';
 import { type NormalizeOptions, type NormalizeResult, normalize } from './normalize';

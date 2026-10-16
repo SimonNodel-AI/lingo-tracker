@@ -11,7 +11,10 @@ describe('deleteResource failure injection', () => {
   const collection = () => testCollection(root());
   const mutations: ResourceMutation[] = [];
   const remove = (keys: string[]) =>
-    deleteResource(collection(), { keys }, { onMutation: (mutation) => mutations.push(mutation) });
+    deleteResource(
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+      { keys },
+    );
   const seed = () => seedResources(collection(), { 'apps.ok': { source: 'OK' }, 'apps.keep': { source: 'Keep' } });
   afterEach(() => {
     vi.restoreAllMocks();
@@ -35,7 +38,7 @@ describe('deleteResource failure injection', () => {
 
   it('wraps a failed remove and emits no mutation', () => {
     seedResources(collection(), { ok: { source: 'OK' } });
-    const folder = resourceFolder.openResourceFolder(root(), collection());
+    const folder = resourceFolder.openUnreportedResourceFolder(root(), collection());
     vi.spyOn(folder, 'remove').mockImplementation(() => {
       throw new Error('update failed');
     });
@@ -83,7 +86,7 @@ describe('deleteResource failure injection', () => {
       { kind: 'reindex', translationsFolder: root() },
       { kind: 'remove', translationsFolder: root(), key: 'apps.c' },
     ]);
-    expect(resourceFolder.openResourceFolder(join(root(), 'apps'), collection()).has('b')).toBe(true);
+    expect(resourceFolder.openUnreportedResourceFolder(join(root(), 'apps'), collection()).has('b')).toBe(true);
   });
 
   it('explains a read failure without exposing its filesystem path', () => {

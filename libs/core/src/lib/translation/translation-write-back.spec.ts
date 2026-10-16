@@ -5,8 +5,9 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constant
 import { seedResources, testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from '../resource/checksum';
-import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { type ResourceMutation, reindexMutation, upsertMutation } from '../resource/resource-mutation';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
+import { type ResourceMutation, resourceMutations } from '../resource/resource-mutation';
 import { type PendingTranslation, snapshotTranslation, writeBackTranslations } from './translation-write-back';
 
 vi.mock('../file-io/json-file-operations', async (importOriginal) => {
@@ -35,10 +36,7 @@ describe('translation write-back', () => {
   };
   const collection = () => testCollection(dir());
   const folderPath = () => join(dir(), 'common');
-  const open = () => openResourceFolder(folderPath(), collection());
-  const saved = (folder: ResourceFolder): readonly ResourceMutation[] => [
-    upsertMutation(dir(), 'common.save', folder.treeEntry('save')),
-  ];
+  const open = () => openUnreportedResourceFolder(folderPath(), collection());
 
   beforeEach(() => {
     collected.length = 0;
@@ -62,7 +60,11 @@ describe('translation write-back', () => {
 
   function expectSkipped(pending: PendingTranslation): void {
     vi.mocked(writeJsonFile).mockClear();
-    const result = writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
+    const result = writeBackTranslations(
+      { ...collection(), onMutation: onMutation ?? (() => undefined) },
+      folderPath(),
+      [pending],
+    );
     expect(result.written).toEqual([]);
     expect(result.skipped).toEqual([pending]);
     expect(writeJsonFile).not.toHaveBeenCalled();
@@ -81,7 +83,11 @@ describe('translation write-back', () => {
 
   it('writes matching snapshots as translated, normalizes ICU, and returns the fresh folder', () => {
     const pending = prepare();
-    const result = writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
+    const result = writeBackTranslations(
+      { ...collection(), onMutation: onMutation ?? (() => undefined) },
+      folderPath(),
+      [pending],
+    );
     expect(result.written).toEqual([pending]);
     expect(result.skipped).toEqual([]);
     expect(result.folder.treeEntry('save')).toMatchObject({
@@ -96,7 +102,7 @@ describe('translation write-back', () => {
 
   it('writes seeded copies with explicit new status', () => {
     const pending = { ...prepare(), value: 'Save {name}', status: 'new' as const };
-    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved });
+    writeBackTranslations({ ...collection(), onMutation: () => undefined }, folderPath(), [pending]);
     expect(open().get('save')?.meta?.['fr']?.status).toBe('new');
   });
 
@@ -109,7 +115,7 @@ describe('translation write-back', () => {
       snapshot: snapshotTranslation('Save', undefined),
     };
     expect(
-      writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved }).written,
+      writeBackTranslations({ ...collection(), onMutation: () => undefined }, folderPath(), [pending]).written,
     ).toEqual([pending]);
     expect(open().get('save')?.meta?.['fr']?.status).toBe('translated');
   });
@@ -208,51 +214,53 @@ describe('translation write-back', () => {
       snapshot: snapshotTranslation('Save {name}', undefined),
     };
     vi.mocked(writeJsonFile).mockClear();
-    const result = writeBackTranslations(collection(), folderPath(), [pending, other, es], {
-      mutationSink: onMutation,
-      saved: () => [reindexMutation(dir())],
-    });
+    const result = writeBackTranslations(
+      { ...collection(), onMutation: onMutation ?? (() => undefined) },
+      folderPath(),
+      [pending, other, es],
+    );
     expect(result.written).toEqual([pending, other, es]);
     expect(writeJsonFile).toHaveBeenCalledTimes(2);
     expect(open().treeEntry('save')?.translations).toEqual({ fr: 'Enregistrer {name}', es: 'Guardar {name}' });
     expect(open().treeEntry('cancel')?.translations).toEqual({ fr: 'Annuler' });
-    expect(collected).toEqual([reindexMutation(dir())]);
+    expect(collected).toEqual(
+      ['save', 'cancel'].map((key) => resourceMutations.upsert(dir(), `common.${key}`, open().treeEntry(key))),
+    );
   });
 
   it('does not save or report mutations for an empty pending list', () => {
     prepare();
-    const saved = vi.fn(() => [reindexMutation(dir())]);
-    expect(writeBackTranslations(collection(), folderPath(), [], { mutationSink: onMutation, saved }).written).toEqual(
-      [],
-    );
+    const saved = vi.fn(() => [resourceMutations.reindex(dir())]);
+    expect(
+      writeBackTranslations({ ...collection(), onMutation: onMutation ?? (() => undefined) }, folderPath(), []).written,
+    ).toEqual([]);
     expect(writeJsonFile).not.toHaveBeenCalled();
     expect(saved).not.toHaveBeenCalled();
     expect(collected).toEqual([]);
   });
 
-  it('uses custom saved mutations after the files are saved', () => {
+  it('reports the fresh stored entry only after both files are saved', () => {
     const pending = prepare();
-    const saved = vi.fn((folder: ResourceFolder, written: readonly PendingTranslation[]) => {
+    const sink = vi.fn((mutation: ResourceMutation) => {
       expect(writeJsonFile).toHaveBeenCalledTimes(2);
-      expect(open().treeEntry('save')).toEqual(folder.treeEntry('save'));
-      expect(written).toEqual([pending]);
-      return [reindexMutation(dir())];
+      expect(mutation).toEqual(resourceMutations.upsert(dir(), 'common.save', open().treeEntry('save')));
     });
-    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved });
-    expect(saved).toHaveBeenCalledTimes(1);
-    expect(collected).toEqual([reindexMutation(dir())]);
+    writeBackTranslations({ ...collection(), onMutation: sink }, folderPath(), [pending]);
+    expect(sink).toHaveBeenCalledTimes(1);
   });
 
   it('reports reindex and rethrows the original error after a partial save', async () => {
     const pending = prepare();
     const metadataPath = join(folderPath(), TRACKER_META_FILENAME);
-    const saved = vi.fn(() => [reindexMutation(dir())]);
+    const saved = vi.fn(() => [resourceMutations.reindex(dir())]);
     const { error, restore } = await failWrite(metadataPath);
     try {
       expect(() =>
-        writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved }),
+        writeBackTranslations({ ...collection(), onMutation: onMutation ?? (() => undefined) }, folderPath(), [
+          pending,
+        ]),
       ).toThrow(error);
-      expect(collected).toEqual([reindexMutation(dir())]);
+      expect(collected).toEqual([resourceMutations.reindex(dir())]);
       expect(saved).not.toHaveBeenCalled();
       expect(readFileSync(join(folderPath(), RESOURCE_ENTRIES_FILENAME), 'utf8')).toContain('Enregistrer {name}');
     } finally {
@@ -264,7 +272,7 @@ describe('translation write-back', () => {
     const pending = prepare();
     seedResources(collection(), { 'common.cancel': { source: 'Cancel', translations: { fr: 'Annuler' } } });
     const sibling = open().get('cancel');
-    writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: undefined, saved });
+    writeBackTranslations({ ...collection(), onMutation: () => undefined }, folderPath(), [pending]);
     expect(open().get('cancel')).toEqual(sibling);
   });
 
@@ -272,7 +280,7 @@ describe('translation write-back', () => {
     const pending = prepare();
     writeFileSync(join(folderPath(), RESOURCE_ENTRIES_FILENAME), '{ invalid');
     expect(() =>
-      writeBackTranslations(collection(), folderPath(), [pending], { mutationSink: onMutation, saved }),
+      writeBackTranslations({ ...collection(), onMutation: onMutation ?? (() => undefined) }, folderPath(), [pending]),
     ).toThrow();
     expect(writeJsonFile).not.toHaveBeenCalled();
     expect(collected).toEqual([]);

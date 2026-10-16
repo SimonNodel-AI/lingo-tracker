@@ -7,7 +7,8 @@ import { InMemoryTranslationProvider } from '../machine-translation/in-memory-tr
 import { calculateChecksum } from './checksum';
 import { pruneEmptiedFolders } from './folder-pruning';
 import { addResource, editResource, removeEntry } from './resource-entry';
-import { openResourceFolder } from './resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
 describe('entry writes (real fs)', () => {
@@ -17,7 +18,7 @@ describe('entry writes (real fs)', () => {
     testCollection(root(), {
       translationConfig: { enabled: true, provider: 'google-translate', apiKeyEnv: 'ENTRY_WRITE_TEST_KEY' },
     });
-  const folder = () => openResourceFolder(join(root(), 'buttons'), collection());
+  const folder = () => openUnreportedResourceFolder(join(root(), 'buttons'), collection());
   const seed = () =>
     seedResources(collection(), {
       'buttons.ok': { source: 'OK', translations: { fr: { value: 'OK', status: 'new' }, es: 'Aceptar' } },
@@ -27,7 +28,7 @@ describe('entry writes (real fs)', () => {
   it('adds ICU values, inferred and explicit statuses, details, and the exact saved upsert', async () => {
     const mutations: ResourceMutation[] = [];
     const result = await addResource(
-      collection(),
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
       {
         key: 'buttons.ok',
         baseValue: 'Hello {{ name }}',
@@ -35,7 +36,7 @@ describe('entry writes (real fs)', () => {
         tags: [' UI ', 'UI'],
         translations: [{ locale: 'fr', value: 'Bonjour {{ name }}', status: 'verified' }],
       },
-      { onMutation: (mutation) => mutations.push(mutation) },
+      {},
     );
     const stored = folder().treeEntry('ok');
     expect(stored).toBeDefined();
@@ -117,10 +118,10 @@ describe('entry writes (real fs)', () => {
     const mutations: ResourceMutation[] = [];
     expect(
       await editResource(
-        collection(),
+        { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
         'buttons.ok',
         { baseValue: 'OK' },
-        { onMutation: (mutation) => mutations.push(mutation) },
+        {},
       ),
     ).toEqual({
       resolvedKey: 'buttons.ok',
@@ -150,11 +151,10 @@ describe('entry writes (real fs)', () => {
     const failure = new TranslationError('FAILED', 'provider failed', false);
     await expect(
       editResource(
-        automatic(),
+        { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
         'buttons.ok',
         { baseValue: 'Save' },
         {
-          onMutation: (mutation) => mutations.push(mutation),
           provider: new InMemoryTranslationProvider(() => {
             expect(folder().get('ok')?.entry.source).toBe('Save');
             expect(mutations.map(({ kind }) => kind)).toEqual(['upsert']);
@@ -171,11 +171,10 @@ describe('entry writes (real fs)', () => {
     seed();
     const mutations: ResourceMutation[] = [];
     const result = await editResource(
-      automatic(),
+      { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
       'buttons.ok',
       { baseValue: 'Save' },
       {
-        onMutation: (mutation) => mutations.push(mutation),
         provider: new InMemoryTranslationProvider(({ targetLocale }) => {
           if (targetLocale === 'fr') {
             const current = folder();
@@ -225,18 +224,24 @@ describe('entry writes (real fs)', () => {
     const inherited: ResourceMutation[] = [];
     const explicit: ResourceMutation[] = [];
     const result = removeEntry(
-      testCollection(root(), { onMutation: (mutation) => inherited.push(mutation) }),
+      {
+        ...testCollection(root(), { onMutation: (mutation) => inherited.push(mutation) }),
+        onMutation: (mutation) =>
+          explicit.push(mutation) ??
+          testCollection(root(), { onMutation: (mutation) => inherited.push(mutation) }).onMutation,
+      },
       'nested.child.ok',
-      { onMutation: (mutation) => explicit.push(mutation) },
     );
     expect(result).toEqual({ resolvedKey: 'nested.child.ok', emptied: join(root(), 'nested', 'child') });
     expect(existsSync(join(root(), 'nested', 'child'))).toBe(true);
     expect(existsSync(join(root(), 'nested', 'child', 'resource_entries.json'))).toBe(false);
     expect(inherited).toEqual([]);
     expect(explicit).toEqual([{ kind: 'remove', translationsFolder: root(), key: 'nested.child.ok' }]);
-    pruneEmptiedFolders(collection(), result.emptied ? [result.emptied] : [], {
-      onMutation: (mutation) => explicit.push(mutation),
-    });
+    pruneEmptiedFolders(
+      { ...collection(), onMutation: (mutation) => explicit.push(mutation) ?? collection().onMutation },
+      result.emptied ? [result.emptied] : [],
+      {},
+    );
     expect(explicit.map(({ kind }) => kind)).toEqual(['remove', 'remove-folder', 'remove-folder']);
   });
 

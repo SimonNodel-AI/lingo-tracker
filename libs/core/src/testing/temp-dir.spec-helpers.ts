@@ -13,7 +13,7 @@ import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
 import type { Collection, OpenedCollection } from '../lib/config/open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from '../lib/config/preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
-import { openResourceFolder } from '../lib/resource/resource-folder';
+import { openUnreportedResourceFolder } from '../lib/resource/resource-folder';
 
 /**
  * Creates a temp directory before each test and removes it after. Call inside `describe`;
@@ -35,6 +35,8 @@ export function useTempDir(prefix = 'lingo-core-'): () => string {
   return () => dir;
 }
 
+const ignoreMutations = () => undefined;
+
 /**
  * A resolved collection for tests. `locales` defaults to the base locale plus `fr` and `es`; the term
  * files default to `.lingo-tracker-protected-terms.json` and `.lingo-tracker-preferred-terminology.json`
@@ -44,6 +46,7 @@ export function testCollection(translationsFolder: string, overrides: Partial<Co
   const baseLocale = overrides.baseLocale ?? 'en';
   const locales = overrides.locales ?? [baseLocale, 'fr', 'es'];
   return {
+    onMutation: ignoreMutations,
     name: 'main',
     translationsFolder,
     translationConfig: undefined,
@@ -79,7 +82,8 @@ export function seedResources(collection: Collection, resources: Readonly<Record
   for (const [fullKey, resource] of Object.entries(resources)) {
     const segments = fullKey.split('.');
     const entryKey = segments.pop() ?? fullKey;
-    const folder = openResourceFolder(join(collection.translationsFolder, ...segments), {
+    // Standalone seed fixtures must not notify collection consumers.
+    const folder = openUnreportedResourceFolder(join(collection.translationsFolder, ...segments), {
       baseLocale: collection.baseLocale,
     });
 

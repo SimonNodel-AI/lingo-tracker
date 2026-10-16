@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { Logger } from '@nestjs/common';
 import {
   ResourceTreeIndex,
   type TranslateRequest,
@@ -8,7 +9,11 @@ import {
 } from '@simoncodes-ca/core';
 import type { ResourceTreeDto, SearchResultsDto, TranslateLocaleJobDto } from '@simoncodes-ca/data-transfer';
 import { checkStoredValue, describeStoredValueFinding } from '@simoncodes-ca/domain';
+import { CollectionIndex } from '../../cache/collection-index.service';
+import { collection } from '../../mappers/resource.mapper.test-support';
 import { HttpProject } from '../../testing/http-project';
+import { TranslationJobService } from '../../translation-job/translation-job.service';
+import { ResourcesController } from './resources.controller';
 
 // Inject only the external provider through the public operation options. Each wrapper
 // executes the original core function, including its real preconditions, writes and errors.
@@ -454,7 +459,7 @@ describe('ResourcesController HTTP (real project)', () => {
         { key: 'app.button.cancel', baseValue: 'Cancel' },
       ]);
       expect(response.status).toBe(201);
-      expect(response.body.terminology).toEqual({ findings: [finding], problems: [] });
+      expect(JSON.stringify(response.body.terminology)).toBe(JSON.stringify({ findings: [finding], problems: [] }));
       expect(entries()).toMatchObject({ ok: { source: 'Expenditure' }, cancel: { source: 'Cancel' } });
       // A malformed rule file prevents findings, but its warning is deduplicated across the batch.
       project.write('.lingo-tracker-preferred-terminology.json', '{bad');
@@ -999,5 +1004,69 @@ describe('ResourcesController HTTP (real project)', () => {
         body: { statusCode: 404, error: 'Not Found', message: `Translation job "${id}" not found` },
       });
     });
+  });
+});
+
+const core = jest.requireMock<typeof import('@simoncodes-ca/core')>('@simoncodes-ca/core');
+
+/** Controller return contracts also pin own fields that JSON serialization omits. */
+describe('ResourcesController response contracts', () => {
+  const controller = new ResourcesController(new CollectionIndex(), new TranslationJobService(new Logger()));
+  const opened = {
+    ...collection,
+    projectRoot: '/t',
+    sourceConfig: {
+      collections: {},
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+    },
+  };
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns blank searches in wire order with the original query or an empty fallback', async () => {
+    for (const query of [undefined, '', ' \t ']) {
+      const dto = await controller.search(opened, { query });
+      expect(Object.keys(dto)).toEqual(['query', 'results', 'totalFound', 'limited']);
+      expect(JSON.stringify(dto)).toBe(
+        JSON.stringify({ query: query || '', results: [], totalFound: 0, limited: false }),
+      );
+    }
+  });
+
+  it('retains undefined errors as an own field and excludes internal deletion fields', async () => {
+    jest
+      .spyOn(core, 'deleteResource')
+      .mockReturnValue({ outcome: 'succeeded', entriesDeleted: 1, warnings: ['Internal'] });
+    const dto = await controller.delete(opened, { keys: ['app.save'] });
+    expect(dto).toStrictEqual({ entriesDeleted: 1, errors: undefined });
+    expect(Object.keys(dto)).toEqual(['entriesDeleted', 'errors']);
+    expect(JSON.stringify(dto)).toBe('{"entriesDeleted":1}');
+  });
+
+  it('passes through empty and nonempty deletion errors in wire order', async () => {
+    for (const errors of [[], [{ key: 'app.save', error: 'Missing' }]]) {
+      jest.spyOn(core, 'deleteResource').mockReturnValue({ outcome: 'succeeded', entriesDeleted: 0, errors });
+      const dto = await controller.delete(opened, { keys: ['app.save'] });
+      expect(dto.errors).toBe(errors);
+      expect(JSON.stringify(dto)).toBe(JSON.stringify({ entriesDeleted: 0, errors }));
+    }
+  });
+
+  it('keeps empty and nonempty move diagnostics while omitting outcome and folder counts', async () => {
+    for (const result of [
+      { outcome: 'succeeded' as const, movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] },
+      { outcome: 'failed' as const, movedCount: 0, warnings: ['Exists'], errors: ['Missing'] },
+    ]) {
+      jest.spyOn(core, 'executeMoves').mockReturnValue(result);
+      const dto = await controller.move(opened, { moves: [{ source: 'a', destination: 'b' }] });
+      expect(Object.keys(dto)).toEqual(['movedCount', 'warnings', 'errors']);
+      expect(dto.warnings).toBe(result.warnings);
+      expect(dto.errors).toBe(result.errors);
+      expect(JSON.stringify(dto)).toBe(
+        JSON.stringify({ movedCount: result.movedCount, warnings: result.warnings, errors: result.errors }),
+      );
+    }
   });
 });

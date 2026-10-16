@@ -48,9 +48,13 @@ describe('addLocaleToCollection', () => {
   const entries = (): ResourceEntries => JSON.parse(readFileSync(join(folder(), RESOURCE_ENTRIES_FILENAME), 'utf8'));
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const add = async (name = 'main', locale = 'de') => {
-    return addLocaleToCollection(openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }), locale, {
-      onMutation,
-    });
+    return addLocaleToCollection(
+      {
+        ...openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }),
+        onMutation: onMutation ?? openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }).onMutation,
+      },
+      locale,
+    );
   };
 
   beforeEach(() => writeConfig());

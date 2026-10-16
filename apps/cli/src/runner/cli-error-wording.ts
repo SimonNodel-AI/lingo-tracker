@@ -1,14 +1,9 @@
 import {
-  BracedPlaceholderError,
   CONFIG_FILENAME,
-  type CollectionTagEditProblem,
-  type ErrorCode,
-  isPreferredTerminologyEditProblem,
-  isProtectedTermsEditProblem,
+  type ErrorRules,
+  type ErrorView,
   LingoTrackerError,
-  type PreferredTerminologyEditProblem,
-  PreferredTerminologyValidationError,
-  type ProtectedTermsEditProblem,
+  mapTypedError,
 } from '@simoncodes-ca/core';
 import { ADD_RESOURCE_FLAGS } from '../add-resource/add-resource-flags';
 import { BUNDLE_FLAGS } from '../commands/bundle-flags';
@@ -33,19 +28,19 @@ export interface CliErrorWording {
   readonly includeCause?: boolean;
 }
 
-type Rule = (error: LingoTrackerError, commandName?: string) => CliErrorWording;
+type Rule = (error: { readonly message: string }) => CliErrorWording;
 const original: Rule = (error) => ({ message: error.message });
 
-const tagProblems = {
+const tagProblems: Record<NonNullable<ErrorView<'INVALID_COLLECTION'>['facts']['problem']>, Rule> = {
   'tag-conflict': () => ({
     message: `${flagName(EDIT_COLLECTION_FLAGS.setTags)} cannot be combined with ${flagName(EDIT_COLLECTION_FLAGS.addTag)} or ${flagName(EDIT_COLLECTION_FLAGS.removeTag)}`,
   }),
   'tag-missing': () => ({
     message: `Provide at least one of ${flagName(EDIT_COLLECTION_FLAGS.addTag)}, ${flagName(EDIT_COLLECTION_FLAGS.removeTag)}, or ${flagName(EDIT_COLLECTION_FLAGS.setTags)}`,
   }),
-} satisfies Record<CollectionTagEditProblem, Rule>;
+};
 
-const protectedProblems = {
+const projectProblems: Record<NonNullable<ErrorView<'INVALID_PROJECT_TERMS_EDIT'>['facts']['problem']>, Rule> = {
   'protected-conflict': () => ({
     message: `${flagName(PROTECTED_TERMS_FLAGS.set)} cannot be combined with ${flagName(PROTECTED_TERMS_FLAGS.add)} or ${flagName(PROTECTED_TERMS_FLAGS.remove)}`,
   }),
@@ -54,9 +49,7 @@ const protectedProblems = {
   }),
   'protected-file-path': original,
   'protected-replacement-conflict': original,
-} satisfies Record<ProtectedTermsEditProblem, Rule>;
 
-const preferredProblems = {
   'preferred-missing': () => ({
     message: `Provide one of ${flagName(PREFERRED_TERMINOLOGY_FLAGS.list)}, ${flagName(PREFERRED_TERMINOLOGY_FLAGS.add)} <discouraged> ${flagName(PREFERRED_TERMINOLOGY_FLAGS.preferred)} <preferred>, or ${flagName(PREFERRED_TERMINOLOGY_FLAGS.remove)} <discouraged>`,
   }),
@@ -72,39 +65,25 @@ const preferredProblems = {
   'preferred-remove-shape': original,
   'preferred-replacement-shape': original,
   'preferred-upsert-shape': original,
-} satisfies Record<PreferredTerminologyEditProblem, Rule>;
+};
 
-function problemWording(error: LingoTrackerError, table: Readonly<Partial<Record<string, Rule>>>): CliErrorWording {
-  const problem = 'problem' in error && typeof error.problem === 'string' ? error.problem : undefined;
-  return (
-    problem === undefined || Object.getOwnPropertyDescriptor(table, problem) === undefined
-      ? original
-      : (table[problem] ?? original)
-  )(error);
-}
-
-function projectTermsWording(error: LingoTrackerError): CliErrorWording {
-  const problem = 'problem' in error ? error.problem : undefined;
-  if (isProtectedTermsEditProblem(problem)) return protectedProblems[problem](error);
-  if (isPreferredTerminologyEditProblem(problem)) return preferredProblems[problem](error);
-  return original(error);
-}
-
-function preferredValidation(error: LingoTrackerError): CliErrorWording {
-  if (!(error instanceof PreferredTerminologyValidationError)) return original(error);
+/** Rich wording keys on fact presence, not class. */
+function preferredValidation(error: ErrorView<'INVALID_PREFERRED_TERMINOLOGY'>): CliErrorWording {
+  if (error.facts.errors === undefined) return original(error);
   return {
     message: 'Preferred terminology not saved:',
-    details: error.errors.map((ruleError) => {
-      const row = error.submittedRules?.[ruleError.index];
+    details: error.facts.errors.map((ruleError) => {
+      const row = error.facts.submittedRules?.[ruleError.index];
       const label = row ? `"${row.discouraged} → ${row.preferred}"` : `row ${ruleError.index + 1}`;
       return `${label}: ${ruleError.message}`;
     }),
   };
 }
 
-function bracedPlaceholderWording(error: LingoTrackerError): CliErrorWording {
-  if (!(error instanceof BracedPlaceholderError)) return original(error);
-  return { message: `Value for locale "${error.locale}" is not valid:`, details: error.details };
+/** Rich wording keys on fact presence, not class. */
+function bracedPlaceholderWording(error: ErrorView<'BRACED_PLACEHOLDER'>): CliErrorWording {
+  if (error.facts.locale === undefined || error.facts.details === undefined) return original(error);
+  return { message: `Value for locale "${error.facts.locale}" is not valid:`, details: error.facts.details };
 }
 
 /** Codes default by kind; this table holds only deviations. */
@@ -118,27 +97,33 @@ export const CLI_BY_CODE = {
     hint: 'Run "lingo-tracker init" to initialize a project.',
   }),
   CONFIG_PARSE_FAILED: (error) => ({
-    message: `Failed to parse configuration file: ${'reason' in error ? String(error.reason) : error.message}`,
+    message: `Failed to parse configuration file: ${error.facts.reason ?? error.message}`,
   }),
   GLOSSARY_EXTRACTOR_ERROR: (error) =>
-    'mode' in error && error.mode === 'ai'
+    error.facts.mode === 'ai'
       ? {
           message: `The "ai" extractor is not yet implemented. Use ${flagName(GLOSSARY_FLAGS.extractor)} ngram (the default).`,
         }
       : original(error),
   IMPORT_SOURCE_ERROR: (error) => ({
-    message: 'stage' in error && error.stage === 'format' ? error.message : `Import failed: ${error.message}`,
+    message: error.facts.stage === 'format' ? error.message : `Import failed: ${error.message}`,
     includeCause: false,
   }),
-  INVALID_COLLECTION: (error) => problemWording(error, tagProblems),
+  INVALID_COLLECTION: (error) =>
+    error.facts.problem === undefined || !Object.getOwnPropertyDescriptor(tagProblems, error.facts.problem)
+      ? original(error)
+      : tagProblems[error.facts.problem](error),
   INVALID_IMPORT_LOCALE: (error) => ({ message: `Import failed: ${error.message}`, includeCause: false }),
   INVALID_PREFERRED_TERMINOLOGY: preferredValidation,
-  INVALID_PROJECT_TERMS_EDIT: projectTermsWording,
+  INVALID_PROJECT_TERMS_EDIT: (error) =>
+    error.facts.problem === undefined || !Object.getOwnPropertyDescriptor(projectProblems, error.facts.problem)
+      ? original(error)
+      : projectProblems[error.facts.problem](error),
   MULTIPLE_BUNDLE_CONSTANT_NAME: () => ({
     message: `Cannot use ${flagName(BUNDLE_FLAGS.tokenConstantName)} with multiple bundles. Please target a single bundle.`,
   }),
   PROTECTED_TERMS_FILE_NOT_SET: (error) => ({
-    message: `Collection "${'collectionName' in error ? String(error.collectionName) : ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
+    message: `Collection "${error.facts.collectionName ?? ''}" has no protected terms file. Set one first with ${flagName(PROTECTED_TERMS_FLAGS.file)} <path>.`,
   }),
   BRACED_PLACEHOLDER: bracedPlaceholderWording,
   RESOURCE_ALREADY_EXISTS: (error, commandName) =>
@@ -148,16 +133,12 @@ export const CLI_BY_CODE = {
           details: [`Use ${flagName(ADD_RESOURCE_FLAGS.override)} to replace it, or edit-resource to change it.`],
         }
       : original(error),
-} satisfies Partial<Record<ErrorCode, Rule>>;
-
-const rules: Readonly<Partial<Record<string, Rule>>> = CLI_BY_CODE;
+} satisfies ErrorRules<CliErrorWording, string | undefined>;
 
 /** Typed core errors take precedence over command hooks. Unknown typed codes keep their message. */
 export function cliErrorWording(error: unknown, commandName?: string): CliErrorWording | undefined {
   if (!(error instanceof LingoTrackerError)) return undefined;
-  return (
-    Object.getOwnPropertyDescriptor(rules, error.code) !== undefined ? (rules[error.code] ?? original) : original
-  )(error, commandName);
+  return mapTypedError<CliErrorWording, string | undefined>(error, CLI_BY_CODE, commandName) ?? original(error);
 }
 
 /** The runner and commands share complete diagnostic rendering, including details, hints and causes. */
@@ -175,7 +156,7 @@ export function printCliError(
     wording?.message ??
     options.formatError?.() ??
     (error instanceof Error ? error.message : (options.fallbackMessage ?? String(error)));
-  const cause = error instanceof Error && 'cause' in error ? error.cause : undefined;
+  const cause: unknown = error instanceof Error ? Reflect.get(error, 'cause') : undefined;
   const details = [...(wording?.details ?? [])];
   if (wording?.includeCause !== false && cause instanceof Error) details.push(cause.message);
   if (details.length > 0) ConsoleFormatter.error(message, details);

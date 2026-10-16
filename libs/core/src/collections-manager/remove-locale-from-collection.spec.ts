@@ -43,11 +43,11 @@ describe('removeLocaleFromCollection', () => {
   const meta = (): TrackerMetadata => JSON.parse(readFileSync(join(folder(), TRACKER_META_FILENAME), 'utf8'));
   const remove = async (name = 'main', locale = 'fr') => {
     return removeLocaleFromCollection(
-      openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }),
-      locale,
       {
-        onMutation,
+        ...openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }),
+        onMutation: onMutation ?? openCollection(loadConfig({ cwd: tempDir() }), name, { cwd: tempDir() }).onMutation,
       },
+      locale,
     );
   };
 

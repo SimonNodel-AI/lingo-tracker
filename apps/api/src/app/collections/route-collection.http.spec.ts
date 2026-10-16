@@ -1,4 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { LingoTrackerExceptionFilter } from '../errors/lingo-tracker-exception.filter';
 import { Test } from '@nestjs/testing';
 import type { Collection, LingoTrackerConfig } from '@simoncodes-ca/core';
 import { CollectionIndex } from '../cache/collection-index.service';
@@ -28,6 +30,7 @@ describe('RouteCollection over HTTP', () => {
       controllers: [ResourcesController],
       providers: [
         RouteCollectionPipe,
+        { provide: APP_FILTER, useClass: LingoTrackerExceptionFilter },
         { provide: ConfigService, useValue: { getConfig: () => config } },
         { provide: CollectionIndex, useValue: { status } },
         { provide: TranslationJobService, useValue: {} },

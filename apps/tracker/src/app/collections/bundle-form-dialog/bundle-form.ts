@@ -8,32 +8,35 @@ import {
   type ValidatorFn,
   Validators,
 } from '@angular/forms';
-import type {
-  BundleDefinitionDto,
-  BundleDryRunRequestDto,
-  BundleDryRunResultDto,
-  CollectionBundleDefinitionDto,
-  EntrySelectionRuleDto,
-  TokenCasingDto,
-} from '@simoncodes-ca/data-transfer';
+import type { BundleDryRunRequestDto, BundleDryRunResultDto, TokenCasingDto } from '@simoncodes-ca/data-transfer';
 import {
   bundleKeyToConstantName,
-  checkBundleDefinition,
   hasBundleCollections,
   hasBundleRules,
   hasLocalePlaceholder,
   isTypeScriptFile,
   isValidJavaScriptIdentifier,
-  normalizeBundleDefinition,
 } from '@simoncodes-ca/domain';
-import { catchError, debounceTime, map, type Observable, of, Subscription, startWith, switchMap, tap } from 'rxjs';
+import { type Observable, Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { addTagToList, removeTagFromList } from '../../shared/tag-list-edit';
 import { segmentValidator } from '../../shared/validators/segment.validator';
 import type { FormSubmitEnv, NamedEntryWrite } from '../store/dialog-config-submit';
 import { detailsElseMessage, FormSubmitAttempt } from '../store/form-submit-attempt';
+import {
+  type BundleDraft,
+  type BundleDraftCollection,
+  type BundleDraftRule,
+  bundleDraftErrors,
+  type IcuChoice,
+  type MergeStrategy,
+  type TagOperator,
+  type TokenCasingChoice,
+  toBundleDraft,
+  toBundleResult,
+} from './bundle-draft';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
-import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
+import { BundlePreview } from './bundle-output-preview';
 
 export interface BundleFormOptions {
   data: BundleFormDialogData;
@@ -61,11 +64,7 @@ export type CollectionGroup = FormGroup<{
   rules: FormArray<RuleGroup>;
 }>;
 
-export type PreviewStatus = 'waiting' | 'loading' | 'ready' | 'error';
-
-const TOKEN_SEPARATORS = /(?<=[._])/;
-
-/** Typed bundle editing and preview state, independent of the dialog DOM. */
+/** Typed bundle editing and submit state, independent of the dialog DOM. */
 export class BundleForm {
   readonly #changes = new Subscription();
   readonly #attempt: FormSubmitAttempt<BundleFormResult>;
@@ -103,10 +102,12 @@ export class BundleForm {
    */
   readonly submitErrors: Signal<readonly string[]>;
 
-  readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
-  readonly previewStatus = signal<PreviewStatus>('waiting');
-  /** True from the first keystroke until the next dry run lands. */
-  readonly previewStale = signal(false);
+  readonly preview = new BundlePreview({
+    draft: () => this.#draft(),
+    locales: () => this.projectLocales(),
+    baseLocale: () => this.projectBaseLocale(),
+    dryRun: (request) => this.options.dryRun(request),
+  });
 
   readonly activeKind = computed<'output' | 'collections' | 'collection' | 'types' | 'options'>(() => {
     const section = this.activeSection();
@@ -146,19 +147,7 @@ export class BundleForm {
       : this.form.controls.collections.length;
   });
 
-  readonly #localOutputPreview = computed(() =>
-    bundleOutputPreview({ draft: this.#draft(), locales: this.projectLocales() }),
-  );
-
-  /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
-  readonly outputSummary = computed(() => this.#localOutputPreview().outputSummary);
-
-  readonly typeFileName = computed(() => this.#localOutputPreview().typeFileName);
-
   readonly derivedConstantName = computed(() => bundleKeyToConstantName(this.#draft().name.trim() || 'bundle'));
-
-  /** The bundle file per project locale, relative to the output folder. */
-  readonly patternFiles = computed(() => this.#localOutputPreview().patternFiles);
 
   /** Sections whose fields are invalid and worth flagging in the rail. */
   readonly sectionErrors = computed<ReadonlySet<BundleSection>>(() => {
@@ -180,52 +169,11 @@ export class BundleForm {
     firstErrorSection(this.sectionErrors(), this.form.controls.collections.length),
   );
 
-  /** Client-side tree from the form alone; used while waiting and when the dry run fails. */
-  readonly localTree = computed(() => this.#localOutputPreview().folders);
-
-  readonly previewTree = computed(() => {
-    const result = this.dryRun();
-    if (!result || this.previewStatus() === 'error') return this.localTree();
-    return bundlePlannedOutputPreview(result);
-  });
-
-  readonly previewFileCount = computed(() =>
-    this.previewTree().reduce((total, folder) => total + folder.files.length, 0),
-  );
-
-  /**
-   * Bundled keys that are both a leaf and a parent (e.g. `buttons.ok` next to
-   * `buttons.ok.label`). Generation throws on these, so the preview must show
-   * them as an error rather than letting the bundle look ready to ship.
-   */
-  readonly hierarchicalConflicts = computed<readonly string[]>(() => {
-    if (this.previewStatus() === 'error') return [];
-    return this.dryRun()?.hierarchicalConflicts ?? [];
-  });
-
-  /** The colliding keys as one readable list for the preview error line. */
-  readonly hierarchicalConflictList = computed(() => this.hierarchicalConflicts().join(', '));
-
-  readonly keysPerLocale = computed(() => {
-    const result = this.dryRun();
-    if (!result) return undefined;
-    const base = result.keysPerLocale[this.projectBaseLocale()];
-    if (base !== undefined) return base;
-    return Math.max(0, ...Object.values(result.keysPerLocale));
-  });
-
   /** What the ICU switch shows: the explicit choice, or the project default while inheriting. */
   readonly icuChecked = computed(() => {
     this.#formTick();
     const choice = this.form.controls.transformICUToTransloco.value;
     return choice === 'inherit' ? this.projectIcuTransform() : choice === 'on';
-  });
-
-  /** Example token path split after `.` and `_`, so it wraps between segments, never mid-identifier. */
-  readonly tokenPathParts = computed<readonly string[]>(() => {
-    const tokenPath = this.dryRun()?.exampleKey?.tokenPath;
-    if (!tokenPath) return [];
-    return tokenPath.split(TOKEN_SEPARATORS);
   });
 
   readonly hasOverride = computed(() => {
@@ -273,7 +221,7 @@ export class BundleForm {
     this.#populate();
     this.#changes.add(this.form.events.subscribe(() => this.#formTick.set(Symbol())));
     this.#wireDependentValidation();
-    this.#wireDryRun();
+    this.#changes.add(this.preview.connect(this.form.valueChanges));
     this.#changes.add(this.#attempt.clearOnEdit(this.form));
     options.env.destroyRef.onDestroy(() => this.destroy());
   }
@@ -404,7 +352,7 @@ export class BundleForm {
       return undefined;
     }
     const result = this.buildResult();
-    const errors = this.#domainErrors(result);
+    const errors = bundleDraftErrors(result, this.allCollectionNames(), this.form.controls.name.enabled);
     this.#attempt.fail(errors);
     return errors.length > 0 ? undefined : result;
   }
@@ -427,7 +375,7 @@ export class BundleForm {
   }
 
   #populate(): void {
-    const draft = toDraft(this.options.data.bundle, this.isEditMode ? [] : this.allCollectionNames());
+    const draft = toBundleDraft(this.options.data.bundle, this.isEditMode ? [] : this.allCollectionNames());
     const name = this.options.data.name ?? '';
     this.form.patchValue({ ...draft, name });
 
@@ -511,46 +459,8 @@ export class BundleForm {
     );
   }
 
-  #wireDryRun(): void {
-    this.#changes.add(
-      this.form.valueChanges
-        .pipe(
-          startWith(null),
-          tap(() => this.previewStale.set(true)),
-          debounceTime(300),
-          map(() => dryRunRequest(this.#draft())),
-          switchMap((request) => {
-            if (!request) {
-              return of({ status: 'waiting' as const, result: undefined });
-            }
-            this.previewStatus.update((status) => (status === 'ready' ? status : 'loading'));
-            return this.options.dryRun(request).pipe(
-              map((result) => ({ status: 'ready' as const, result })),
-              catchError(() => of({ status: 'error' as const, result: undefined })),
-            );
-          }),
-        )
-        .subscribe(({ status, result }) => {
-          this.previewStatus.set(status);
-          if (status !== 'error') this.dryRun.set(result);
-          this.previewStale.set(false);
-        }),
-    );
-  }
-
   buildResult(): BundleFormResult {
-    const draft = this.#draft();
-    return { name: draft.name.trim(), bundle: toDefinition(draft) };
-  }
-
-  /**
-   * The same domain rules the API applies on save, so the dialog never closes on a
-   * definition the server would reject. The key is checked only when it can be sent
-   * (it is locked in edit mode).
-   */
-  #domainErrors({ name, bundle }: BundleFormResult): string[] {
-    return checkBundleDefinition(bundle, this.allCollectionNames(), this.form.controls.name.enabled ? name : undefined)
-      .errors;
+    return toBundleResult(this.#draft());
   }
 }
 
@@ -589,124 +499,6 @@ function rulesRequiredValidator(control: AbstractControl): ValidationErrors | nu
 }
 
 export type BundleSection = 'output' | 'collections' | `coll:${number}` | 'types' | 'options';
-export type MergeStrategy = 'merge' | 'override';
-export type TagOperator = 'Any' | 'All';
-export type TokenCasingChoice = 'inherit' | TokenCasingDto;
-export type IcuChoice = 'inherit' | 'on' | 'off';
-
-interface BundleDraftRule {
-  matchingPattern: string;
-  matchingTags: string[];
-  matchingTagOperator: TagOperator;
-}
-
-interface BundleDraftCollection {
-  name: string;
-  bundledKeyPrefix: string;
-  mergeStrategy: MergeStrategy;
-  allEntries: boolean;
-  rules: BundleDraftRule[];
-}
-
-/** The form's raw choices, including values hidden by its toggles. */
-interface BundleDraft {
-  name: string;
-  dist: string;
-  bundleName: string;
-  allCollections: boolean;
-  collections: BundleDraftCollection[];
-  typesEnabled: boolean;
-  typeDistFile: string;
-  tokenCasing: TokenCasingChoice;
-  tokenConstantName: string;
-  transformICUToTransloco: IcuChoice;
-}
-
-function toDraft(definition: BundleDefinitionDto | undefined, allCollectionNames: readonly string[]): BundleDraft {
-  const bundle = definition === undefined ? undefined : normalizeBundleDefinition(definition);
-  const collections = bundle?.collections;
-  const selected = Array.isArray(collections) ? collections.map(toDraftCollection) : [];
-  const first = allCollectionNames[0];
-  if (collections !== 'All' && selected.length === 0 && first) {
-    selected.push(toDraftCollection({ name: first, entriesSelectionRules: 'All' }));
-  }
-
-  return {
-    name: '',
-    dist: bundle?.dist ?? '',
-    bundleName: bundle?.bundleName ?? '',
-    allCollections: collections === 'All',
-    collections: selected,
-    typesEnabled: Boolean(bundle?.typeDistFile),
-    typeDistFile: bundle?.typeDistFile ?? '',
-    tokenCasing: bundle?.tokenCasing ?? 'inherit',
-    tokenConstantName: bundle?.tokenConstantName ?? '',
-    transformICUToTransloco:
-      bundle?.transformICUToTransloco === undefined ? 'inherit' : bundle.transformICUToTransloco ? 'on' : 'off',
-  };
-}
-
-function toDraftCollection(collection: CollectionBundleDefinitionDto): BundleDraftCollection {
-  return {
-    name: collection.name,
-    bundledKeyPrefix: collection.bundledKeyPrefix ?? '',
-    mergeStrategy: collection.mergeStrategy ?? 'merge',
-    allEntries: collection.entriesSelectionRules === 'All',
-    rules: Array.isArray(collection.entriesSelectionRules) ? collection.entriesSelectionRules.map(toDraftRule) : [],
-  };
-}
-
-function toDraftRule(rule: EntrySelectionRuleDto): BundleDraftRule {
-  return {
-    matchingPattern: rule.matchingPattern,
-    matchingTags: [...(rule.matchingTags ?? [])],
-    matchingTagOperator: rule.matchingTagOperator ?? 'Any',
-  };
-}
-
-function toDefinition(draft: BundleDraft): BundleDefinitionDto {
-  const collections: BundleDefinitionDto['collections'] = draft.allCollections
-    ? 'All'
-    : draft.collections.map((collection) => {
-        const prefix = collection.bundledKeyPrefix.trim();
-        const entriesSelectionRules: CollectionBundleDefinitionDto['entriesSelectionRules'] = collection.allEntries
-          ? 'All'
-          : collection.rules.map((rule) => ({
-              matchingPattern: rule.matchingPattern.trim(),
-              ...(rule.matchingTags.length > 0
-                ? { matchingTags: [...rule.matchingTags], matchingTagOperator: rule.matchingTagOperator }
-                : {}),
-            }));
-        return {
-          name: collection.name,
-          ...(prefix ? { bundledKeyPrefix: prefix } : {}),
-          entriesSelectionRules,
-          ...(collection.mergeStrategy === 'override' ? { mergeStrategy: 'override' as const } : {}),
-        };
-      });
-
-  const typeDistFile = draft.typeDistFile.trim();
-  const tokenConstantName = draft.tokenConstantName.trim();
-  const typesOn = draft.typesEnabled && typeDistFile.length > 0;
-
-  return {
-    bundleName: draft.bundleName.trim(),
-    dist: draft.dist.trim(),
-    collections,
-    ...(typesOn ? { typeDistFile } : {}),
-    ...(typesOn && draft.tokenCasing !== 'inherit' ? { tokenCasing: draft.tokenCasing } : {}),
-    ...(typesOn && tokenConstantName ? { tokenConstantName } : {}),
-    ...(draft.transformICUToTransloco !== 'inherit'
-      ? { transformICUToTransloco: draft.transformICUToTransloco === 'on' }
-      : {}),
-  };
-}
-
-function dryRunRequest(draft: BundleDraft): BundleDryRunRequestDto | undefined {
-  const name = draft.name.trim();
-  if (!name || !draft.dist.trim() || !draft.bundleName.trim()) return undefined;
-  return { name, bundle: toDefinition(draft) };
-}
 
 /** Keep the form's error keys while using the domain definition rules. */
 function collectionsRequired(allCollections: boolean, count: number): boolean {

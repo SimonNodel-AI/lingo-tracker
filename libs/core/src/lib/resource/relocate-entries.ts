@@ -4,15 +4,13 @@ import { describeFolderProblem } from './collection-folders';
 import { pruneEmptiedFolders } from './folder-pruning';
 import type { MovePlan } from './move-plan';
 import { resolveResolvedResourcePaths } from './resource-file-paths';
-import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from './resource-folder';
-import { resolveCheckedResourceKey } from './resource-key';
 import {
-  type MutationSinkOptions,
-  reindexMutation,
-  removeMutation,
-  resolveMutationSink,
-  upsertMutation,
-} from './resource-mutation';
+  openResourceFolder,
+  type ResourceFolder,
+  type ResourceFolderEntry,
+  saveResourceRelocation,
+} from './resource-folder';
+import { resolveCheckedResourceKey } from './resource-key';
 import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
@@ -44,7 +42,7 @@ export interface Relocation {
   readonly to: string;
 }
 
-export interface RelocateEntriesOptions extends MutationSinkOptions {
+export interface RelocateEntriesOptions {
   /** Return saved empty folders for the containing Move Run to prune after all selections. */
   readonly deferPruning?: boolean;
   /** Replace an entry that holds a destination key. Default: false (the relocation is a collision). */
@@ -184,21 +182,24 @@ function performRelocation(
   const pruneWarnings = (): string[] =>
     options.deferPruning
       ? []
-      : pruneEmptiedFolders(source, emptiedFolders, { onMutation: resolveMutationSink(source, options) }).problems.map(
-          (problem) => describeFolderProblem(problem),
-        );
+      : pruneEmptiedFolders(source, emptiedFolders).problems.map((problem) => describeFolderProblem(problem));
+
+  const moved: RelocatedEntry[] = [];
+  const readMoved = (): RelocatedEntry[] => {
+    for (const { relocation, to } of pending) {
+      const entry = to.folder.treeEntry(to.entryKey);
+      if (entry) moved.push({ from: relocation.from, to: relocation.to, entry });
+    }
+    return moved;
+  };
 
   // 4. Save each folder once, after every folder it sends entries to.
-  try {
-    for (const folder of saveOrder(pending)) {
-      const saved = folder.save();
-      if (saved.emptied) emptiedFolders.push(folder.folderPath);
-    }
-  } catch (error) {
+  const failure = saveResourceRelocation(source, destination, saveOrder(pending), readMoved, (folder, saved) => {
+    if (saved.emptied) emptiedFolders.push(folder.folderPath);
+  });
+  if (failure) {
+    const error = failure.error;
     errors.push(`Failed to write the move: ${error instanceof Error ? error.message : String(error)}`);
-    // Some folders may be written: the index reads both collections again.
-    resolveMutationSink(destination, options)?.(reindexMutation(destination.translationsFolder));
-    if (!sameCollection) resolveMutationSink(source, options)?.(reindexMutation(source.translationsFolder));
     const warnings = pruneWarnings();
     return {
       moved: [],
@@ -209,15 +210,6 @@ function performRelocation(
     };
   }
 
-  const moved: RelocatedEntry[] = [];
-  for (const { relocation, to } of pending) {
-    const entry = to.folder.treeEntry(to.entryKey);
-    if (entry) moved.push({ from: relocation.from, to: relocation.to, entry });
-  }
-
-  for (const { from } of moved) resolveMutationSink(source, options)?.(removeMutation(source.translationsFolder, from));
-  for (const { to, entry } of moved)
-    resolveMutationSink(destination, options)?.(upsertMutation(destination.translationsFolder, to, entry));
   const warnings = pruneWarnings();
   return {
     moved,

@@ -17,7 +17,8 @@ export interface LocaleFilesResult {
  */
 export function openLocaleFolders(collection: CollectionSweepTarget): ResourceFolder[] {
   const folders: ResourceFolder[] = [];
-  for (const { folder, problem } of sweepCollection(collection)) {
+  // Locale JSON saves were silent at HEAD; the lifecycle operation reports its reindex.
+  for (const { folder, problem } of sweepCollection(collection, { unreported: true })) {
     if (problem) {
       throw new CoreOperationError(describeFolderProblem(problem));
     }

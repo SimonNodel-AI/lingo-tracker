@@ -36,11 +36,10 @@ describe('EditorPresentation', () => {
     const state: EditorPresentationState = {
       isEditMode: editMode,
       isReadOnly: readOnly,
-      showBaseValueError: baseValueError,
       otherLocales,
       similarCount,
-      entry: { form: entry.form, needWorkCount },
-      advisories: { preferredTermFindings: findings },
+      entry: { form: entry.form, needWorkCount, showBaseValueError: baseValueError },
+      preferredTermFindings: findings,
       location: { selectedFolderPath: folder },
     };
     presentation = new EditorPresentation(state, { baseLocale: 'en' }, { translate, activeLang });

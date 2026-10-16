@@ -1,5 +1,8 @@
-import type { BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
+import { computed, signal } from '@angular/core';
+import type { BundleDryRunRequestDto, BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
 import { bundleOutputFile } from '@simoncodes-ca/domain';
+import { catchError, debounceTime, map, type Observable, of, type Subscription, startWith, switchMap, tap } from 'rxjs';
+import { type BundleDraft, bundleDryRunRequest } from './bundle-draft';
 
 interface OutputDraft {
   readonly dist: string;
@@ -110,4 +113,106 @@ function groupIntoFolders(files: readonly PreviewPath[]): readonly PreviewFolder
 
 function splitAfterSeparators(value: string, separators: RegExp): readonly string[] {
   return value.length === 0 ? [] : value.split(separators);
+}
+
+export type PreviewStatus = 'waiting' | 'loading' | 'ready' | 'error';
+
+interface BundlePreviewOptions {
+  draft: () => BundleDraft;
+  locales: () => readonly string[];
+  baseLocale: () => string;
+  dryRun: (request: BundleDryRunRequestDto) => Observable<BundleDryRunResultDto>;
+}
+
+const TOKEN_SEPARATORS = /(?<=[._])/;
+
+/** Preview projections and refresh lifecycle; the caller owns the returned subscription. */
+export class BundlePreview {
+  readonly #options: BundlePreviewOptions;
+  readonly dryRun = signal<BundleDryRunResultDto | undefined>(undefined);
+  readonly previewStatus = signal<PreviewStatus>('waiting');
+  /** True from the first keystroke until the next dry run lands. */
+  readonly previewStale = signal(false);
+
+  readonly #localOutputPreview = computed(() =>
+    bundleOutputPreview({ draft: this.#options.draft(), locales: this.#options.locales() }),
+  );
+
+  /** Rail summary under Output: `dist/pattern.json` (the placeholder kept), or nothing until one is typed. */
+  readonly outputSummary = computed(() => this.#localOutputPreview().outputSummary);
+
+  readonly typeFileName = computed(() => this.#localOutputPreview().typeFileName);
+
+  /** The bundle file per project locale, relative to the output folder. */
+  readonly patternFiles = computed(() => this.#localOutputPreview().patternFiles);
+
+  /** Client-side tree from the form alone; used while waiting and when the dry run fails. */
+  readonly localTree = computed(() => this.#localOutputPreview().folders);
+
+  readonly previewTree = computed(() => {
+    const result = this.dryRun();
+    if (!result || this.previewStatus() === 'error') return this.localTree();
+    return bundlePlannedOutputPreview(result);
+  });
+
+  readonly previewFileCount = computed(() =>
+    this.previewTree().reduce((total, folder) => total + folder.files.length, 0),
+  );
+
+  /**
+   * Bundled keys that are both a leaf and a parent (e.g. `buttons.ok` next to
+   * `buttons.ok.label`). Generation throws on these, so the preview must show
+   * them as an error rather than letting the bundle look ready to ship.
+   */
+  readonly hierarchicalConflicts = computed<readonly string[]>(() => {
+    if (this.previewStatus() === 'error') return [];
+    return this.dryRun()?.hierarchicalConflicts ?? [];
+  });
+
+  /** The colliding keys as one readable list for the preview error line. */
+  readonly hierarchicalConflictList = computed(() => this.hierarchicalConflicts().join(', '));
+
+  readonly keysPerLocale = computed(() => {
+    const result = this.dryRun();
+    if (!result) return undefined;
+    const base = result.keysPerLocale[this.#options.baseLocale()];
+    if (base !== undefined) return base;
+    return Math.max(0, ...Object.values(result.keysPerLocale));
+  });
+
+  /** Example token path split after `.` and `_`, so it wraps between segments, never mid-identifier. */
+  readonly tokenPathParts = computed<readonly string[]>(() => {
+    const tokenPath = this.dryRun()?.exampleKey?.tokenPath;
+    if (!tokenPath) return [];
+    return tokenPath.split(TOKEN_SEPARATORS);
+  });
+
+  constructor(options: BundlePreviewOptions) {
+    this.#options = options;
+  }
+
+  connect(changes: Observable<unknown>): Subscription {
+    return changes
+      .pipe(
+        startWith(null),
+        tap(() => this.previewStale.set(true)),
+        debounceTime(300),
+        map(() => bundleDryRunRequest(this.#options.draft())),
+        switchMap((request) => {
+          if (!request) {
+            return of({ status: 'waiting' as const, result: undefined });
+          }
+          this.previewStatus.update((status) => (status === 'ready' ? status : 'loading'));
+          return this.#options.dryRun(request).pipe(
+            map((result) => ({ status: 'ready' as const, result })),
+            catchError(() => of({ status: 'error' as const, result: undefined })),
+          );
+        }),
+      )
+      .subscribe(({ status, result }) => {
+        this.previewStatus.set(status);
+        if (status !== 'error') this.dryRun.set(result);
+        this.previewStale.set(false);
+      });
+  }
 }

@@ -22,7 +22,9 @@ describe('deleteFolder (real fs)', () => {
     writeFolderFiles(root(), 'apps', { entries: { one: { source: 'One' } } });
     writeFolderFiles(root(), 'apps.nested', { entries: { two: { source: 'Two' }, three: { source: 'Three' } } });
 
-    expect(deleteFolder(collection, { folderPath: 'apps' }, { onMutation })).toEqual({
+    expect(
+      deleteFolder({ ...collection, onMutation: onMutation ?? collection.onMutation }, { folderPath: 'apps' }),
+    ).toEqual({
       folderPath: 'apps',
       resourcesDeleted: 3,
     });
@@ -34,7 +36,12 @@ describe('deleteFolder (real fs)', () => {
     const target = writeFolderFiles(root(), 'target.nested', { entries: { ok: { source: 'OK' } } });
     symlinkSync(join(root(), 'target'), join(root(), 'linked'));
     for (const folderPath of ['linked', 'linked.nested']) {
-      expect(() => deleteFolder(testCollection(root()), { folderPath }, { onMutation })).toThrow('symbolic link');
+      expect(() =>
+        deleteFolder(
+          { ...testCollection(root()), onMutation: onMutation ?? testCollection(root()).onMutation },
+          { folderPath },
+        ),
+      ).toThrow('symbolic link');
       expect(collected).toEqual([]);
       expect(lstatSync(join(root(), 'linked')).isSymbolicLink()).toBe(true);
       expect(readFileSync(join(target, 'resource_entries.json'), 'utf8')).toContain('OK');
@@ -42,31 +49,43 @@ describe('deleteFolder (real fs)', () => {
   });
 
   it('reports a missing folder', () => {
-    expect(() => deleteFolder(testCollection(root()), { folderPath: 'missing' }, { onMutation })).toThrow(
-      new FolderNotFoundError('missing'),
-    );
+    expect(() =>
+      deleteFolder(
+        { ...testCollection(root()), onMutation: onMutation ?? testCollection(root()).onMutation },
+        { folderPath: 'missing' },
+      ),
+    ).toThrow(new FolderNotFoundError('missing'));
   });
 
   it('rejects malformed address segments before deleting anything', () => {
     mkdirSync(join(root(), 'apps'));
-    expect(() => deleteFolder(testCollection(root()), { folderPath: 'apps.bad name' }, { onMutation })).toThrow(
-      new InvalidFolderPathError('folder path', 'bad name'),
-    );
+    expect(() =>
+      deleteFolder(
+        { ...testCollection(root()), onMutation: onMutation ?? testCollection(root()).onMutation },
+        { folderPath: 'apps.bad name' },
+      ),
+    ).toThrow(new InvalidFolderPathError('folder path', 'bad name'));
     expect(existsSync(join(root(), 'apps'))).toBe(true);
   });
 
   it('refuses the root address', () => {
-    expect(() => deleteFolder(testCollection(root()), { folderPath: '' }, { onMutation })).toThrow(
-      new InvalidFolderPathError('folder path', ''),
-    );
+    expect(() =>
+      deleteFolder(
+        { ...testCollection(root()), onMutation: onMutation ?? testCollection(root()).onMutation },
+        { folderPath: '' },
+      ),
+    ).toThrow(new InvalidFolderPathError('folder path', ''));
     expect(existsSync(root())).toBe(true);
   });
 
   it('treats a file at the address as a missing folder', () => {
     writeFileSync(join(root(), 'file'), 'content');
-    expect(() => deleteFolder(testCollection(root()), { folderPath: 'file' }, { onMutation })).toThrow(
-      new FolderNotFoundError('file'),
-    );
+    expect(() =>
+      deleteFolder(
+        { ...testCollection(root()), onMutation: onMutation ?? testCollection(root()).onMutation },
+        { folderPath: 'file' },
+      ),
+    ).toThrow(new FolderNotFoundError('file'));
     expect(existsSync(join(root(), 'file'))).toBe(true);
   });
 
@@ -79,7 +98,10 @@ describe('deleteFolder (real fs)', () => {
       JSON.stringify({ ignored: { source: 'Hidden' } }),
     );
     writeFileSync(join(root(), 'apps', 'notes.txt'), 'notes');
-    const result = deleteFolder(collection, { folderPath: 'apps' }, { onMutation });
+    const result = deleteFolder(
+      { ...collection, onMutation: onMutation ?? collection.onMutation },
+      { folderPath: 'apps' },
+    );
     expect(result.resourcesDeleted).toBe(1);
     expect(collected).toEqual([{ kind: 'remove-folder', translationsFolder: root(), path: 'apps' }]);
     expect(existsSync(join(root(), 'apps'))).toBe(false);

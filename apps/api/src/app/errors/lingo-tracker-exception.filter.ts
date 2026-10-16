@@ -13,7 +13,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { BaseExceptionFilter } from '@nestjs/core';
-import { type ErrorCode, type ErrorKind, LingoTrackerError } from '@simoncodes-ca/core';
+import { type ErrorKind, type ErrorRules, LingoTrackerError, mapTypedError } from '@simoncodes-ca/core';
 import type { ApiErrorCode } from './api-error-codes';
 
 /**
@@ -21,7 +21,7 @@ import type { ApiErrorCode } from './api-error-codes';
  * error to a status; controllers let core errors propagate.
  *
  * Kind selects the default status. The API owns code-based presentation rules and
- * reads only domain facts (`code`, `field`, `details`), without subclass checks.
+ * reads code-specific `facts`, without subclass checks or property probes.
  *
  * Every mapped answer has the same `{ statusCode, message, error }` body. An invalid bundle
  * definition also carries `errors`, every problem the domain rules found, under the fixed
@@ -44,29 +44,28 @@ const HTTP_BY_KIND: Record<ErrorKind, HttpFactory> = {
 
 interface HttpRule {
   readonly kind: ErrorKind;
-  readonly message?: (error: LingoTrackerError) => string;
+  readonly message?: string | ((message: string) => string);
   readonly status?: HttpFactory;
   readonly includeDetails?: boolean;
 }
 
 /** HTTP presentation belongs to the API; the core error keeps its original message and code. */
-type MappedCode = ErrorCode | ApiErrorCode;
 
 // Codes default by kind; this table holds only deviations.
 export const HTTP_BY_CODE = {
   BRACED_PLACEHOLDER: { kind: 'invalid', includeDetails: true },
-  INVALID_COLLECTION: {
+  INVALID_COLLECTION: (error) => ({
     kind: 'invalid',
-    message: (error) => ('field' in error && error.field !== undefined ? `collection.${error.message}` : error.message),
-  },
-  INVALID_BUNDLE_DEFINITION: { kind: 'invalid', message: () => 'Invalid bundle definition', includeDetails: true },
+    message: error.facts.field !== undefined ? `collection.${error.message}` : error.message,
+  }),
+  INVALID_BUNDLE_DEFINITION: { kind: 'invalid', message: 'Invalid bundle definition', includeDetails: true },
   INVALID_PREFERRED_TERMINOLOGY: {
     kind: 'invalid',
-    message: () => 'Invalid preferred terminology rules',
+    message: 'Invalid preferred terminology rules',
     includeDetails: true,
   },
-  INVALID_FOLDER_PATH: { kind: 'invalid', message: (error) => `Validation error: ${error.message}` },
-  FOLDER_MOVE_INTO_DESCENDANT: { kind: 'invalid', message: (error) => `Validation error: ${error.message}` },
+  INVALID_FOLDER_PATH: { kind: 'invalid', message: (message) => `Validation error: ${message}` },
+  FOLDER_MOVE_INTO_DESCENDANT: { kind: 'invalid', message: (message) => `Validation error: ${message}` },
   INVALID_REQUEST: { kind: 'upstream', status: HTTP_BY_KIND.invalid },
   MISSING_API_KEY: { kind: 'upstream', status: HTTP_BY_KIND.internal },
   UNKNOWN_PROVIDER: { kind: 'upstream', status: HTTP_BY_KIND.internal },
@@ -79,15 +78,13 @@ export const HTTP_BY_CODE = {
         HttpStatus.TOO_MANY_REQUESTS,
       ),
   },
-} as const satisfies Partial<Record<MappedCode, HttpRule>>;
-
-const rules: Readonly<Partial<Record<string, HttpRule>>> = HTTP_BY_CODE;
+} satisfies ErrorRules<HttpRule, void, ApiErrorCode>;
 
 export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException {
   if (!error.exposeMessage) {
     return new InternalServerErrorException({ statusCode: 500, error: 'Internal Server Error' });
   }
-  const candidate = rules[error.code];
+  const candidate = mapTypedError<HttpRule, void, ApiErrorCode>(error, HTTP_BY_CODE, undefined);
   const rule = candidate?.kind === error.kind ? candidate : undefined;
   // TranslationError is the only core subclass with kind 'upstream'. Core's error
   // spec reserves that kind for it, so unknown provider codes keep the prefix and
@@ -95,16 +92,18 @@ export function lingoTrackerErrorToHttp(error: LingoTrackerError): HttpException
   const message =
     error.kind === 'upstream'
       ? `Translation provider error: ${error.message}`
-      : (rule?.message?.(error) ?? error.message);
+      : typeof rule?.message === 'function'
+        ? rule.message(error.message)
+        : (rule?.message ?? error.message);
   // A runtime subclass with an unrecognised kind retains the old typed 500 response.
   const mapper = rule?.status ?? HTTP_BY_KIND[error.kind] ?? HTTP_BY_KIND.internal;
   const http = mapper(message);
-  if (!rule?.includeDetails || error.details === undefined) {
+  if (!rule?.includeDetails || error.facts.details === undefined) {
     return http;
   }
   const body = http.getResponse();
   return new HttpException(
-    { ...(typeof body === 'string' ? { message: body } : body), errors: [...error.details] },
+    { ...(typeof body === 'string' ? { message: body } : body), errors: [...error.facts.details] },
     http.getStatus(),
   );
 }
@@ -143,7 +142,7 @@ export class LingoTrackerExceptionFilter extends BaseExceptionFilter {
         this.#logger.error(exception.message, exception.stack);
       }
       super.catch(toHttpException(exception), host);
-    } else if (exception instanceof Error && !('statusCode' in exception)) {
+    } else if (exception instanceof Error && !Reflect.has(exception, 'statusCode')) {
       this.#logger.error(exception.message, exception.stack);
       super.catch(toHttpException(exception), host);
     } else {

@@ -6,12 +6,12 @@ import { readJsonFile } from '../file-io/json-file-operations';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
 import { assertCollectionFolderPath, validateFolderAddress } from './folder-address';
 import { scanFolder } from './iterative-folder-walker';
-import { folderMutation, type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
+import { reportResourceDirectoryWrite } from './resource-folder';
 
 /** The only non-collection files that pruning may delete. */
 export const PRUNABLE_OS_JUNK_FILES = ['.DS_Store', 'Thumbs.db', 'desktop.ini'] as const;
 
-export interface PruneOptions extends MutationSinkOptions {
+export interface PruneOptions {
   /** Dot-delimited folder address. The start folder can be removed; its ancestors cannot. */
   readonly startPath?: string;
   readonly dryRun?: boolean;
@@ -50,7 +50,7 @@ export function pruneEmptyFolders(collection: PruningCollection, options: PruneO
 export function pruneEmptiedFolders(
   collection: PruningCollection,
   emptiedFolderPaths: Iterable<string>,
-  options: Pick<PruneOptions, 'dryRun' | 'onMutation'> = {},
+  options: Pick<PruneOptions, 'dryRun'> = {},
 ): PruneResult {
   const result: PruneResult = { removed: [], kept: [], problems: [] };
   const pending = new Map<number, Set<string>>();
@@ -97,7 +97,7 @@ export function pruneEmptiedFolders(
 function pruneVisits(
   collection: PruningCollection,
   visits: Iterable<CollectionFolderVisit>,
-  options: Pick<PruneOptions, 'dryRun' | 'onMutation'>,
+  options: Pick<PruneOptions, 'dryRun'>,
   removedPaths = new Set<string>(),
 ): PruneResult {
   const result: PruneResult = { removed: [], kept: [], problems: [] };
@@ -112,7 +112,13 @@ function pruneVisits(
     }
 
     if (!options.dryRun) {
-      const removal = removeFolder(absolutePath, classification.files);
+      const removal = reportResourceDirectoryWrite(
+        collection,
+        () => removeFolder(absolutePath, classification.files),
+        folderPath,
+        'remove-folder',
+        (result) => result?.kind === 'removed',
+      );
       if (removal.kind !== 'removed') {
         result.kept.push({
           folderPath,
@@ -132,12 +138,6 @@ function pruneVisits(
 
     removedPaths.add(absolutePath);
     result.removed.push(folderPath);
-    if (!options.dryRun) {
-      resolveMutationSink(
-        collection,
-        options,
-      )?.(folderMutation('remove-folder', collection.translationsFolder, folderPath));
-    }
   }
   return result;
 }

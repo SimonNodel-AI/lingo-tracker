@@ -58,9 +58,11 @@ describe('Folder Pruning (real fs)', () => {
     const first = folder('a.child.deep');
     const unrelated = folder('unrelated');
     const mutations: ResourceMutation[] = [];
-    const result = pruneEmptiedFolders(collection(), [last, first, last, root(), join(root(), 'a')], {
-      onMutation: (mutation) => mutations.push(mutation),
-    });
+    const result = pruneEmptiedFolders(
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+      [last, first, last, root(), join(root(), 'a')],
+      {},
+    );
     expect(result.removed).toEqual(['a.child.deep', 'z.child.deep', 'a.child', 'z.child', 'a', 'z']);
     expect(result.problems).toEqual([]);
     expect(mutations).toEqual(
@@ -102,7 +104,10 @@ describe('Folder Pruning (real fs)', () => {
       return Reflect.apply(readFile, fs, args);
     });
     const mutations: ResourceMutation[] = [];
-    const result = pruneEmptyFolders(collection(), { onMutation: (mutation) => mutations.push(mutation) });
+    const result = pruneEmptyFolders(
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+      {},
+    );
     expect(result.removed).toEqual(['empty']);
     expect(result.problems).toEqual([]);
     expect(fs.existsSync(empty)).toBe(false);
@@ -287,15 +292,19 @@ describe('Folder Pruning (real fs)', () => {
   it('emits remove-folder mutations deepest first immediately after each removal', () => {
     folder('apps.deep');
     const mutations: ResourceMutation[] = [];
-    pruneEmptyFolders(collection(), {
-      onMutation: (mutation) => {
-        mutations.push(mutation);
-        if (mutation.kind === 'remove-folder') {
-          expect(fs.existsSync(join(root(), ...mutation.path.split('.')))).toBe(false);
-          if (mutation.path === 'apps.deep') expect(fs.existsSync(join(root(), 'apps'))).toBe(true);
-        }
+    pruneEmptyFolders(
+      {
+        ...collection(),
+        onMutation: (mutation) => {
+          mutations.push(mutation);
+          if (mutation.kind === 'remove-folder') {
+            expect(fs.existsSync(join(root(), ...mutation.path.split('.')))).toBe(false);
+            if (mutation.path === 'apps.deep') expect(fs.existsSync(join(root(), 'apps'))).toBe(true);
+          }
+        },
       },
-    });
+      {},
+    );
     expect(mutations).toEqual([
       { kind: 'remove-folder', translationsFolder: root(), path: 'apps.deep' },
       { kind: 'remove-folder', translationsFolder: root(), path: 'apps' },
@@ -305,7 +314,10 @@ describe('Folder Pruning (real fs)', () => {
   it('emits no mutations in dryRun', () => {
     folder('apps.deep');
     const onMutation = vi.fn();
-    expect(pruneEmptyFolders(collection(), { dryRun: true, onMutation }).removed).toEqual(['apps.deep', 'apps']);
+    expect(
+      pruneEmptyFolders({ ...collection(), onMutation: onMutation ?? collection().onMutation }, { dryRun: true })
+        .removed,
+    ).toEqual(['apps.deep', 'apps']);
     expect(onMutation).not.toHaveBeenCalled();
   });
 
@@ -367,7 +379,7 @@ describe('Folder Pruning (real fs)', () => {
       throw new Error('Cannot remove fixture');
     });
     const onMutation = vi.fn();
-    const result = pruneEmptyFolders(collection(), { onMutation });
+    const result = pruneEmptyFolders({ ...collection(), onMutation: onMutation ?? collection().onMutation }, {});
     expect(result.removed).toEqual([]);
     expect(result.problems[0]).toMatchObject({ folderPath: 'parent.empty', absolutePath: empty });
     expect(fs.existsSync(empty)).toBe(true);
@@ -444,7 +456,7 @@ describe('Folder Pruning (real fs)', () => {
     });
     const unlink = vi.spyOn(fs, 'unlinkSync');
     const onMutation = vi.fn();
-    const result = pruneEmptyFolders(collection(), { onMutation });
+    const result = pruneEmptyFolders({ ...collection(), onMutation: onMutation ?? collection().onMutation }, {});
     expect(result.removed).toEqual([]);
     expect(result.kept).toContainEqual({
       folderPath: 'parent.empty',

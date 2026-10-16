@@ -49,10 +49,10 @@ describe('addCollection', () => {
     );
 
     addCollection(
-      { projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) },
+      { ...{ projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) }, onMutation },
       'admin',
       { translationsFolder: '  ./admin  ' },
-      { onMutation },
+      {},
     );
 
     expect(onMutation).toHaveBeenCalledTimes(1);
@@ -67,10 +67,10 @@ describe('addCollection', () => {
     const onMutation = vi.fn();
     expect(() =>
       addCollection(
-        { projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) },
+        { ...{ projectRoot: tempDir(), sourceConfig: loadConfig({ cwd: tempDir() }) }, onMutation },
         'existing',
         { translationsFolder: './new' },
-        { onMutation },
+        {},
       ),
     ).toThrow(CollectionAlreadyExistsError);
     expect(onMutation).not.toHaveBeenCalled();

@@ -17,7 +17,7 @@ describe('loadBaseLocaleValues before import validation', () => {
       { key: 'apps.ok', value: 'Bonjour {nom}' },
     ];
     const original = structuredClone(resources);
-    const opened = vi.spyOn(resourceFolder, 'openResourceFolder');
+    const opened = vi.spyOn(resourceFolder, 'openReadonlyResourceFolder');
     try {
       // Path arithmetic retains HEAD's lookup behaviour; import rejects syntax later.
       expect(loadBaseLocaleValues(resources, collection())).toEqual(
@@ -71,7 +71,7 @@ describe('loadBaseLocaleValues before import validation', () => {
         'Invalid key format: "bad@key" (Error: Import validation: Invalid key segment "bad@key". Segments must match pattern [A-Za-z0-9_-]+)',
       );
       expect(result.changes.filter(({ type }) => type === 'failed').map(({ key }) => key)).toEqual(invalidKeys);
-      const stored = resourceFolder.openResourceFolder(join(root(), 'apps'), collection()).get('ok');
+      const stored = resourceFolder.openUnreportedResourceFolder(join(root(), 'apps'), collection()).get('ok');
       expect(stored?.entry['fr']).toBe(dryRun ? undefined : 'Bonjour {name}');
     }
   });

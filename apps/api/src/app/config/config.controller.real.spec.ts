@@ -197,6 +197,15 @@ describe('ConfigController HTTP (real project)', () => {
     expect(project.exists(terms)).toBe(false);
     expect(project.exists(terminology)).toBe(false);
   });
+  it('ignores unsupported config fields alongside a writable list', async () => {
+    const before = project.read('.lingo-tracker.json');
+    expect(await put({ protectedTerms: [], collections: {}, locales: ['de'], baseLocale: 'de' })).toEqual({
+      status: 200,
+      body: { message: 'Configuration updated successfully' },
+    });
+    expect(project.read('.lingo-tracker.json')).toBe(before);
+    expect(project.json(terms)).toEqual([]);
+  });
   it('throws 400 when protectedTerms is not a string array', async () => {
     expect(await put({ protectedTerms: 'iPhone' })).toEqual({
       status: 400,

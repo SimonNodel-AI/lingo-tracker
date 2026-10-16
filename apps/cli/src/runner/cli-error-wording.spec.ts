@@ -1,10 +1,4 @@
-import type {
-  CollectionTagEditProblem,
-  ErrorCode,
-  ErrorKind,
-  PreferredTerminologyEditProblem,
-  ProtectedTermsEditProblem,
-} from '@simoncodes-ca/core';
+import type { ErrorCode, ErrorKind, ErrorView } from '@simoncodes-ca/core';
 import { describe, expect, it, vi } from 'vitest';
 import {
   errorAdapterFixtures,
@@ -100,12 +94,12 @@ const termCases = {
   'preferred-remove-shape': 'Core edit message',
   'preferred-replacement-shape': 'Core edit message',
   'preferred-upsert-shape': 'Core edit message',
-} satisfies Record<ProtectedTermsEditProblem | PreferredTerminologyEditProblem, string>;
+} satisfies Record<NonNullable<ErrorView<'INVALID_PROJECT_TERMS_EDIT'>['facts']['problem']>, string>;
 
 const tagCases = {
   'tag-conflict': '--set-tags cannot be combined with --add-tag or --remove-tag',
   'tag-missing': 'Provide at least one of --add-tag, --remove-tag, or --set-tags',
-} satisfies Record<CollectionTagEditProblem, string>;
+} satisfies Record<NonNullable<ErrorView<'INVALID_COLLECTION'>['facts']['problem']>, string>;
 
 /** Keep the closed key union for constructing errors in these contract cases. */
 function entries<Key extends string, Value>(table: Record<Key, Value>): [Key, Value][] {
@@ -143,6 +137,21 @@ describe('CLI Error Wording contract', () => {
       const hint = wording.hint ? `${wording.hint}\n` : '';
       expect(result).toEqual({ exitCode: 1, stdout: '', stderr: `❌ ${wording.message}\n${details}${hint}` });
     }
+  });
+
+  it.each([
+    ['INVALID_PROJECT_TERMS_EDIT', 'Original message'],
+    ['INVALID_PREFERRED_TERMINOLOGY', 'Original message'],
+    ['BRACED_PLACEHOLDER', 'Original message'],
+    ['CONFIG_PARSE_FAILED', 'Failed to parse configuration file: Original message'],
+    ['PROTECTED_TERMS_FILE_NOT_SET', 'Collection "" has no protected terms file. Set one first with --file <path>.'],
+  ])('keeps legacy wording and exit for %s without catalogue facts', async (code, message) => {
+    class LocalError extends core.LingoTrackerError {
+      readonly kind = 'invalid' as const;
+    }
+    const error = new LocalError('Original message', code);
+    expect(cliErrorWording(error)).toEqual({ message });
+    expect(await runFailure(error)).toEqual({ exitCode: 1, stdout: '', stderr: `❌ ${message}\n` });
   });
 
   it.each([

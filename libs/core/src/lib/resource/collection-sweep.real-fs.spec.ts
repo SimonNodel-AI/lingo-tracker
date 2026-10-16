@@ -1,6 +1,6 @@
 import { mkdirSync, renameSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { describeFolderProblem, walkCollectionFolders } from './collection-folders';
 import { sweepCollection, sweepKeys } from './collection-sweep';
@@ -101,8 +101,20 @@ describe('Collection Sweep (real fs)', () => {
     expect(visits[0]?.problem).toMatchObject({ kind: 'unreadable', folderPath: 'dangling' });
   });
 
-  it('hands out folders the caller can change and save', () => {
+  it('hands out read-only folder types by default', () => {
     for (const { folder } of sweepCollection(collection())) {
+      if (!folder) continue;
+      expectTypeOf(folder).not.toHaveProperty('save');
+      expectTypeOf(folder).not.toHaveProperty('setBase');
+      expectTypeOf(folder).not.toHaveProperty('setTranslation');
+      expectTypeOf(folder).not.toHaveProperty('remove');
+      expect(folder.keys()).toBeInstanceOf(Array);
+    }
+  });
+
+  it('hands out folders the caller can change and save', () => {
+    // This fixture exercises writable sweeps; their JSON saves were silent at HEAD.
+    for (const { folder } of sweepCollection(collection(), { unreported: true })) {
       if (folder && folder.seedLocale('es') > 0) folder.save();
     }
 

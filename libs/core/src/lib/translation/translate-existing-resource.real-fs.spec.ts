@@ -4,7 +4,8 @@ import { seedResources, testCollection, useTempDir } from '../../testing/temp-di
 import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import * as fileIO from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import { translateExistingResource } from './translate-existing-resource';
 
@@ -16,7 +17,7 @@ describe('translateExistingResource (real fs)', () => {
     testCollection(root(), {
       translationConfig: { enabled: true, provider: 'google-translate', apiKeyEnv: 'ENTRY_WRITE_TEST_KEY' },
     });
-  const folder = () => openResourceFolder(join(root(), 'buttons'), collection());
+  const folder = () => openUnreportedResourceFolder(join(root(), 'buttons'), collection());
   const seed = () =>
     seedResources(collection(), {
       'buttons.ok': { source: 'OK', translations: { fr: { value: 'OK', status: 'new' }, es: 'Aceptar' } },
@@ -63,16 +64,19 @@ describe('translateExistingResource (real fs)', () => {
   it('skips a target edited during translation and returns its fresh value with unchanged siblings', async () => {
     seed();
     const mutations: ResourceMutation[] = [];
-    const result = await translateExistingResource(automatic(), 'buttons.ok', {
-      provider: new InMemoryTranslationProvider(() => {
-        const current = folder();
-        current.setTranslation('ok', 'fr', 'Manual', 'verified');
-        current.setBase('sibling', 'Sibling');
-        current.save();
-        return 'Translated';
-      }),
-      onMutation: (mutation) => mutations.push(mutation),
-    });
+    const result = await translateExistingResource(
+      { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
+      'buttons.ok',
+      {
+        provider: new InMemoryTranslationProvider(() => {
+          const current = folder();
+          current.setTranslation('ok', 'fr', 'Manual', 'verified');
+          current.setBase('sibling', 'Sibling');
+          current.save();
+          return 'Translated';
+        }),
+      },
+    );
     expect(result.translatedCount).toBe(0);
     expect(result.skippedLocales).toEqual(['fr']);
     expect(result.entry.translations).toEqual({ fr: 'Manual', es: 'Aceptar' });
@@ -86,15 +90,18 @@ describe('translateExistingResource (real fs)', () => {
     seed();
     const mutations: ResourceMutation[] = [];
     await expect(
-      translateExistingResource(automatic(), 'buttons.ok', {
-        provider: new InMemoryTranslationProvider(() => {
-          const current = folder();
-          current.remove('ok');
-          current.save();
-          return 'Translated';
-        }),
-        onMutation: (mutation) => mutations.push(mutation),
-      }),
+      translateExistingResource(
+        { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
+        'buttons.ok',
+        {
+          provider: new InMemoryTranslationProvider(() => {
+            const current = folder();
+            current.remove('ok');
+            current.save();
+            return 'Translated';
+          }),
+        },
+      ),
     ).rejects.toThrow(ResourceNotFoundError);
     expect(folder().has('ok')).toBe(false);
     expect(folder().has('keep')).toBe(true);
@@ -113,10 +120,11 @@ describe('translateExistingResource (real fs)', () => {
       return original(params);
     });
     await expect(
-      translateExistingResource(automatic(), 'buttons.ok', {
-        provider: new InMemoryTranslationProvider(),
-        onMutation: (mutation) => mutations.push(mutation),
-      }),
+      translateExistingResource(
+        { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
+        'buttons.ok',
+        { provider: new InMemoryTranslationProvider() },
+      ),
     ).rejects.toBe(failure);
     expect(writes).toBe(2);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: root() }]);

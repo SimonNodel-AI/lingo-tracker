@@ -1,7 +1,8 @@
 import { ForbiddenException, HttpException, NotFoundException } from '@nestjs/common';
-import type { LingoTrackerConfig } from '@simoncodes-ca/core';
+import { LingoTrackerError, type LingoTrackerConfig } from '@simoncodes-ca/core';
 import { CollectionIndex } from '../cache/collection-index.service';
 import { ConfigService } from '../config/config.service';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { RouteCollectionPipe, routeCollectionRef } from './route-collection';
 
 describe('RouteCollection', () => {
@@ -32,7 +33,7 @@ describe('RouteCollection', () => {
     try {
       fn();
     } catch (error) {
-      if (error instanceof HttpException) return error;
+      if (error instanceof LingoTrackerError) return toHttpException(error);
       throw error;
     }
     throw new Error('expected an HTTP exception');
@@ -47,7 +48,11 @@ describe('RouteCollection', () => {
 
   it('attaches the index sink only when opening a writable route collection', () => {
     expect(open('a%b', 'POST').onMutation).toBe(sink);
-    expect(open('a%b', 'GET').onMutation).toBeUndefined();
+    const read = open('a%b', 'GET');
+    expect(read.onMutation).not.toBe(sink);
+    sink.mockClear();
+    read.onMutation({ kind: 'reindex', translationsFolder: read.translationsFolder });
+    expect(sink).not.toHaveBeenCalled();
   });
 
   it('refuses a write to a read-only collection with the core message', () => {

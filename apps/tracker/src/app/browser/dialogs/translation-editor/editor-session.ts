@@ -1,5 +1,4 @@
 import { computed, type Signal, signal } from '@angular/core';
-import type { FormControl, FormGroup } from '@angular/forms';
 import type {
   FolderNodeDto,
   LingoTrackerConfigDto,
@@ -26,7 +25,7 @@ import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import type { EditorFocus } from './editor-focus';
 import { EditorPanels } from './editor-panels';
 import { EditorPresentation } from './editor-presentation';
-import { type EditorOutcome, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
+import { type EditorOutcome, type EditorReveal, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
 import { resolveDraftKey } from './resource-entry-draft';
 
 export interface TranslationEditorDialogData {
@@ -66,26 +65,9 @@ export class EditorSession {
   readonly presentation: EditorPresentation;
 
   readonly errorMessage = signal<string | null>(null);
-  private readonly entry = new EditorEntryForm();
-  private readonly advisories: EditorAdvisories;
+  readonly entry = new EditorEntryForm(() => this.location.keyCollision());
+  readonly advisories: EditorAdvisories;
 
-  readonly form = this.entry.form;
-  readonly localeSummaries = this.entry.localeSummaries;
-  readonly localesNeedingWork = this.entry.localesNeedingWork;
-  readonly tags = this.entry.tags;
-  readonly contextTree: EditorLocation['contextTree'];
-  readonly folderSegments: EditorLocation['folderSegments'];
-  readonly fullKeyPreview: EditorLocation['fullKeyPreview'];
-  readonly keyCollision: EditorLocation['keyCollision'];
-  readonly isSearchingSimilar: EditorAdvisories['isSearchingSimilar'];
-  readonly preferredTermFindings: EditorAdvisories['preferredTermFindings'];
-  readonly similarResources: EditorAdvisories['similarResources'];
-  /** True while the location pill is highlighting a folder it just absorbed from the key field. */
-  readonly locationAbsorbedFlash: EditorLocation['absorbedFlash'];
-  /** Live-region text announcing the same move to a screen reader, which cannot see the flash. */
-  readonly locationAbsorbedMessage: EditorLocation['absorbedMessage'];
-  /** Set once the user attempts to save, so errors surface on untouched fields too. */
-  readonly submitAttempted = signal(false);
   /** True for a moment after the footer key is copied, so the button can confirm it. */
   readonly keyJustCopied = this.#copyFlash.active;
 
@@ -95,9 +77,8 @@ export class EditorSession {
   readonly tagInputText = signal('');
   readonly inheritedTagsList = computed(() => this.data.resource?.inheritedTags ?? []);
 
-  private readonly location: EditorLocation;
-  private readonly submit: EditorSubmitSession;
-  readonly isSubmitting: Signal<boolean>;
+  readonly location: EditorLocation;
+  readonly submit: EditorSubmitSession;
 
   readonly otherLocales = computed(() =>
     this.data.availableLocales.filter((locale) => locale !== this.data.baseLocale),
@@ -109,40 +90,6 @@ export class EditorSession {
   /** Whether the dialog is view-only because the collection is read-only. */
   readonly isReadOnly = computed(() => this.data.readOnly === true);
   readonly hasSearchQuery = computed(() => hasSearchLength(this.advisories.baseValueText().trim()));
-
-  /** Live form validity, for the footer's earned check glyph. */
-  readonly isFormValid = computed(() => {
-    this.entry.formState();
-    return this.entry.form.valid && !this.location.keyCollision();
-  });
-
-  /** True once the key control is both invalid and worth complaining about. */
-  readonly showKeyError = computed(() => {
-    this.entry.formState();
-    return this.entry.form.controls.key.invalid && (this.entry.form.controls.key.touched || this.submitAttempted());
-  });
-
-  /** True once the English value is both invalid (missing or braced) and worth complaining about. */
-  readonly showBaseValueError = computed(() => {
-    this.entry.formState();
-    return (
-      this.entry.form.controls.baseValue.invalid &&
-      (this.entry.form.controls.baseValue.touched || this.submitAttempted())
-    );
-  });
-
-  /** True once the translation row's value is invalid and worth complaining about. */
-  showLocaleValueError(index: number): boolean {
-    this.entry.formState();
-    const value = this.getLocaleFormGroup(index).controls.value;
-    return value.invalid && (value.touched || this.submitAttempted());
-  }
-
-  /** The first translation row whose value is invalid, -1 when none is. */
-  readonly firstInvalidLocaleIndex = computed(() => {
-    this.entry.formState();
-    return this.entry.form.controls.translations.controls.findIndex((group) => group.controls.value.invalid);
-  });
 
   /** How many similar values are pinned in the context column right now. */
   readonly similarCount = computed(() => this.advisories.similarResources().length);
@@ -190,15 +137,6 @@ export class EditorSession {
       moreLabel: (count) =>
         this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.CONTEXT.MOREENTRIESX, { count }),
     });
-    this.locationAbsorbedFlash = this.location.absorbedFlash;
-    this.locationAbsorbedMessage = this.location.absorbedMessage;
-    this.contextTree = this.location.contextTree;
-    this.folderSegments = this.location.folderSegments;
-    this.fullKeyPreview = this.location.fullKeyPreview;
-    this.keyCollision = this.location.keyCollision;
-    this.isSearchingSimilar = this.advisories.isSearchingSimilar;
-    this.preferredTermFindings = this.advisories.preferredTermFindings;
-    this.similarResources = this.advisories.similarResources;
     this.submit = new EditorSubmitSession({
       writes: {
         create: (dto) => this.options.browser.createResource(this.data.collectionName, dto),
@@ -208,7 +146,6 @@ export class EditorSession {
       chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
       onWriteStart: () => this.errorMessage.set(null),
     });
-    this.isSubmitting = this.submit.isSubmitting;
     this.filteredTagSuggestions = suggestTags({
       entries: options.browser.translations,
       inputText: this.tagInputText,
@@ -219,11 +156,10 @@ export class EditorSession {
       {
         isEditMode: this.isEditMode,
         isReadOnly: this.isReadOnly,
-        showBaseValueError: this.showBaseValueError,
         otherLocales: this.otherLocales,
         similarCount: this.similarCount,
         entry: this.entry,
-        advisories: this.advisories,
+        preferredTermFindings: this.advisories.preferredTermFindings,
         location: this.location,
       },
       data,
@@ -338,7 +274,7 @@ export class EditorSession {
 
   /** Writes a status from the per-locale pill menu into the same FormArray as before. */
   setLocaleStatus(index: number, status: TranslationStatus): void {
-    const group = this.getLocaleFormGroup(index);
+    const group = this.entry.getLocaleFormGroup(index);
     group.controls.status.setValue(status);
     group.controls.status.markAsDirty();
   }
@@ -433,44 +369,38 @@ export class EditorSession {
       draft: this.entry.draft(this.location.selectedFolderPath()),
       original: this.#originalEntry(),
       readOnly: this.isReadOnly(),
-      invalid: this.entry.form.invalid,
+      validation: {
+        invalid: this.entry.form.invalid,
+        keyInvalid: this.entry.form.controls.key.invalid,
+        baseValueInvalid: this.entry.form.controls.baseValue.invalid,
+        firstInvalidLocaleIndex: this.entry.firstInvalidLocaleIndex(),
+      },
       collision: this.location.keyCollision(),
     });
     this.#renderSubmitDecision(decision);
   }
 
-  /**
-   * Names the problem, dismisses anything covering the form, and puts the caret
-   * in the offending field.
-   */
-  #revealValidationFailure(): void {
-    this.submitAttempted.set(true);
-    this.entry.form.markAllAsTouched();
-    this.errorMessage.set(this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
-
-    const { key, baseValue } = this.entry.form.controls;
-    if (key.valid && baseValue.valid && this.firstInvalidLocaleIndex() >= 0) {
-      // The offending field is a translation row, which only the drawer shows.
+  #applyReveal(reveal: EditorReveal): void {
+    if (reveal.panels === 'locales') {
       this.panels.closeFolderPopover(false);
       this.panels.openLocalesDrawer();
-      this.options.editorFocus.request('invalid-locale-value');
-      return;
+    } else if (reveal.panels === 'close-all') {
+      this.panels.closeAll();
     }
-
-    // Focus belongs to the offending field, not to whatever opened the panel.
-    this.panels.closeAll();
-
-    this.options.editorFocus.request(key.invalid ? 'key' : 'base-value');
+    this.options.editorFocus.request(reveal.focus);
   }
 
   #renderSubmitDecision(decision: EditorSubmitDecision): void {
     if (decision.kind === 'ignored') return;
     if (decision.kind === 'invalid') {
-      this.#revealValidationFailure();
+      this.entry.submitAttempted.set(true);
+      this.entry.form.markAllAsTouched();
+      this.errorMessage.set(this.options.translate(TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.FIXERRORS));
+      this.#applyReveal(decision.reveal);
       return;
     }
     if (decision.kind === 'focus-comment') {
-      this.options.editorFocus.request('comment');
+      this.#applyReveal(decision.reveal);
       return;
     }
     if (decision.kind === 'outcome') {
@@ -506,18 +436,5 @@ export class EditorSession {
     };
 
     return this.options.confirm(spec, { width: '400px', disableClose: true });
-  }
-
-  /** The typed locale fields shared by the drawer and save path. */
-  getLocaleFormGroup(index: number): FormGroup<{
-    locale: FormControl<string>;
-    value: FormControl<string>;
-    status: FormControl<TranslationStatus>;
-  }> {
-    return this.entry.form.controls.translations.at(index) as FormGroup<{
-      locale: FormControl<string>;
-      value: FormControl<string>;
-      status: FormControl<TranslationStatus>;
-    }>;
   }
 }

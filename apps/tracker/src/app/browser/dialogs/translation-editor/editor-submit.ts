@@ -13,6 +13,7 @@ import { ApiError } from '../../../shared/api-error/api-error';
 import type { Feedback } from '../../feedback';
 import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
 import { refusedFeedback } from '../../store/write-refusal';
+import type { EditorFocusTarget } from './editor-focus';
 import { type ResourceEntryDraft, resolveDraftKey, toCreateDto, toUpdateDto } from './resource-entry-draft';
 
 /** The result consumed by the launcher, including the conflict hand-off owned by the dialog. */
@@ -110,7 +111,7 @@ export function classifyEditorError(mode: EditorSubmitInput['mode'], error: unkn
 
 interface EditorGateState {
   readOnly: boolean;
-  invalid: boolean;
+  validation: EditorValidationState;
   collision: boolean;
   needsCommentConfirmation: boolean;
 }
@@ -120,7 +121,7 @@ type EditorGateReason = 'read-only' | 'invalid' | 'collision' | 'needs-comment-c
 /** The first reason to stop submission, in the order the editor has always used. */
 function submitGate(state: EditorGateState): EditorGateReason | null {
   if (state.readOnly) return 'read-only';
-  if (state.invalid) return 'invalid';
+  if (state.validation.invalid) return 'invalid';
   if (state.collision) return 'collision';
   if (state.needsCommentConfirmation) return 'needs-comment-confirmation';
   return null;
@@ -128,10 +129,27 @@ function submitGate(state: EditorGateState): EditorGateReason | null {
 
 export type EditorSubmitPhase = 'idle' | 'confirming-comment' | 'choosing-conflict' | 'writing' | 'done';
 
+/** Focus and panel changes chosen with the submit outcome. */
+export interface EditorReveal {
+  focus: EditorFocusTarget;
+  panels: 'close-all' | 'locales' | 'keep';
+}
+
+export type EditorValidationState =
+  | { invalid: false }
+  | { invalid: true; keyInvalid: boolean; baseValueInvalid: boolean; firstInvalidLocaleIndex: number };
+
+function validationReveal(state: Extract<EditorValidationState, { invalid: true }>): EditorReveal {
+  if (!state.keyInvalid && !state.baseValueInvalid && state.firstInvalidLocaleIndex >= 0) {
+    return { focus: 'invalid-locale-value', panels: 'locales' };
+  }
+  return { focus: state.keyInvalid ? 'key' : 'base-value', panels: 'close-all' };
+}
+
 export type EditorSubmitDecision =
   | { kind: 'ignored' }
-  | { kind: 'invalid' }
-  | { kind: 'focus-comment' }
+  | { kind: 'invalid'; reveal: EditorReveal }
+  | { kind: 'focus-comment'; reveal: EditorReveal }
   | { kind: 'message'; feedback: Feedback }
   | { kind: 'outcome'; outcome: EditorOutcome };
 
@@ -143,8 +161,8 @@ export interface EditorSubmitSessionOptions {
 }
 
 export interface EditorSubmitTrigger extends Omit<EditorSubmitInput, 'writes'> {
+  validation: EditorValidationState;
   readOnly: boolean;
-  invalid: boolean;
   collision: boolean;
 }
 
@@ -161,18 +179,19 @@ export class EditorSubmitSession {
 
     const gate = submitGate({
       readOnly: input.readOnly,
-      invalid: input.invalid,
+      validation: input.validation,
       collision: input.collision,
       needsCommentConfirmation: !input.draft.comment.trim() && !this.#saveAnyway,
     });
     if (gate === 'read-only') return { kind: 'ignored' };
-    if (gate === 'invalid') return { kind: 'invalid' };
+    if (input.validation.invalid) return { kind: 'invalid', reveal: validationReveal(input.validation) };
 
     try {
       if (gate === 'collision') return await this.#chooseConflict(resolveDraftKey(input.draft));
       if (gate === 'needs-comment-confirmation') {
         this.phase.set('confirming-comment');
-        if (!(await this.options.confirmMissingComment())) return { kind: 'focus-comment' };
+        if (!(await this.options.confirmMissingComment()))
+          return { kind: 'focus-comment', reveal: { focus: 'comment', panels: 'keep' } };
         this.#saveAnyway = true;
       }
 

@@ -2,12 +2,7 @@ import { joinFolderPath } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
 import { folderAddressExists, resolveFolderAddress, validateFolderAddress } from '../resource/folder-address';
-import {
-  folderMutation,
-  type MutationSinkOptions,
-  reindexMutation,
-  resolveMutationSink,
-} from '../resource/resource-mutation';
+import { reportResourceDirectoryWrite } from '../resource/resource-folder';
 
 export interface CreateFolderParams {
   /** The folder name to create (dot-delimited path segments) */
@@ -62,11 +57,7 @@ export interface CreateFolderResult {
  * // Result: { folderPath: '<translationsFolder>/apps/common/buttons', folderAddress: 'apps.common.buttons', created: true }
  * ```
  */
-export function createFolder(
-  collection: Collection,
-  params: CreateFolderParams,
-  options: MutationSinkOptions = {},
-): CreateFolderResult {
+export function createFolder(collection: Collection, params: CreateFolderParams): CreateFolderResult {
   const { folderName, parentPath } = params;
   const { translationsFolder } = collection;
 
@@ -89,20 +80,19 @@ export function createFolder(
   const alreadyExists = folderAddressExists(translationsFolder, fullDotPath);
 
   // Create the directory (idempotent operation)
-  try {
-    ensureDirectoryExists({
-      directoryPath: absoluteFolderPath,
-      errorContext: 'Creating folder',
-      checkWritable: true,
-    });
-  } catch (error) {
-    if (!alreadyExists && folderAddressExists(translationsFolder, fullDotPath)) {
-      resolveMutationSink(collection, options)?.(reindexMutation(translationsFolder));
-    }
-    throw error;
-  }
-  if (!alreadyExists)
-    resolveMutationSink(collection, options)?.(folderMutation('add-folder', translationsFolder, fullDotPath));
+  reportResourceDirectoryWrite(
+    collection,
+    () => {
+      ensureDirectoryExists({
+        directoryPath: absoluteFolderPath,
+        errorContext: 'Creating folder',
+        checkWritable: true,
+      });
+    },
+    fullDotPath,
+    'add-folder',
+    () => !alreadyExists && folderAddressExists(translationsFolder, fullDotPath),
+  );
 
   return {
     folderAddress: fullDotPath,

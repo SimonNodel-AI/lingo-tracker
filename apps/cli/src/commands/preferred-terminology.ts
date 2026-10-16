@@ -1,4 +1,4 @@
-import { displayTermPath, type OpenedProject, planProjectTermsUpdate } from '@simoncodes-ca/core';
+import { displayTermPath, type OpenedProject, updateProjectTerms } from '@simoncodes-ca/core';
 import type { PreferredTermRule } from '@simoncodes-ca/domain';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
@@ -32,28 +32,30 @@ export const preferredTerminologyCommand = defineCommand<PreferredTerminologyOpt
 
 /** A thrown error ends the command: the runner prints `❌ <message>` and exits 1. */
 function run(options: PreferredTerminologyOptions, project: OpenedProject, cwd: string): void {
-  const plan = planProjectTermsUpdate(project, {
-    preferredTerminology: preferredTerminologyRequestFromFlags(options),
-  });
-  const report = plan.report(({ preferredTerminology: loaded, preferredTerminologyError, lists }) => {
-    if (loaded !== undefined) {
-      const where = displayTermPath(loaded.filePath, cwd);
-      if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
-      if (lists.preferredTerminology) {
-        ConsoleFormatter.section('Preferred Terminology');
-        ConsoleFormatter.keyValue('File', where);
-        if (preferredTerminologyError === undefined) {
-          if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
-          else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+  const report = updateProjectTerms(
+    project,
+    {
+      preferredTerminology: preferredTerminologyRequestFromFlags(options),
+    },
+    {
+      onPreview: ({ preferredTerminology: loaded, preferredTerminologyError, lists }) => {
+        if (loaded !== undefined) {
+          const where = displayTermPath(loaded.filePath, cwd);
+          if (loaded.warning) ConsoleFormatter.warning(loaded.warning);
+          if (lists.preferredTerminology) {
+            ConsoleFormatter.section('Preferred Terminology');
+            ConsoleFormatter.keyValue('File', where);
+            if (preferredTerminologyError === undefined) {
+              if (loaded.rules.length === 0) ConsoleFormatter.indent('(none)');
+              else for (const rule of loaded.rules) ConsoleFormatter.indent(formatRule(rule));
+            }
+          }
         }
-      }
-    }
-  });
-  if (report.status === 'failed') throw report.error;
-  if (report.preferredTerminologyError !== undefined) {
-    throw report.preferredTerminologyError;
-  }
-  const result = report.preferredTerminologyResult;
+      },
+    },
+  );
+  if (report.status === 'failed' || report.status === 'refused') throw report.error;
+  const result = report.status === 'changed' ? report.written.preferredTerminologyResult : undefined;
 
   if (result?.changedRule !== undefined) {
     const action = result.action;

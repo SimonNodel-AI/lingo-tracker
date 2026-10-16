@@ -1,7 +1,7 @@
 import { Controller, Get, Put } from '@nestjs/common';
 import { type OpenedProject, readProjectTermsView, updateProjectTerms } from '@simoncodes-ca/core';
 import type { LingoTrackerConfigDto, UpdateConfigDto } from '@simoncodes-ca/data-transfer';
-import { mapConfigToDto, mapDtoToConfigUpdate } from '../mappers/config.mapper';
+import { mapConfigToDto } from '../mappers/config.mapper';
 import { updateConfigBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
 import { RouteProject } from './route-project';
@@ -31,11 +31,11 @@ export class ConfigController {
     @ValidBody(updateConfigBody) dto: UpdateConfigDto | undefined,
     @RouteProject() project: OpenedProject,
   ): { message: string } {
-    const update = mapDtoToConfigUpdate(dto ?? {});
+    const update = dto ?? {};
     if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
       return { message: 'Configuration updated successfully' };
     }
-    updateProjectTerms(project, {
+    const outcome = updateProjectTerms(project, {
       ...(update.protectedTerms !== undefined && {
         protectedTerms: { target: {}, change: { kind: 'replace', replace: update.protectedTerms } },
       }),
@@ -43,6 +43,7 @@ export class ConfigController {
         preferredTerminology: { set: update.preferredTerminology },
       }),
     });
+    if (outcome.status === 'failed' || outcome.status === 'refused') throw outcome.error;
     return { message: 'Configuration updated successfully' };
   }
 }

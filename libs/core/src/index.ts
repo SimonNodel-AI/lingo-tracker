@@ -69,7 +69,6 @@ export {
   openProjectCollection,
   type ProjectTermsConfigView,
   type ProjectTermsView,
-  planProjectTermsUpdate,
   type ResolvedProtectedTerms,
   readProjectTermsView,
   type StoredProtectedTerms,
@@ -83,8 +82,8 @@ export { initProject } from './lib/config/init-project';
 export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
   ProjectTermsUpdate,
-  ProjectTermsUpdatePlan,
-  ProjectTermsUpdateReport,
+  ProjectTermsUpdateOutcome,
+  ProjectTermsUpdateOptions,
   ProjectTermsUpdateView,
   ProtectedTermsChange,
 } from './lib/config/update-project-terms';
@@ -138,7 +137,6 @@ export type {
   EditResourceOptions,
   EditResourceResult,
   ExistingResourcePolicy,
-  OpenResourceFolderOptions,
   ResourceEntryMetadata,
   ResourceTranslation,
 } from './lib/resource';
@@ -159,7 +157,6 @@ export {
   type FolderChild,
   type MatchType,
   type MutationSink,
-  type MutationSinkOptions,
   type NormalizedSearchRequest,
   type NormalizeEntryReport,
   normalizeSearchRequest,
@@ -187,7 +184,6 @@ export {
   type ExecuteMoveResult,
   executeMove,
   executeMoves,
-  type MoveOptions,
   type MoveRequest,
 } from './lib/resource/execute-move';
 export type { MoveResult } from './lib/resource/move-report';

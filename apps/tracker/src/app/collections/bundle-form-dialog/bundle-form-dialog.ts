@@ -14,7 +14,8 @@ import { ChipInput } from '../../shared/chip-input/chip-input';
 import { CONFIG_FILE_MARKUP, codeMarkup } from '../../shared/code-markup';
 import { CollectionsStore } from '../store/collections.store';
 import { injectBundleFormSubmit } from '../store/dialog-config-submit-adapters';
-import { BundleForm, type MergeStrategy } from './bundle-form';
+import type { MergeStrategy } from './bundle-draft';
+import { BundleForm } from './bundle-form';
 import type { BundleFormDialogData, BundleFormResult } from './bundle-form-dialog-data';
 import { LOCALE_PLACEHOLDER } from './bundle-output-preview';
 import { SegmentedControl, type SegmentOption } from './segmented-control';
@@ -85,7 +86,7 @@ export class BundleFormDialog {
   readonly codeMarkup = codeMarkup;
   readonly previewOpen = signal(false);
   readonly writesHintParams = computed(() => {
-    const files = this.model.patternFiles();
+    const files = this.model.preview.patternFiles();
     return { examples: files.slice(0, 2).map(codeMarkup).join(', '), count: files.length };
   });
 

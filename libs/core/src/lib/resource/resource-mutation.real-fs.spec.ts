@@ -9,7 +9,8 @@ import { deleteFolder } from '../folder/delete-folder';
 import { deleteResource } from './delete-resource';
 import { executeMove } from './execute-move';
 import { addResource, editResource } from './resource-entry';
-import { openResourceFolder } from './resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
@@ -25,6 +26,7 @@ describe('mutations delivered by core writes (real fs)', () => {
   let root: string;
 
   const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
+    onMutation: () => undefined,
     name,
     translationsFolder,
     baseLocale: 'en',
@@ -44,8 +46,16 @@ describe('mutations delivered by core writes (real fs)', () => {
 
   beforeEach(async () => {
     root = mkdtempSync(join(tmpdir(), 'resource-mutation-'));
-    await addResource(collection(), { key: 'common.ok', baseValue: 'OK' }, { onMutation });
-    await addResource(collection(), { key: 'common.cancel', baseValue: 'Cancel' }, { onMutation });
+    await addResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { key: 'common.ok', baseValue: 'OK' },
+      {},
+    );
+    await addResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { key: 'common.cancel', baseValue: 'Cancel' },
+      {},
+    );
     collected.length = 0;
   });
 
@@ -55,7 +65,7 @@ describe('mutations delivered by core writes (real fs)', () => {
 
   it('addResource delivers the stored entry, as the tree loader would read it', async () => {
     await addResource(
-      collection(),
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
       {
         key: 'apps.greeting',
         baseValue: 'Hello {{ name }}',
@@ -63,7 +73,7 @@ describe('mutations delivered by core writes (real fs)', () => {
         tags: ['ui'],
         translations: [{ locale: 'fr', value: 'Bonjour {{ name }}', status: 'translated' }],
       },
-      { onMutation },
+      {},
     );
 
     expect(collected).toEqual([
@@ -71,7 +81,7 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'apps.greeting',
-        entry: openResourceFolder(join(root, 'apps'), { baseLocale: 'en' }).treeEntry('greeting'),
+        entry: openUnreportedResourceFolder(join(root, 'apps'), { baseLocale: 'en' }).treeEntry('greeting'),
       },
     ]);
     // The entry holds the stored (ICU) form, not the Transloco input.
@@ -82,9 +92,9 @@ describe('mutations delivered by core writes (real fs)', () => {
 
   it('addResource on an existing key returns one upsert with the replaced entry', async () => {
     const result = await addResource(
-      collection(),
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
       { key: 'common.ok', baseValue: 'Okay' },
-      { onMutation, onExisting: 'replace' },
+      { onExisting: 'replace' },
     );
 
     expect(result.created).toBe(false);
@@ -93,14 +103,19 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'common.ok',
-        entry: openResourceFolder(join(root, 'common'), { baseLocale: 'en' }).treeEntry('ok'),
+        entry: openUnreportedResourceFolder(join(root, 'common'), { baseLocale: 'en' }).treeEntry('ok'),
       },
     ]);
     expect(collected[0]).toMatchObject({ entry: { source: 'Okay' } });
   });
 
   it('editResource delivers the updated entry, and nothing when nothing changed', async () => {
-    await editResource(collection(), 'common.ok', { baseValue: 'Okay' }, { onMutation });
+    await editResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      'common.ok',
+      { baseValue: 'Okay' },
+      {},
+    );
     expect(collected).toEqual([
       {
         kind: 'upsert',
@@ -111,13 +126,23 @@ describe('mutations delivered by core writes (real fs)', () => {
       expect.objectContaining({ kind: 'upsert', key: 'common.ok' }),
     ]);
 
-    const unchanged = await editResource(collection(), 'common.ok', { baseValue: 'Okay' }, { onMutation });
+    const unchanged = await editResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      'common.ok',
+      { baseValue: 'Okay' },
+      {},
+    );
     expect(unchanged.updated).toBe(false);
     expect(collected).toHaveLength(2);
   });
 
   it('editResource with moveTo delivers a removal and an upsert keyed by their fully resolved keys', async () => {
-    await editResource(collection(), 'common.ok', { moveTo: 'shared', baseValue: 'Okay' }, { onMutation });
+    await editResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      'common.ok',
+      { moveTo: 'shared', baseValue: 'Okay' },
+      {},
+    );
 
     expect(collected).toEqual([
       {
@@ -138,13 +163,19 @@ describe('mutations delivered by core writes (real fs)', () => {
   });
 
   it('deleteResource delivers a remove for each deleted key only', () => {
-    deleteResource(collection(), { keys: ['common.ok', 'common.missing'] }, { onMutation });
+    deleteResource(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { keys: ['common.ok', 'common.missing'] },
+    );
 
     expect(collected).toEqual([{ kind: 'remove', translationsFolder: root, key: 'common.ok' }]);
   });
 
   it('moveResource by pattern delivers a remove and an upsert per moved key, removes first', async () => {
-    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
+    await executeMove(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { source: 'common.*', destination: 'shared' },
+    );
 
     const kinds = collected.map((mutation) => mutation.kind);
     expect(kinds).toEqual(['remove', 'remove', 'upsert', 'upsert', 'remove-folder']);
@@ -163,17 +194,30 @@ describe('mutations delivered by core writes (real fs)', () => {
     try {
       await executeMove(
         {
-          ...collection(),
-          sourceConfig: {
-            exportFolder: 'dist',
-            importFolder: 'import',
-            baseLocale: 'en',
-            locales: ['en', 'fr'],
-            collections: { other: { translationsFolder: other } },
+          ...{
+            ...collection(),
+            sourceConfig: {
+              exportFolder: 'dist',
+              importFolder: 'import',
+              baseLocale: 'en',
+              locales: ['en', 'fr'],
+              collections: { other: { translationsFolder: other } },
+            },
           },
+          onMutation:
+            onMutation ??
+            {
+              ...collection(),
+              sourceConfig: {
+                exportFolder: 'dist',
+                importFolder: 'import',
+                baseLocale: 'en',
+                locales: ['en', 'fr'],
+                collections: { other: { translationsFolder: other } },
+              },
+            }.onMutation,
         },
         { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
-        { onMutation },
       );
 
       expect(collected).toEqual([
@@ -191,7 +235,10 @@ describe('mutations delivered by core writes (real fs)', () => {
   });
 
   it('moveFolder delivers the per-key moves, then the removal of the source folder', async () => {
-    await executeMove(collection(), { kind: 'folder', source: 'common', destination: 'apps' }, { onMutation });
+    await executeMove(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { kind: 'folder', source: 'common', destination: 'apps' },
+    );
 
     expect(collected).toHaveLength(5);
     expect(collected[collected.length - 1]).toEqual({
@@ -205,16 +252,27 @@ describe('mutations delivered by core writes (real fs)', () => {
   });
 
   it('createFolder and deleteFolder deliver the folder change', () => {
-    createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }, { onMutation });
+    createFolder(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { folderName: 'empty', parentPath: 'apps' },
+    );
     expect(collected).toEqual([{ kind: 'add-folder', translationsFolder: root, path: 'apps.empty' }]);
     collected.length = 0;
-    deleteFolder(collection(), { folderPath: 'apps.empty' }, { onMutation });
+    deleteFolder({ ...collection(), onMutation: onMutation ?? collection().onMutation }, { folderPath: 'apps.empty' });
     expect(collected).toEqual([{ kind: 'remove-folder', translationsFolder: root, path: 'apps.empty' }]);
-    expect(() => deleteFolder(collection(), { folderPath: 'apps.empty' }, { onMutation })).toThrow(FolderNotFoundError);
+    expect(() =>
+      deleteFolder(
+        { ...collection(), onMutation: onMutation ?? collection().onMutation },
+        { folderPath: 'apps.empty' },
+      ),
+    ).toThrow(FolderNotFoundError);
   });
 
   it('createFolder on an existing folder returns created: false and no mutations', () => {
-    const result = createFolder(collection(), { folderName: 'common' }, { onMutation });
+    const result = createFolder(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { folderName: 'common' },
+    );
 
     expect(result.created).toBe(false);
     expect(collected).toEqual([]);

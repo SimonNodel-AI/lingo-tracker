@@ -1,50 +1,52 @@
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { type ResourceMutation, saveReporting } from './resource-mutation';
+import { testCollection, useTempDir } from '../../testing/temp-dir.spec-helpers';
+import * as json from '../file-io/json-file-operations';
+import { openResourceFolder, openUnreportedResourceFolder } from './resource-folder';
+import type { ResourceMutation } from './resource-mutation';
 
-describe('saveReporting', () => {
-  const saved = (): ResourceMutation[] => [{ kind: 'remove', translationsFolder: '/translations', key: 'common.ok' }];
-
+describe('Resource Folder reporting', () => {
+  const root = useTempDir('save-reporting-');
   it('delivers saved mutations after a successful save', () => {
     const events: string[] = [];
-    const onMutation = (mutation: ResourceMutation): void => {
-      events.push(mutation.kind);
-    };
-    saveReporting(
-      {
-        save: () => {
-          events.push('save');
+    const writer = vi.spyOn(json, 'writeJsonFile');
+    const folder = openResourceFolder(
+      root(),
+      testCollection(root(), {
+        onMutation: () => {
+          expect(writer).toHaveBeenCalledTimes(2);
+          events.push('upsert');
         },
-      },
-      '/translations',
-      onMutation,
-      saved,
+      }),
     );
-    expect(events).toEqual(['save', 'remove']);
+    try {
+      folder.setBase('ok', 'OK');
+      folder.save();
+      expect(events).toEqual(['upsert']);
+    } finally {
+      writer.mockRestore();
+    }
   });
-
   it('delivers one reindex and rethrows when the save fails', () => {
     const collected: ResourceMutation[] = [];
+    const folder = openResourceFolder(root(), testCollection(root(), { onMutation: (m) => collected.push(m) }));
+    folder.setBase('ok', 'OK');
     const failure = new Error('metadata write failed');
-    expect(() =>
-      saveReporting(
-        {
-          save: () => {
-            throw failure;
-          },
-        },
-        '/translations',
-        (mutation) => {
-          collected.push(mutation);
-        },
-        saved,
-      ),
-    ).toThrow(failure);
-    expect(collected).toEqual([{ kind: 'reindex', translationsFolder: '/translations' }]);
+    const writer = vi.spyOn(json, 'writeJsonFile').mockImplementation(() => {
+      throw failure;
+    });
+    try {
+      expect(() => folder.save()).toThrow(failure);
+      expect(collected).toEqual([{ kind: 'reindex', translationsFolder: root() }]);
+    } finally {
+      writer.mockRestore();
+    }
   });
-
-  it('does not build mutations when no sink was supplied', () => {
-    const build = vi.fn(saved);
-    saveReporting({ save: vi.fn() }, '/translations', undefined, build);
-    expect(build).not.toHaveBeenCalled();
+  it('leaves standalone fixture saves unreported', () => {
+    // Standalone fixtures have no collection consumer.
+    const folder = openUnreportedResourceFolder(join(root(), 'fixture'), { baseLocale: 'en' });
+    folder.setBase('ok', 'OK');
+    expect(() => folder.save()).not.toThrow();
+    expect(folder.treeEntry('ok')?.source).toBe('OK');
   });
 });

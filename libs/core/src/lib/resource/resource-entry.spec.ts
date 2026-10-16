@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { InvalidResourceKeyError } from '../errors/lingo-tracker-error';
+import * as json from '../file-io/json-file-operations';
 import { addResource, removeEntry } from './resource-entry';
 import * as resourceFolder from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
@@ -74,9 +75,9 @@ describe('resource entry writes', () => {
 
   it('saves both files with the collection base locale and reports the saved upsert', async () => {
     const result = await addResource(
-      collection,
+      { ...collection, onMutation: onMutation ?? collection.onMutation },
       { key: 'apps.ok', baseValue: 'Bonjour', translations: [{ locale: 'en', value: 'Hello' }] },
-      { onMutation },
+      {},
     );
     expect(result.resolvedKey).toBe('apps.ok');
 
@@ -108,19 +109,27 @@ describe('resource entry writes', () => {
   });
 
   it('reports reindex and rethrows the same failed save', async () => {
-    const folder = resourceFolder.openResourceFolder(root, collection);
     const error = new Error('second file failed');
-    vi.spyOn(folder, 'save').mockImplementation(() => {
-      throw error;
+    const write = json.writeJsonFile;
+    vi.spyOn(json, 'writeJsonFile').mockImplementation((options) => {
+      if (options.filePath.endsWith('tracker_meta.json')) throw error;
+      write(options);
     });
-    vi.spyOn(resourceFolder, 'openResourceFolder').mockReturnValue(folder);
-    await expect(addResource(collection, { key: 'ok', baseValue: 'Bonjour' }, { onMutation })).rejects.toThrow(error);
+    await expect(
+      addResource(
+        { ...collection, onMutation: onMutation ?? collection.onMutation },
+        { key: 'ok', baseValue: 'Bonjour' },
+        {},
+      ),
+    ).rejects.toThrow(error);
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: root }]);
   });
 
   it('rejects a malformed removal key before opening files or emitting mutations', () => {
     const opened = vi.spyOn(resourceFolder, 'openResourceFolder');
-    expect(() => removeEntry(collection, 'invalid key', { onMutation })).toThrow(InvalidResourceKeyError);
+    expect(() =>
+      removeEntry({ ...collection, onMutation: onMutation ?? collection.onMutation }, 'invalid key'),
+    ).toThrow(InvalidResourceKeyError);
     expect(opened).not.toHaveBeenCalled();
     expect(mutations).toEqual([]);
   });
@@ -129,13 +138,17 @@ describe('resource entry writes', () => {
     await addResource(collection, { key: 'ok', baseValue: 'Bonjour' });
     const opened = resourceFolder.openResourceFolder(root, collection);
     expect(opened.has('ok')).toBe(true);
-    removeEntry(collection, 'ok', {
-      onMutation: (mutation) => {
-        expect(existsSync(join(root, 'resource_entries.json'))).toBe(false);
-        expect(existsSync(join(root, 'tracker_meta.json'))).toBe(false);
-        onMutation(mutation);
+    removeEntry(
+      {
+        ...collection,
+        onMutation: (mutation) => {
+          expect(existsSync(join(root, 'resource_entries.json'))).toBe(false);
+          expect(existsSync(join(root, 'tracker_meta.json'))).toBe(false);
+          onMutation(mutation);
+        },
       },
-    });
+      'ok',
+    );
     expect(resourceFolder.openResourceFolder(root, collection).has('ok')).toBe(false);
     expect(mutations).toEqual([{ kind: 'remove', translationsFolder: root, key: 'ok' }]);
   });

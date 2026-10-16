@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TranslationConfig } from '../../config/translation-config';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
-import { writeJsonFile } from '../file-io/json-file-operations';
 import type { Collection } from '../config/open-collection';
 import { AutoTranslationDisabledError, TranslationError } from '../errors/lingo-tracker-error';
+import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 import type { TranslateLocaleProgress } from './translation-run';
 import {
@@ -37,10 +38,14 @@ async function failWrite(filePath: string) {
 
 const executeLocale = async (
   collection: Collection,
-  params: TranslationRunOptions & TranslationRunExecutionOptions & { targetLocale: string },
+  params: TranslationRunOptions &
+    TranslationRunExecutionOptions & { targetLocale: string; onMutation?: (mutation: ResourceMutation) => void },
 ) => {
-  const { targetLocale, onProgress, ...options } = params;
-  return prepareTranslationRun(collection, { ...options, delay: async () => undefined })
+  const { targetLocale, onProgress, onMutation, ...options } = params;
+  return prepareTranslationRun(
+    { ...collection, onMutation: onMutation ?? collection.onMutation },
+    { ...options, delay: async () => undefined },
+  )
     .forLocale(targetLocale)
     .execute({ onProgress });
 };
@@ -208,14 +213,16 @@ describe('Translation Run', () => {
       c: { source: 'Failed' },
     });
     const progress: TranslateLocaleProgress[] = [];
-    const result = await prepareTranslationRun(target, {
-      provider: new InMemoryTranslationProvider(({ text }) => {
-        if (text === 'Failed') throw new Error('provider failed');
-        return `[fr] ${text}`;
-      }),
-      onMutation,
-      delay: async () => undefined,
-    })
+    const result = await prepareTranslationRun(
+      { ...target, onMutation: onMutation ?? target.onMutation },
+      {
+        provider: new InMemoryTranslationProvider(({ text }) => {
+          if (text === 'Failed') throw new Error('provider failed');
+          return `[fr] ${text}`;
+        }),
+        delay: async () => undefined,
+      },
+    )
       .forLocale('fr')
       .execute({ onProgress: (event) => progress.push(event) });
     expect(result).toMatchObject({
@@ -330,7 +337,7 @@ describe('Translation Run', () => {
       missing: { source: 'Missing' },
       old: { source: 'Old', translations: { fr: 'Vieux' } },
     });
-    const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
     folder.setBase('old', 'Older');
     folder.save();
     const provider = new InMemoryTranslationProvider();
@@ -622,7 +629,7 @@ describe('Translation Run', () => {
       const target = collection();
       seedResources(target, { ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
         folder.setTranslation('ok', 'fr', 'Humain', 'translated');
         folder.save();
         return 'Machine';
@@ -639,7 +646,7 @@ describe('Translation Run', () => {
       const target = collection();
       seedResources(target, { 'common.ok': { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openResourceFolder(join(dir(), 'common'), target);
+        const folder = openUnreportedResourceFolder(join(dir(), 'common'), target);
         folder.setBase('cancel', 'Cancel');
         folder.setTranslation('cancel', 'fr', 'Annuler', 'verified');
         folder.save();
@@ -658,7 +665,7 @@ describe('Translation Run', () => {
       const target = collection();
       seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
         folder.setStatus('ok', 'fr', 'verified');
         folder.save();
         return 'Machine';
@@ -674,11 +681,11 @@ describe('Translation Run', () => {
     it('skips an old translation when the base value changes during the provider call', async () => {
       const target = collection();
       seedResources(target, { ok: { source: 'Old', translations: { fr: 'Old' } } });
-      const initialFolder = openResourceFolder(dir(), { baseLocale: 'en' });
+      const initialFolder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
       initialFolder.setBase('ok', 'Older');
       initialFolder.save();
       const provider = new InMemoryTranslationProvider(({ text }) => {
-        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
         folder.setBase('ok', 'New');
         folder.save();
         return `[fr] ${text}`;
@@ -721,7 +728,7 @@ describe('Translation Run', () => {
     it('skips a resource whose entry was removed from disk while it was being translated', async () => {
       seedResources(collection(), { ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(({ text }) => {
-        const folder = openResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
         folder.remove('ok');
         folder.save();
         return text;

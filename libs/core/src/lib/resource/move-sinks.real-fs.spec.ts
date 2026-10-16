@@ -60,7 +60,17 @@ describe('cross-collection mutation sinks (real fs)', () => {
   it('sends all successful mutations to an explicit override in the existing order', () => {
     const { source, destination, sourceMutations, destinationMutations, plan } = setup();
     const mutations: ResourceMutation[] = [];
-    relocateEntries(plan, { onMutation: (mutation) => mutations.push(mutation) });
+    relocateEntries(
+      {
+        ...plan,
+        source: { ...plan.source, onMutation: (mutation) => mutations.push(mutation) ?? plan.source.onMutation },
+        destination: {
+          ...plan.destination,
+          onMutation: (mutation) => mutations.push(mutation) ?? plan.destination.onMutation,
+        },
+      },
+      {},
+    );
     expect(sourceMutations).toEqual([]);
     expect(destinationMutations).toEqual([]);
     expect(mutations).toEqual([
@@ -86,7 +96,17 @@ describe('cross-collection mutation sinks (real fs)', () => {
     vi.mocked(writeJsonFile).mockImplementationOnce(() => {
       throw new Error('write failed');
     });
-    relocateEntries(plan, { onMutation: (mutation) => mutations.push(mutation) });
+    relocateEntries(
+      {
+        ...plan,
+        source: { ...plan.source, onMutation: (mutation) => mutations.push(mutation) ?? plan.source.onMutation },
+        destination: {
+          ...plan.destination,
+          onMutation: (mutation) => mutations.push(mutation) ?? plan.destination.onMutation,
+        },
+      },
+      {},
+    );
     expect(mutations).toEqual([
       { kind: 'reindex', translationsFolder: destination.translationsFolder },
       { kind: 'reindex', translationsFolder: source.translationsFolder },

@@ -177,12 +177,12 @@ describe('BundleForm', () => {
     const icu = signal(true);
     const model = build({ collectionNames: names, locales, icuTransform: icu });
     expect(model.availableCollections()).toEqual(['extra']);
-    expect(model.patternFiles()).toEqual(['admin.en.json']);
+    expect(model.preview.patternFiles()).toEqual(['admin.en.json']);
     names.set(['main', 'new']);
     locales.set(['fr']);
     icu.set(false);
     expect(model.availableCollections()).toEqual(['new']);
-    expect(model.patternFiles()).toEqual(['admin.fr.json']);
+    expect(model.preview.patternFiles()).toEqual(['admin.fr.json']);
     expect(model.icuChecked()).toBe(false);
     model.setIcu(true);
     expect(model.buildResult().bundle.transformICUToTransloco).toBe(true);
@@ -198,8 +198,8 @@ describe('BundleForm preview', () => {
     const response = new Subject<BundleDryRunResultDto>();
     const dryRun = vi.fn(() => response);
     const model = build({ dryRun });
-    expect(model.previewStatus()).toBe('waiting');
-    expect(model.previewStale()).toBe(true);
+    expect(model.preview.previewStatus()).toBe('waiting');
+    expect(model.preview.previewStale()).toBe(true);
     vi.advanceTimersByTime(200);
     model.form.controls.dist.setValue('./other');
     vi.advanceTimersByTime(299);
@@ -207,25 +207,25 @@ describe('BundleForm preview', () => {
     vi.advanceTimersByTime(1);
     expect(dryRun).toHaveBeenCalledTimes(1);
     expect(dryRun).toHaveBeenCalledWith({ name: 'admin', bundle: { ...definition, dist: './other' } });
-    expect(model.previewStatus()).toBe('loading');
-    expect(model.previewStale()).toBe(true);
+    expect(model.preview.previewStatus()).toBe('loading');
+    expect(model.preview.previewStale()).toBe(true);
     response.next(result);
-    expect(model.previewStatus()).toBe('ready');
-    expect(model.previewStale()).toBe(false);
-    expect(model.dryRun()).toBe(result);
-    expect(model.previewFileCount()).toBe(1);
-    expect(model.keysPerLocale()).toBe(12);
+    expect(model.preview.previewStatus()).toBe('ready');
+    expect(model.preview.previewStale()).toBe(false);
+    expect(model.preview.dryRun()).toBe(result);
+    expect(model.preview.previewFileCount()).toBe(1);
+    expect(model.preview.keysPerLocale()).toBe(12);
   });
 
   it('keeps the planned tree reference across draft and locale changes', () => {
     const projectLocales = signal<readonly string[]>(['en', 'fr']);
     const model = build({ locales: projectLocales });
     vi.advanceTimersByTime(300);
-    const tree = model.previewTree();
+    const tree = model.preview.previewTree();
     model.form.controls.dist.setValue('./other');
-    expect(model.previewTree()).toBe(tree);
+    expect(model.preview.previewTree()).toBe(tree);
     projectLocales.set(['en', 'de']);
-    expect(model.previewTree()).toBe(tree);
+    expect(model.preview.previewTree()).toBe(tree);
   });
 
   it('cancels the previous request when the next debounced request starts', () => {
@@ -252,12 +252,12 @@ describe('BundleForm preview', () => {
     vi.advanceTimersByTime(1);
     expect(cancelled).toHaveBeenCalledTimes(1);
     first.next(result);
-    expect(model.dryRun()).toBeUndefined();
-    expect(model.previewStatus()).toBe('loading');
+    expect(model.preview.dryRun()).toBeUndefined();
+    expect(model.preview.previewStatus()).toBe('loading');
     const latest = { ...result, name: 'latest' };
     second.next(latest);
-    expect(model.dryRun()).toBe(latest);
-    expect(model.previewStale()).toBe(false);
+    expect(model.preview.dryRun()).toBe(latest);
+    expect(model.preview.previewStale()).toBe(false);
   });
 
   it('keeps a ready result and status while refreshing, retains it on error, then recovers', () => {
@@ -267,25 +267,25 @@ describe('BundleForm preview', () => {
     const model = build({ dryRun });
     vi.advanceTimersByTime(300);
     model.form.controls.dist.setValue('./new');
-    expect(model.previewStatus()).toBe('ready');
-    expect(model.previewStale()).toBe(true);
-    expect(model.dryRun()).toBe(result);
+    expect(model.preview.previewStatus()).toBe('ready');
+    expect(model.preview.previewStale()).toBe(true);
+    expect(model.preview.dryRun()).toBe(result);
     vi.advanceTimersByTime(300);
-    expect(model.previewStatus()).toBe('ready');
-    expect(model.previewTree()[0]?.path).toBe('dist/i18n');
+    expect(model.preview.previewStatus()).toBe('ready');
+    expect(model.preview.previewTree()[0]?.path).toBe('dist/i18n');
     refresh.error(new Error('failed'));
-    expect(model.previewStatus()).toBe('error');
-    expect(model.previewStale()).toBe(false);
-    expect(model.dryRun()).toBe(result);
-    expect(model.previewTree()).toEqual(model.localTree());
+    expect(model.preview.previewStatus()).toBe('error');
+    expect(model.preview.previewStale()).toBe(false);
+    expect(model.preview.dryRun()).toBe(result);
+    expect(model.preview.previewTree()).toEqual(model.preview.localTree());
     model.form.controls.dist.setValue('./recovered');
     vi.advanceTimersByTime(300);
-    expect(model.previewStatus()).toBe('loading');
-    expect(model.dryRun()).toBe(result);
+    expect(model.preview.previewStatus()).toBe('loading');
+    expect(model.preview.dryRun()).toBe(result);
     recovery.next({ ...result, hierarchicalConflicts: ['a.b'] });
-    expect(model.previewStatus()).toBe('ready');
-    expect(model.previewStale()).toBe(false);
-    expect(model.hierarchicalConflicts()).toEqual(['a.b']);
+    expect(model.preview.previewStatus()).toBe('ready');
+    expect(model.preview.previewStale()).toBe(false);
+    expect(model.preview.hierarchicalConflicts()).toEqual(['a.b']);
   });
 
   it('clears a previous result and returns to waiting when the request gate closes', () => {
@@ -293,13 +293,13 @@ describe('BundleForm preview', () => {
     const model = build({ dryRun });
     vi.advanceTimersByTime(300);
     model.form.controls.name.setValue(' ');
-    expect(model.previewStale()).toBe(true);
-    expect(model.dryRun()).toBe(result);
+    expect(model.preview.previewStale()).toBe(true);
+    expect(model.preview.dryRun()).toBe(result);
     vi.advanceTimersByTime(300);
     expect(dryRun).toHaveBeenCalledTimes(1);
-    expect(model.previewStatus()).toBe('waiting');
-    expect(model.previewStale()).toBe(false);
-    expect(model.dryRun()).toBeUndefined();
+    expect(model.preview.previewStatus()).toBe('waiting');
+    expect(model.preview.previewStale()).toBe(false);
+    expect(model.preview.dryRun()).toBeUndefined();
   });
 
   it('shows the local tree after an initial error and can retry on the next edit', () => {
@@ -308,14 +308,14 @@ describe('BundleForm preview', () => {
     const model = build({ dryRun });
     vi.advanceTimersByTime(300);
     response.error(new Error('failed'));
-    expect(model.previewStatus()).toBe('error');
-    expect(model.previewStale()).toBe(false);
-    expect(model.dryRun()).toBeUndefined();
-    expect(model.previewTree()).toEqual(model.localTree());
+    expect(model.preview.previewStatus()).toBe('error');
+    expect(model.preview.previewStale()).toBe(false);
+    expect(model.preview.dryRun()).toBeUndefined();
+    expect(model.preview.previewTree()).toEqual(model.preview.localTree());
     model.form.controls.dist.setValue('./retry');
     vi.advanceTimersByTime(300);
-    expect(model.previewStatus()).toBe('ready');
-    expect(model.dryRun()).toBe(result);
+    expect(model.preview.previewStatus()).toBe('ready');
+    expect(model.preview.dryRun()).toBe(result);
   });
 
   it('cancels pending debounce and in-flight work on destroy', () => {
@@ -340,10 +340,10 @@ describe('BundleForm preview', () => {
     active.destroy();
     expect(cancelled).toHaveBeenCalledTimes(1);
     response.next(result);
-    expect(active.dryRun()).toBeUndefined();
+    expect(active.preview.dryRun()).toBeUndefined();
     active.form.controls.dist.setValue('./ignored');
     vi.advanceTimersByTime(300);
-    expect(active.dryRun()).toBeUndefined();
+    expect(active.preview.dryRun()).toBeUndefined();
   });
 });
 
@@ -513,18 +513,18 @@ describe('BundleForm definition preview and validation', () => {
       typesEnabled: true,
       typeDistFile: './dist/types/admin.ts',
     });
-    expect(model.outputSummary()).toBe('dist/i18n/{locale}/admin.json');
-    expect(model.typeFileName()).toBe('admin.ts');
-    expect(model.patternFiles()).toEqual(['en/admin.json', 'fr/admin.json']);
+    expect(model.preview.outputSummary()).toBe('dist/i18n/{locale}/admin.json');
+    expect(model.preview.typeFileName()).toBe('admin.ts');
+    expect(model.preview.patternFiles()).toEqual(['en/admin.json', 'fr/admin.json']);
     expect(
-      model
+      model.preview
         .localTree()
         .flatMap((folder) =>
           folder.files.filter((file) => file.kind === 'bundle').map((file) => `${folder.path}/${file.name}`),
         ),
     ).toEqual(['dist/i18n/en/admin.json', 'dist/i18n/fr/admin.json']);
     expect(
-      model.localTree().map((folder) => ({
+      model.preview.localTree().map((folder) => ({
         path: folder.path,
         files: folder.files.map((file) => [file.name, file.kind, file.exists]),
       })),
