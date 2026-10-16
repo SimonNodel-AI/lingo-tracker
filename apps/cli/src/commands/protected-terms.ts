@@ -1,7 +1,8 @@
-import { displayTermPath, planProjectTermsUpdate } from '@simoncodes-ca/core';
+import { displayTermPath, updateProjectTerms } from '@simoncodes-ca/core';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter } from '../utils';
 import { PROTECTED_TERMS_FLAGS } from './protected-terms-flags';
+import { protectedTermsRequestFromFlags } from './protected-terms-request';
 
 export interface ProtectedTermsOptions {
   collection?: string;
@@ -20,55 +21,45 @@ export const protectedTermsCommand = defineCommand<ProtectedTermsOptions>()({
   collection: 'none',
   run: async ({ project, cwd, answers: options }) => {
     const collectionName = options.collection;
-    const target = { collection: collectionName };
-    const plan = planProjectTermsUpdate(project, {
-      protectedTerms: {
-        target,
-        change: {
-          kind: 'edit',
-          edit: {
-            add: options.add,
-            remove: options.remove,
-            set: options.set,
-          },
+    const result = updateProjectTerms(
+      project,
+      { protectedTerms: protectedTermsRequestFromFlags(options) },
+      {
+        onPreview: ({ protectedTerms: view, protectedTermsFileChange, lists }) => {
+          if (protectedTermsFileChange !== undefined) {
+            ConsoleFormatter.success(protectedTermsFileChange.message);
+          }
+          if (view !== undefined) {
+            // A named file that does not exist reads as empty; print its warning before a later write can fail.
+            for (const warning of view.warnings) ConsoleFormatter.warning(warning);
+          }
+          if (view !== undefined && lists.protectedTerms) {
+            ConsoleFormatter.section('Protected Terms');
+            if (collectionName) {
+              ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
+              ConsoleFormatter.keyValue('Global file', displayTermPath(view.globalFilePath, cwd));
+              ConsoleFormatter.keyValue('Global', view.globalTerms.join(', ') || '(none)');
+              ConsoleFormatter.keyValue(
+                'Collection file',
+                view.collectionFilePath ? displayTermPath(view.collectionFilePath, cwd) : '(none)',
+              );
+              ConsoleFormatter.keyValue('Collection-specific', view.collectionTerms.join(', ') || '(none)');
+              ConsoleFormatter.keyValue('Effective', view.effectiveTerms.join(', ') || '(none)');
+            } else {
+              ConsoleFormatter.keyValue('Scope', 'Global');
+              ConsoleFormatter.keyValue('File', displayTermPath(view.globalFilePath, cwd));
+              ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
+            }
+          }
         },
-        list: options.list,
-        file: options.file,
       },
-    });
-    const result = plan.report(({ protectedTerms: view, protectedTermsFileChange, lists }) => {
-      if (protectedTermsFileChange !== undefined) {
-        ConsoleFormatter.success(protectedTermsFileChange.message);
-      }
-      if (view !== undefined) {
-        // A named file that does not exist reads as empty; print its warning before a later write can fail.
-        for (const warning of view.warnings) ConsoleFormatter.warning(warning);
-      }
-      if (view !== undefined && lists.protectedTerms) {
-        ConsoleFormatter.section('Protected Terms');
-        if (collectionName) {
-          ConsoleFormatter.keyValue('Scope', `Collection "${collectionName}" (global + collection)`);
-          ConsoleFormatter.keyValue('Global file', displayTermPath(view.globalFilePath, cwd));
-          ConsoleFormatter.keyValue('Global', view.globalTerms.join(', ') || '(none)');
-          ConsoleFormatter.keyValue(
-            'Collection file',
-            view.collectionFilePath ? displayTermPath(view.collectionFilePath, cwd) : '(none)',
-          );
-          ConsoleFormatter.keyValue('Collection-specific', view.collectionTerms.join(', ') || '(none)');
-          ConsoleFormatter.keyValue('Effective', view.effectiveTerms.join(', ') || '(none)');
-        } else {
-          ConsoleFormatter.keyValue('Scope', 'Global');
-          ConsoleFormatter.keyValue('File', displayTermPath(view.globalFilePath, cwd));
-          ConsoleFormatter.keyValue('Terms', view.globalTerms.join(', ') || '(none)');
-        }
-      }
-    });
-    if (result.protectedTermsFileChange !== undefined && result.reverted) {
+    );
+    if (result.status === 'failed' && result.view.protectedTermsFileChange !== undefined && result.reverted) {
       ConsoleFormatter.warning('Protected terms file change was reverted.');
     }
-    if (result.status === 'failed') throw result.error;
+    if (result.status === 'failed' || result.status === 'refused') throw result.error;
 
-    const written = result.protectedTermsResult;
+    const written = result.status === 'changed' ? result.written.protectedTermsResult : undefined;
     if (written !== undefined) {
       const scopeLabel = collectionName ? `Collection "${collectionName}"` : 'Global';
       const where = `(${displayTermPath(written.filePath, cwd)})`;

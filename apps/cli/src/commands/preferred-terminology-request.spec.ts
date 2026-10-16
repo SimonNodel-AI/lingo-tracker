@@ -1,5 +1,6 @@
-import { InvalidProjectTermsEditError } from '@simoncodes-ca/core';
+import { InvalidProjectTermsEditError, updateProjectTerms } from '@simoncodes-ca/core';
 import { describe, expect, it } from 'vitest';
+import { createCommandProject } from '../testing/command-project';
 import { preferredTerminologyRequestFromFlags } from './preferred-terminology-request';
 
 describe('preferredTerminologyRequestFromFlags', () => {
@@ -14,7 +15,10 @@ describe('preferredTerminologyRequestFromFlags', () => {
     expect(
       preferredTerminologyRequestFromFlags({ list: true, add: 'Old', preferred: 'New', reason: 'Use this' }),
     ).toEqual({ list: true, upsert: { discouraged: 'Old', preferred: 'New', reason: 'Use this' } });
-    expect(preferredTerminologyRequestFromFlags({ remove: 'Old' })).toEqual({ list: false, remove: 'Old' });
+    expect(preferredTerminologyRequestFromFlags({ remove: 'Old' })).toEqual({
+      list: false,
+      remove: 'Old',
+    });
   });
 
   it('reports typed incomplete groups in the existing refusal order', () => {
@@ -23,16 +27,25 @@ describe('preferredTerminologyRequestFromFlags', () => {
       [{ preferred: 'New', list: true }, 'preferred-orphan-flags'],
       [{ add: 'Old' }, 'preferred-incomplete-flags'],
     ] as const;
-    for (const [flags, problem] of inputs) {
-      try {
-        preferredTerminologyRequestFromFlags(flags);
-        throw new Error('Expected refusal');
-      } catch (error) {
-        expect(error).toBeInstanceOf(InvalidProjectTermsEditError);
-        expect((error as InvalidProjectTermsEditError).problem).toBe(problem);
+    const project = createCommandProject();
+    try {
+      for (const [flags, problem] of inputs) {
+        const outcome = updateProjectTerms(
+          { projectRoot: project.cwd, sourceConfig: project.config },
+          { preferredTerminology: preferredTerminologyRequestFromFlags(flags) },
+        );
+        expect(outcome.status).toBe('refused');
+        if (outcome.status !== 'refused') throw new Error('Expected refusal');
+        expect(outcome.error).toBeInstanceOf(InvalidProjectTermsEditError);
+        expect((outcome.error as InvalidProjectTermsEditError).problem).toBe(problem);
       }
+      // With neither an action nor list, structured validation still owns the missing-edit refusal.
+      expect(preferredTerminologyRequestFromFlags({ preferred: 'New' })).toEqual({
+        list: false,
+        rule: { discouraged: undefined, preferred: 'New', reason: undefined },
+      });
+    } finally {
+      project.cleanup();
     }
-    // With neither an action nor list, structured validation still owns the missing-edit refusal.
-    expect(preferredTerminologyRequestFromFlags({ preferred: 'New' })).toEqual({ list: false });
   });
 });

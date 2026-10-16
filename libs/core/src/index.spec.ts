@@ -70,6 +70,7 @@ function consumedNames(source: string, library: string): Set<string> {
 
 // Each exception records why the name belongs to the public interface.
 const CONTRACT_EXPORTS = {
+  InvalidProjectTermsEditError: 'Callers can identify typed Project Terms refusal errors.',
   InvalidBaseValueError: 'Callers of addResource, addResources and editResource can identify invalid base values.',
   TranslationError: 'Implementers of the public TranslationProvider interface must throw this error.',
 } as const;
@@ -120,7 +121,6 @@ describe('core public surface', () => {
         'openProjectCollection',
         'openResourceFolder',
         'planBundle',
-        'planProjectTermsUpdate',
         'prepareBundleRun',
         'prepareTranslationRun',
         'readCollection',

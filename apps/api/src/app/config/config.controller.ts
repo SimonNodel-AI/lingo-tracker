@@ -35,7 +35,7 @@ export class ConfigController {
     if (update.protectedTerms === undefined && update.preferredTerminology === undefined) {
       return { message: 'Configuration updated successfully' };
     }
-    updateProjectTerms(project, {
+    const outcome = updateProjectTerms(project, {
       ...(update.protectedTerms !== undefined && {
         protectedTerms: { target: {}, change: { kind: 'replace', replace: update.protectedTerms } },
       }),
@@ -43,6 +43,7 @@ export class ConfigController {
         preferredTerminology: { set: update.preferredTerminology },
       }),
     });
+    if (outcome.status === 'failed' || outcome.status === 'refused') throw outcome.error;
     return { message: 'Configuration updated successfully' };
   }
 }

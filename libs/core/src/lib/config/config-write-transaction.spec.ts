@@ -12,6 +12,7 @@ import type { ResourceEntries } from '../resource/resource-entry';
 import { guardedConfigWrite, loadConfig } from './config-file-operations';
 import { runConfigWriteTransaction } from './config-write-transaction';
 import { openCollection } from './open-collection';
+import { failure, written } from './project-terms-outcome.spec-helpers';
 import { updateProjectTerms } from './update-project-terms';
 
 describe('Config write transaction with real files', () => {
@@ -77,7 +78,7 @@ describe('Config write transaction with real files', () => {
     const result = updateProjectTerms(project, {
       protectedTerms: { target: { collection: 'app' }, change: { kind: 'replace', replace: ['New'] } },
     });
-    expect(result.protectedTermsResult?.filePath).toBe(join(tempDir(), 'own.json'));
+    expect(written(result)?.protectedTermsResult?.filePath).toBe(join(tempDir(), 'own.json'));
     expect(JSON.parse(readFileSync(join(tempDir(), 'own.json'), 'utf8'))).toEqual(['New']);
     expect(readFileSync(join(tempDir(), 'global.json'))).toEqual(globalBefore);
     expect(readFileSync(join(tempDir(), '.lingo-tracker.json'))).toEqual(configBefore);
@@ -90,15 +91,18 @@ describe('Config write transaction with real files', () => {
     mkdirSync(join(tempDir(), 'blocked.json'));
     const loaded = loadConfig({ cwd: tempDir() });
     loaded.preferredTerminologyFile = 'blocked.json';
-    expect(() =>
-      updateProjectTerms(
-        { ...project, sourceConfig: loaded },
-        {
-          protectedTerms: { target: {}, change: { kind: 'view' }, file: 'own.json' },
-          preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
-        },
-      ),
-    ).toThrow();
+    expect(
+      failure(
+        updateProjectTerms(
+          { ...project, sourceConfig: loaded },
+          {
+            protectedTerms: { target: {}, change: { kind: 'view' }, file: 'own.json' },
+            preferredTerminology: { set: [{ discouraged: 'Spend', preferred: 'Invest' }] },
+          },
+        ),
+        'failed',
+      ).error,
+    ).toBeDefined();
     files.forEach((file, index) => {
       expect(readFileSync(join(tempDir(), file))).toEqual(before[index]);
     });

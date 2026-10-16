@@ -1,4 +1,5 @@
 import {
+  type PreferredTermRule,
   mergeListEdit,
   normalizeProtectedTerms,
   validateListEdit,
@@ -56,26 +57,32 @@ export interface ProjectTermsUpdate {
     readonly list?: boolean;
     readonly file?: string;
   };
-  readonly preferredTerminology?: PreferredTerminologyEdit & { readonly list?: boolean };
+  readonly preferredTerminology?: { readonly list?: boolean } & (
+    | (PreferredTerminologyEdit & { readonly rule?: never })
+    | (Omit<PreferredTerminologyEdit, 'upsert'> & {
+        readonly rule: Partial<PreferredTermRule>;
+        readonly upsert?: never;
+      })
+  );
 }
 
 export interface ProjectTermsUpdateView {
   readonly lists: { readonly protectedTerms: boolean; readonly preferredTerminology: boolean };
   readonly protectedTerms?: ProtectedTermsView;
   readonly preferredTerminology?: Omit<LoadPreferredTerminologyResult, 'error'>;
-  /** Typed advisory load failure; list-only core requests still succeed. */
+  /** Load failure retained in the view, including failed list-only requests. */
   readonly preferredTerminologyError?: LingoTrackerError;
   readonly protectedTermsFileChange?: { readonly message: string; readonly filePath?: string };
 }
 
-export interface ProjectTermsUpdatePlan {
+interface ProjectTermsUpdatePlan {
   readonly view: ProjectTermsUpdateView;
   /** Format the preview before writes; application failures return the original error in-band. */
   report(onPreview?: (preview: ProjectTermsUpdateView) => void): ProjectTermsUpdateReport;
 }
 
 /** Completed update with its pre-write display and original error, if application failed. */
-export interface ProjectTermsUpdateReport extends ProjectTermsUpdateView {
+interface ProjectTermsUpdateReport extends ProjectTermsUpdateView {
   /** An applied list edit; `cleared` means its written list is empty, even when already empty. */
   readonly protectedTermsResult?: ProtectedTermsEditResult & { readonly action: 'updated' | 'cleared' };
   /**
@@ -90,6 +97,77 @@ export interface ProjectTermsUpdateReport extends ProjectTermsUpdateView {
   /** True only when every attempted write was successfully restored. */
   readonly reverted: boolean;
   readonly error?: unknown;
+}
+
+/** One decision: diagnostics for refusal, preview and written values for completion. */
+export type ProjectTermsUpdateOutcome =
+  | {
+      readonly status: 'refused';
+      readonly error: unknown;
+    }
+  | {
+      readonly status: 'failed';
+      readonly error: unknown;
+      readonly reverted: boolean;
+      readonly view: ProjectTermsUpdateView;
+    }
+  | { readonly status: 'listed'; readonly view: ProjectTermsUpdateView }
+  | {
+      readonly status: 'changed';
+      readonly view: ProjectTermsUpdateView;
+      readonly written: Pick<
+        ProjectTermsUpdateReport,
+        'protectedTermsResult' | 'preferredTerminologyResult' | 'protectedTermsFileChange'
+      >;
+    };
+
+export interface ProjectTermsUpdateOptions {
+  readonly onPreview?: (view: ProjectTermsUpdateView) => void;
+}
+
+/** Admit submitted rule fields in the same order as structured edit contradictions. */
+function resolveProjectTermsUpdate(update: ProjectTermsUpdate): ProjectTermsUpdate {
+  const request = update.preferredTerminology;
+  const rule = request?.rule;
+  if (request === undefined || rule === undefined) return update;
+  if (request.upsert !== undefined)
+    throw new InvalidProjectTermsEditError(
+      'Only one preferred terminology edit can be applied at a time',
+      'preferred-conflict',
+    );
+  if (rule.discouraged !== undefined && request.remove !== undefined && rule.preferred === undefined) {
+    throw new InvalidProjectTermsEditError(
+      'Only one preferred terminology edit can be applied at a time',
+      'preferred-conflict',
+    );
+  }
+  if (
+    rule.discouraged === undefined &&
+    (rule.preferred !== undefined || rule.reason !== undefined) &&
+    (request.remove !== undefined || request.list === true)
+  ) {
+    throw new InvalidProjectTermsEditError(
+      'Preferred terminology rule fields need a discouraged term',
+      'preferred-orphan-flags',
+    );
+  }
+  if (rule.discouraged !== undefined && rule.preferred === undefined) {
+    throw new InvalidProjectTermsEditError(
+      'A preferred terminology upsert needs a preferred term',
+      'preferred-incomplete-flags',
+    );
+  }
+  const { rule: _rule, ...edit } = request;
+  return {
+    ...update,
+    preferredTerminology: {
+      ...edit,
+      ...(rule.discouraged !== undefined &&
+        rule.preferred !== undefined && {
+          upsert: { discouraged: rule.discouraged, preferred: rule.preferred, reason: rule.reason },
+        }),
+    },
+  };
 }
 
 interface ValidatedEdit {
@@ -264,8 +342,8 @@ function planProtectedTermsPointer(
   return { nextConfig, pointerChange, protectedTermsFileChange, protectedTerms };
 }
 
-/** Validate and read without writing. The caller can show the view before applying the edit. */
-export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTermsUpdate): ProjectTermsUpdatePlan {
+function createProjectTermsUpdatePlan(project: OpenedProject, update: ProjectTermsUpdate): ProjectTermsUpdatePlan {
+  update = resolveProjectTermsUpdate(update);
   const validated = validateProjectTermsUpdate(update);
   const { projectRoot: cwd, sourceConfig: currentConfig } = project;
   const protectedRequest = update.protectedTerms;
@@ -334,9 +412,9 @@ export function planProjectTermsUpdate(project: OpenedProject, update: ProjectTe
   return {
     view,
     report: (onPreview) => {
-      onPreview?.(view);
       let reverted = false;
       try {
+        onPreview?.(view);
         if (
           (preferredRequest?.upsert !== undefined || preferredRequest?.remove !== undefined) &&
           view.preferredTerminologyError !== undefined
@@ -438,9 +516,48 @@ function applyProjectTermsUpdate(
   return { protectedTermsResult, preferredTerminologyResult };
 }
 
-/** Convenience entry point for callers that do not show a preview. */
-export function updateProjectTerms(project: OpenedProject, update: ProjectTermsUpdate): ProjectTermsUpdateReport {
-  const report = planProjectTermsUpdate(project, update).report();
-  if (report.status === 'failed') throw report.error;
-  return report;
+/** Validate, preview and apply one Project Terms request, returning one outcome. */
+export function updateProjectTerms(
+  project: OpenedProject,
+  update: ProjectTermsUpdate,
+  options: ProjectTermsUpdateOptions = {},
+): ProjectTermsUpdateOutcome {
+  let plan: ProjectTermsUpdatePlan;
+  try {
+    plan = createProjectTermsUpdatePlan(project, update);
+  } catch (error) {
+    return { status: 'refused', error };
+  }
+  const report = plan.report(options.onPreview);
+  if (report.status === 'failed') {
+    return { status: 'failed', error: report.error, reverted: report.reverted, view: plan.view };
+  }
+  if (
+    report.preferredTerminologyError !== undefined &&
+    report.protectedTermsResult === undefined &&
+    report.protectedTermsFileChange === undefined
+  ) {
+    return {
+      status: 'failed',
+      error: report.preferredTerminologyError,
+      reverted: false,
+      view: plan.view,
+    };
+  }
+  if (
+    report.protectedTermsResult === undefined &&
+    report.preferredTerminologyResult === undefined &&
+    report.protectedTermsFileChange === undefined
+  ) {
+    return { status: 'listed', view: plan.view };
+  }
+  return {
+    status: 'changed',
+    view: plan.view,
+    written: {
+      protectedTermsResult: report.protectedTermsResult,
+      preferredTerminologyResult: report.preferredTerminologyResult,
+      protectedTermsFileChange: report.protectedTermsFileChange,
+    },
+  };
 }

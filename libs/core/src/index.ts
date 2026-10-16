@@ -69,7 +69,6 @@ export {
   openProjectCollection,
   type ProjectTermsConfigView,
   type ProjectTermsView,
-  planProjectTermsUpdate,
   type ResolvedProtectedTerms,
   readProjectTermsView,
   type StoredProtectedTerms,
@@ -83,8 +82,8 @@ export { initProject } from './lib/config/init-project';
 export { assertProtectedTerms } from './lib/config/protected-terms-request';
 export type {
   ProjectTermsUpdate,
-  ProjectTermsUpdatePlan,
-  ProjectTermsUpdateReport,
+  ProjectTermsUpdateOutcome,
+  ProjectTermsUpdateOptions,
   ProjectTermsUpdateView,
   ProtectedTermsChange,
 } from './lib/config/update-project-terms';
