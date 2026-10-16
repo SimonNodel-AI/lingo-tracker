@@ -1,10 +1,4 @@
-import {
-  emptyNormalizeCollectionsResult,
-  type NormalizeCollectionsResult,
-  normalizeCollections,
-  ReadOnlyCollectionError,
-} from '@simoncodes-ca/core';
-import { cliErrorWording } from '../runner/cli-error-wording';
+import { type NormalizeCollectionsResult, normalizeCollections } from '@simoncodes-ca/core';
 import { CommandOutput } from '../runner/command-output';
 import { defineCommand } from '../runner/command-runner';
 import { ConsoleFormatter, confirmOrCancel, reportRun } from '../utils';
@@ -16,6 +10,25 @@ export interface NormalizeOptions {
   dryRun?: boolean;
   json?: boolean;
   yes?: boolean;
+}
+
+const COUNT_FIELDS = [
+  ['entriesProcessed', 'Entries processed'],
+  ['localesAdded', 'Locales added'],
+  ['valuesConverted', 'Values converted to ICU'],
+  ['tagsNormalized', 'Tags normalized'],
+  ['filesCreated', 'Files created'],
+  ['filesUpdated', 'Files updated'],
+  ['foldersRemoved', 'Folders removed'],
+] as const;
+
+function normalizeCounts(
+  counts: NormalizeCollectionsResult['totals'] | NormalizeCollectionsResult['collections'][number],
+) {
+  return COUNT_FIELDS.filter(([field]) => field !== 'tagsNormalized' || counts[field] > 0).map(([field, label]) => ({
+    label,
+    value: counts[field],
+  }));
 }
 
 export const normalizeCommand = defineCommand<NormalizeOptions>()({
@@ -41,101 +54,50 @@ export const normalizeCommand = defineCommand<NormalizeOptions>()({
   },
   run: async ({ collections, selection, answers }) => {
     const all = selection.kind === 'all';
-    let result: NormalizeCollectionsResult;
-    try {
-      result = await normalizeCollections(collections, {
-        all,
-        dryRun: answers.dryRun ?? false,
-        onEvent: (event) => {
-          switch (event.kind) {
-            case 'start':
-              if (!answers.json) {
-                CommandOutput.log('');
-                ConsoleFormatter.progress(`Normalizing collection: ${event.name}`);
-                if (answers.dryRun) ConsoleFormatter.indent('(Dry run - no changes will be made)');
-              }
-              break;
-            case 'result': {
-              const item = event.result;
-              if (!answers.json) {
-                ConsoleFormatter.indent(`✅ Entries processed: ${item.entriesProcessed}`);
-                ConsoleFormatter.indent(`✅ Locales added: ${item.localesAdded}`);
-                ConsoleFormatter.indent(`✅ Values converted to ICU: ${item.valuesConverted}`);
-                if (item.tagsNormalized > 0) ConsoleFormatter.indent(`✅ Tags normalized: ${item.tagsNormalized}`);
-                ConsoleFormatter.indent(`✅ Files created: ${item.filesCreated}`);
-                ConsoleFormatter.indent(`✅ Files updated: ${item.filesUpdated}`);
-                ConsoleFormatter.indent(`✅ Folders removed: ${item.foldersRemoved}`);
-                for (const { key, locale, detail } of item.findings)
-                  ConsoleFormatter.warning(`${key} (${locale}): ${detail}`);
-              }
-              break;
+    const result = await normalizeCollections(collections, {
+      all,
+      dryRun: answers.dryRun ?? false,
+      onEvent: (event) => {
+        switch (event.kind) {
+          case 'start':
+            if (!answers.json) {
+              CommandOutput.log('');
+              ConsoleFormatter.progress(`Normalizing collection: ${event.name}`);
+              if (answers.dryRun) ConsoleFormatter.indent('(Dry run - no changes will be made)');
             }
+            break;
+          case 'result': {
+            const item = event.result;
+            if (!answers.json) {
+              for (const { label, value } of normalizeCounts(item)) ConsoleFormatter.indent(`✅ ${label}: ${value}`);
+              for (const { key, locale, detail } of item.findings)
+                ConsoleFormatter.warning(`${key} (${locale}): ${detail}`);
+            }
+            break;
           }
-        },
-      });
-    } catch (error) {
-      if (!(error instanceof ReadOnlyCollectionError)) throw error;
-      return reportNormalize({
-        result: emptyNormalizeCollectionsResult(),
-        collectionCount: 0,
-        options: answers,
-        warnings: [],
-        errors: [cliErrorWording(error)?.message ?? error.message],
-        outcome: 'failed',
-      });
-    }
-    const errors = result.errors.map(
-      ({ name, error }) =>
-        `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`,
-    );
-    return reportNormalize({
-      result,
-      collectionCount: collections.length,
-      options: answers,
+        }
+      },
+    });
+    const summary = result.totals;
+    const showSummary = result.status === 'complete' && collections.length > 1;
+    return reportRun({
+      presentation: answers.json
+        ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
+        : { kind: 'text' },
+      section: showSummary ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
+      counts: showSummary
+        ? Object.fromEntries(
+            normalizeCounts(summary).map(({ label, value }) => [
+              `Total ${label[0]?.toLowerCase()}${label.slice(1)}`,
+              value,
+            ]),
+          )
+        : undefined,
+      notice: answers.dryRun ? 'Dry run completed - no changes were made.' : undefined,
       warnings: result.warnings,
-      errors,
+      errors: result.errors,
       outcome: result.outcome,
+      dryRun: answers.dryRun,
     });
   },
 });
-
-function reportNormalize({
-  result,
-  collectionCount,
-  options,
-  warnings,
-  errors,
-  outcome,
-}: {
-  result: NormalizeCollectionsResult;
-  collectionCount: number;
-  options: NormalizeOptions;
-  warnings: readonly string[];
-  errors: readonly string[];
-  outcome: NormalizeCollectionsResult['outcome'];
-}) {
-  const summary = result.totals;
-  return reportRun({
-    presentation: options.json
-      ? { kind: 'json', payload: { collections: result.collections, totals: result.totals } }
-      : { kind: 'text' },
-    section: collectionCount > 1 ? `Summary (${summary.collectionsProcessed} collections)` : undefined,
-    counts:
-      collectionCount > 1
-        ? {
-            'Total entries processed': summary.entriesProcessed,
-            'Total locales added': summary.localesAdded,
-            'Total values converted to ICU': summary.valuesConverted,
-            ...(summary.tagsNormalized > 0 ? { 'Total tags normalized': summary.tagsNormalized } : {}),
-            'Total files created': summary.filesCreated,
-            'Total files updated': summary.filesUpdated,
-            'Total folders removed': summary.foldersRemoved,
-          }
-        : undefined,
-    notice: options.dryRun ? 'Dry run completed - no changes were made.' : undefined,
-    warnings,
-    errors,
-    outcome,
-    dryRun: options.dryRun,
-  });
-}

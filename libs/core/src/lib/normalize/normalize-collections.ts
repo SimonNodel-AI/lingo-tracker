@@ -29,21 +29,24 @@ export interface NormalizeCollectionsOptions extends NormalizeOptions {
       | { kind: 'skip'; name: string }
       | { kind: 'start'; name: string }
       | { kind: 'result'; result: CollectionNormalizeResult }
-      | { kind: 'error'; name: string; error: unknown },
+      | { kind: 'error'; name: string; error: string },
   ) => void;
 }
 
 export interface NormalizeCollectionsResult {
+  /** A refused selection fails before processing; a complete run can still contain errors. */
+  readonly status: 'failed' | 'complete';
   readonly outcome: RunOutcome;
   readonly collections: CollectionNormalizeResult[];
   readonly totals: Record<(typeof NUMERIC_FIELDS)[number], number> & { collectionsProcessed: number };
   readonly warnings: readonly string[];
-  readonly errors: readonly { name: string; error: unknown }[];
+  readonly errors: readonly string[];
 }
 
 /** Empty report before any collection is processed. */
-export function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
+function emptyNormalizeCollectionsResult(): NormalizeCollectionsResult {
   return {
+    status: 'complete',
     outcome: 'succeeded',
     collections: [],
     totals: {
@@ -65,12 +68,19 @@ export async function normalizeCollections(
 ): Promise<NormalizeCollectionsResult> {
   if (!options.all) {
     const readOnly = collections.find((collection) => collection.readOnly);
-    if (readOnly) throw new ReadOnlyCollectionError(readOnly.name);
+    if (readOnly) {
+      return {
+        ...emptyNormalizeCollectionsResult(),
+        status: 'failed',
+        outcome: 'failed',
+        errors: [new ReadOnlyCollectionError(readOnly.name).message],
+      };
+    }
   }
 
   const results: CollectionNormalizeResult[] = [];
   const warnings: string[] = [];
-  const errors: { name: string; error: unknown }[] = [];
+  const errors: string[] = [];
   for (const collection of collections) {
     const { name } = collection;
     if (collection.readOnly) {
@@ -85,8 +95,9 @@ export async function normalizeCollections(
       const { dryRun: _dryRun, ...report } = result;
       item = { collectionName: name, ...report };
     } catch (error) {
-      errors.push({ name, error });
-      options.onEvent?.({ kind: 'error', name, error });
+      const message = `Failed to normalize collection "${name}": ${error instanceof Error ? error.message : String(error)}`;
+      errors.push(message);
+      options.onEvent?.({ kind: 'error', name, error: message });
       continue;
     }
     warnings.push(...item.problems.map((problem) => describeFolderProblem(problem, { collectionName: name })));
@@ -99,6 +110,7 @@ export async function normalizeCollections(
     for (const field of NUMERIC_FIELDS) totals[field] += result[field];
   }
   return {
+    status: 'complete',
     outcome: errors.length > 0 ? 'failed' : 'succeeded',
     collections: results,
     totals,

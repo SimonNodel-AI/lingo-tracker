@@ -1,7 +1,6 @@
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { seedResources, testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
-import type { ReadOnlyCollectionError } from '../errors';
 import * as normalizeModule from './normalize';
 import { normalizeCollections } from './normalize-collections';
 
@@ -21,26 +20,43 @@ describe('normalizeCollections', () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('refuses a named read-only collection with the existing typed error', async () => {
-    await expect(normalizeCollections([testCollection(root(), { name: 'Lib', readOnly: true })])).rejects.toMatchObject(
-      {
-        name: 'ReadOnlyCollectionError',
-        message: 'Collection "Lib" is read-only. Its resources cannot be modified.',
-      } satisfies Partial<ReadOnlyCollectionError>,
-    );
+  it('settles a named read-only collection as a failed run, including in a dry run', async () => {
+    for (const dryRun of [false, true]) {
+      const result = await normalizeCollections([testCollection(root(), { name: 'Lib', readOnly: true })], { dryRun });
+      expect(result).toEqual({
+        status: 'failed',
+        outcome: 'failed',
+        collections: [],
+        totals: {
+          collectionsProcessed: 0,
+          entriesProcessed: 0,
+          localesAdded: 0,
+          valuesConverted: 0,
+          tagsNormalized: 0,
+          filesCreated: 0,
+          filesUpdated: 0,
+          foldersRemoved: 0,
+        },
+        warnings: [],
+        errors: ['Collection "Lib" is read-only. Its resources cannot be modified.'],
+      });
+    }
   });
 
   it('refuses a later read-only collection in a named selection before processing any', async () => {
     const events: string[] = [];
-    await expect(
-      normalizeCollections(
-        [
-          testCollection(join(root(), 'first'), { name: 'First' }),
-          testCollection(join(root(), 'second'), { name: 'Second', readOnly: true }),
-        ],
-        { onEvent: (event) => events.push(event.kind) },
-      ),
-    ).rejects.toThrow('Collection "Second" is read-only. Its resources cannot be modified.');
+    const result = await normalizeCollections(
+      [
+        testCollection(join(root(), 'first'), { name: 'First' }),
+        testCollection(join(root(), 'second'), { name: 'Second', readOnly: true }),
+      ],
+      { onEvent: (event) => events.push(event.kind) },
+    );
+    expect(result.status).toBe('failed');
+    expect(result.outcome).toBe('failed');
+    expect(result.errors).toEqual(['Collection "Second" is read-only. Its resources cannot be modified.']);
+    expect(result.collections).toEqual([]);
+    expect(Object.values(result.totals).every((value) => value === 0)).toBe(true);
     expect(events).toEqual([]);
   });
 
@@ -84,9 +100,25 @@ describe('normalizeCollections', () => {
 
     expect(result.errors).toHaveLength(1);
     expect(result.outcome).toBe('failed');
-    expect(result.errors[0]?.name).toBe('Broken');
+    expect(result.status).toBe('complete');
+    expect(result.errors).toEqual(['Failed to normalize collection "Broken": disk full']);
     expect(result.collections.map(({ collectionName }) => collectionName)).toEqual(['Next']);
     expect(events).toEqual(['start:Broken', 'error:Broken', 'start:Next', 'result:Next']);
+  });
+
+  it('words non-Error failures in both diagnostics and events', async () => {
+    vi.spyOn(normalizeModule, 'normalize').mockRejectedValueOnce('disk unavailable');
+    const events: unknown[] = [];
+    const result = await normalizeCollections([testCollection(root(), { name: 'Main' })], {
+      onEvent: (event) => events.push(event),
+    });
+    const message = 'Failed to normalize collection "Main": disk unavailable';
+    expect(result.errors).toEqual([message]);
+    expect(result.outcome).toBe('failed');
+    expect(events).toEqual([
+      { kind: 'start', name: 'Main' },
+      { kind: 'error', name: 'Main', error: message },
+    ]);
   });
 
   it('propagates a result event callback error', async () => {

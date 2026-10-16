@@ -3,7 +3,6 @@
 export { type NormalizeFinding, type NormalizeOptions, type NormalizeResult, normalize } from './normalize';
 export {
   type CollectionNormalizeResult,
-  emptyNormalizeCollectionsResult,
   type NormalizeCollectionsOptions,
   type NormalizeCollectionsResult,
   normalizeCollections,
