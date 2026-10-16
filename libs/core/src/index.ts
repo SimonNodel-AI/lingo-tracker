@@ -31,8 +31,6 @@ export type {
   BundlePlanFile,
   BundleProgressEvent,
   BundleRunOutcome,
-  BundleTypeOutcome,
-  BundleWarning,
   GenerateBundleParams,
   GenerateBundleResult,
   GenerateBundlesOptions,
@@ -128,7 +126,7 @@ export type {
   NormalizeResult,
 } from './lib/normalize';
 // Operations: normalize, translate, validate
-export { emptyNormalizeCollectionsResult, normalizeCollections } from './lib/normalize';
+export { normalizeCollections } from './lib/normalize';
 export type {
   AddResourceOptions,
   AddResourceParams,

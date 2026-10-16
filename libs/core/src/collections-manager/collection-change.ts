@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import type { LingoTrackerCollection } from '../config/lingo-tracker-collection';
+import { renameBundleCollectionReferences } from '../lib/bundle/bundle-definition-operations';
 import { patchCollectionEntry } from '../lib/config/collection-entry';
 import { guardedConfigWrite } from '../lib/config/config-file-operations';
 import { resolveRenameTarget } from '../lib/config/entry-name';
@@ -8,7 +9,6 @@ import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
 import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../lib/resource/resource-mutation';
 import { assertValidLocale } from './assert-valid-locale';
-import { renameBundleCollectionReferences } from './bundle-collection-references';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 import { jsonValuesEqual } from './json-values-equal';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';

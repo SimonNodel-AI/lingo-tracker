@@ -1,12 +1,8 @@
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { MultipleBundleConstantNameError } from '../errors/internal';
 import type { RunOutcome } from '../run-outcome';
-import {
-  type GenerateBundleParams,
-  type GenerateBundleResult,
-  type BundleWarning,
-  generatePreparedBundle,
-} from './generate-bundle';
+import { type BundleFindings, bundleFindings } from './bundle-findings';
+import { type GenerateBundleParams, type GenerateBundleResult, generatePreparedBundle } from './generate-bundle';
 import { type PreparedBundleRun, prepareBundleRun } from './prepare-bundle-run';
 
 export interface GenerateBundlesOptions {
@@ -27,13 +23,13 @@ export type BundleRunOutcome =
       readonly outcome: RunOutcome;
       readonly result: GenerateBundleResult;
       readonly error?: never;
-      readonly warnings?: never;
+      readonly findings: BundleFindings;
     }
   | {
       readonly name: string;
       readonly outcome: 'failed';
       readonly error: unknown;
-      readonly warnings: readonly BundleWarning[];
+      readonly findings: BundleFindings;
       readonly result?: never;
     };
 
@@ -59,7 +55,7 @@ export async function generateBundles(
     try {
       prepared = prepareBundleRun({ source: 'saved', bundleKey: name, config, locales, cwd, ...overrides });
     } catch (error) {
-      outcome = { name, outcome: 'failed', error, warnings: [] };
+      outcome = { name, outcome: 'failed', error, findings: bundleFindings([]) };
       outcomes.push(outcome);
       onEvent?.({ kind: 'result', outcome });
       continue;
@@ -68,7 +64,7 @@ export async function generateBundles(
     onEvent?.({ kind: 'start', name });
     try {
       const result = await generatePreparedBundle(prepared, { debugKeysLocale: overrides?.debugKeysLocale });
-      outcome = { name, outcome: result.outcome, result };
+      outcome = { name, outcome: result.outcome, result, findings: result.findings };
       totals.bundlesProcessed++;
       totals.filesGenerated += result.filesGenerated;
     } catch (error) {
@@ -76,7 +72,7 @@ export async function generateBundles(
         name,
         outcome: 'failed',
         error,
-        warnings: prepared.warnings,
+        findings: bundleFindings(prepared.warnings),
       };
     }
     outcomes.push(outcome);

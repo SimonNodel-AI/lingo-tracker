@@ -30,15 +30,14 @@ export function mapBundlePlanToDto(plan: BundlePlan): BundleDryRunResultDto {
  * written paths directly; the DTO keeps the same fields for the Tracker.
  */
 export function mapGenerateBundleResultToJobResult(result: GenerateBundleResult): BundleGenerateJobResultDto {
-  const types = result.typeOutcome;
-  const typeDistFile = types.status === 'written' ? types.path : undefined;
+  const { findings } = result;
+  const types = findings.types;
 
   return {
     filesGenerated: [...result.writtenFiles],
     keysPerLocale: { ...result.keysPerLocale },
-    warnings: result.warnings.map((warning) => warning.message),
+    warnings: [...findings.messages],
     localesProcessed: [...result.localesProcessed],
-    ...(typeDistFile !== undefined && { typeDistFile }),
-    ...(types.status === 'written' && { typesKeysCount: types.keysCount }),
+    ...(types.status === 'written' && { typeDistFile: types.path, typesKeysCount: types.keysCount }),
   };
 }

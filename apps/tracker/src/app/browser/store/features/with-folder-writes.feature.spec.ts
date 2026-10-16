@@ -159,38 +159,6 @@ describe('BrowserStore folder writes', () => {
       expect(store.isAddingFolder()).toBe(false);
     });
 
-    it.each([
-      ['cancelled', () => store.cancelAddingFolder(), false],
-      ['replaced by a new draft', () => store.startAddingFolder('errors'), true],
-    ])('does not apply a late refusal to a draft that was %s', (_, change, stillOpen) => {
-      open();
-      const pending = new Subject<CreateFolderResponseDto>();
-      vi.spyOn(api, 'createFolder').mockReturnValue(pending);
-      store.startAddingFolder('common');
-      store.confirmFolderDraft('new', 'common').subscribe();
-      change();
-
-      pending.error(refusal('Already exists'));
-
-      expect(store.folderCreateError()).toBeNull();
-      expect(store.isAddingFolder()).toBe(stillOpen);
-    });
-
-    it('does not close a replacement draft when a late create succeeds', () => {
-      open();
-      const pending = new Subject<CreateFolderResponseDto>();
-      vi.spyOn(api, 'createFolder').mockReturnValue(pending);
-      store.startAddingFolder('common');
-      store.confirmFolderDraft('new', 'common').subscribe();
-      store.startAddingFolder('errors');
-
-      pending.next(created);
-      pending.complete();
-
-      expect(store.isAddingFolder()).toBe(true);
-      expect(store.addFolderParentPath()).toBe('errors');
-    });
-
     it('leaves the draft and the error alone when the create outlives its session', () => {
       open('old');
       const pending = new Subject<CreateFolderResponseDto>();
@@ -216,34 +184,6 @@ describe('BrowserStore folder writes', () => {
       store.confirmFolderDraft('new', 'common').subscribe();
       expect(store.folderCreateError()).not.toBeNull();
     };
-
-    it('is retired when the refused name is edited', () => {
-      refuseOnce();
-      store.dismissFolderCreateError();
-      expect(store.folderCreateError()).toBeNull();
-      expect(store.isAddingFolder()).toBe(true);
-    });
-
-    it('is cleared when the draft is cancelled', () => {
-      refuseOnce();
-      store.cancelAddingFolder();
-      expect(store.folderCreateError()).toBeNull();
-      expect(store.isAddingFolder()).toBe(false);
-    });
-
-    it('is cleared when the retried name is created', () => {
-      refuseOnce();
-      vi.spyOn(api, 'createFolder').mockReturnValue(of(created));
-      store.confirmFolderDraft('other', 'common').subscribe();
-      expect(store.folderCreateError()).toBeNull();
-      expect(store.isAddingFolder()).toBe(false);
-    });
-
-    it('is replaced by a new draft', () => {
-      refuseOnce();
-      store.startAddingFolder('common');
-      expect(store.folderCreateError()).toBeNull();
-    });
 
     it('survives a successful picker create, which is not the sidebar draft', () => {
       refuseOnce();

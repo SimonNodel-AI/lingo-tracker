@@ -105,7 +105,6 @@ describe('core public surface', () => {
         'displayTermPath',
         'editCollectionTags',
         'editResource',
-        'emptyNormalizeCollectionsResult',
         'executeMove',
         'executeMoves',
         'exportTargetLocales',

@@ -8,8 +8,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computeTreeFingerprint, treeFingerprintsMatch } from './tree-fingerprint';
+
+vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
 
 describe('computeTreeFingerprint', () => {
   let tempDir: string;
@@ -63,6 +65,32 @@ describe('computeTreeFingerprint', () => {
     const fingerprint = computeTreeFingerprint({ translationsFolder: tempDir });
 
     expect(fingerprint.fileCount).toBe(2);
+  });
+
+  it('ignores resource files added or changed under dot-folders', () => {
+    writeResourceFolder('common', { ok: { source: 'OK' } });
+    const before = computeTreeFingerprint({ translationsFolder: tempDir });
+    const hidden = writeResourceFolder('.hidden/nested', { secret: { source: 'Secret' } });
+    expect(computeTreeFingerprint({ translationsFolder: tempDir })).toEqual(before);
+
+    fs.writeFileSync(path.join(hidden, 'resource_entries.json'), '{"changed":{}}');
+    expect(computeTreeFingerprint({ translationsFolder: tempDir })).toEqual(before);
+  });
+
+  it('tolerates a resource file that vanishes before stat', () => {
+    const folder = writeResourceFolder('', {});
+    const entriesPath = path.join(folder, 'resource_entries.json');
+    const stat = fs.statSync;
+    const statSpy = vi.spyOn(fs, 'statSync').mockImplementationOnce(() => {
+      fs.unlinkSync(entriesPath);
+      return stat(entriesPath);
+    });
+    try {
+      const fingerprint = computeTreeFingerprint({ translationsFolder: tempDir });
+      expect(fingerprint.fileCount).toBe(1);
+    } finally {
+      statSpy.mockRestore();
+    }
   });
 
   it('is stable when nothing changes', () => {

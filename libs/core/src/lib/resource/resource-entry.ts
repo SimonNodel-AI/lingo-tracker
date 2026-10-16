@@ -13,14 +13,13 @@ import {
   BracedPlaceholderError,
   CoreOperationError,
   FolderNotFoundError,
-  InvalidCollectionFolderError,
   InvalidBaseValueError,
+  InvalidCollectionFolderError,
   ResourceAlreadyExistsError,
   ResourceNotFoundError,
 } from '../errors/lingo-tracker-error';
 import { ensureDirectoryExists } from '../file-io/directory-operations';
-import { assertAutoTranslationEnabled, type OpenTranslatorOptions } from '../machine-translation/translator';
-import { executeTranslationRun, selectTranslationRow } from '../translation/translation-run';
+import type { OpenTranslatorOptions } from '../machine-translation/translator';
 import { snapshotTranslation, writeBackTranslations } from '../translation/translation-write-back';
 import {
   assertCollectionLocales,
@@ -156,15 +155,6 @@ export interface EditResourceResult {
   readonly terminology?: TerminologyFindings;
 }
 
-export interface TranslateExistingResourceResult {
-  readonly translatedCount: number;
-  /** Locales the Translator skipped, or whose value changed on disk during the provider call. */
-  readonly skippedLocales: string[];
-  readonly entry: ResourceTreeEntry;
-  /** Problems that did not stop the Translator (a named protected-terms file that does not exist). */
-  readonly warnings: string[];
-}
-
 interface EntryEditResult extends EditResourceResult {
   readonly entry: ResourceTreeEntry;
 }
@@ -269,17 +259,6 @@ function saveEntry(
         )
       : removeMutation(collection.translationsFolder, resource.resolvedKey),
   ]);
-}
-
-function requireEntry(
-  folder: ResourceFolder,
-  entryKey: string,
-  key: string,
-  options: { readonly requireMetadata?: boolean } = {},
-): ResourceTreeEntry {
-  const entry = folder.treeEntry(entryKey, options);
-  if (!entry) throw new ResourceNotFoundError(key);
-  return entry;
 }
 
 /** Add: prepare values before single or batch writes. */
@@ -501,39 +480,7 @@ export async function addResources(
     terminology: { findings, problems: [...problems] },
   };
 }
-/** Translate an existing entry. */
-export async function translateEntry(
-  collection: Collection,
-  key: string,
-  options: EntryWriteOptions = {},
-): Promise<TranslateExistingResourceResult> {
-  const onMutation = resolveMutationSink(collection, options);
-  const config = assertAutoTranslationEnabled(collection);
-  const resource = locateEntry(collection, key);
-  const entry = requireEntry(resource.folder, resource.entryKey, resource.resolvedKey, { requireMetadata: true });
-  const { row, locales } = selectTranslationRow(resource.resolvedKey, entry, collection.targetLocales);
-  if (locales.length === 0) return { translatedCount: 0, skippedLocales: [], entry, warnings: [] };
-  const { tally, warnings } = await executeTranslationRun({
-    ...options,
-    collection,
-    translationConfig: config,
-    rows: [row],
-    locales,
-    failurePolicy: 'throw-first',
-    mutationSink: onMutation,
-  });
-  const outcomes = tally.outcomes;
-  const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;
-  if (!freshEntry) throw new ResourceNotFoundError(resource.resolvedKey);
-  return {
-    translatedCount: outcomes.filter((outcome) => outcome.status === 'written').length,
-    skippedLocales: outcomes.filter((outcome) => outcome.status === 'skipped').map(({ locale }) => locale),
-    entry: freshEntry,
-    warnings,
-  };
-}
 
-/** Edit an existing entry. */
 /**
  * Edits an existing resource entry of a collection.
  *

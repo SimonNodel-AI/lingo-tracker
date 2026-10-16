@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../constants';
-import { loadConfig } from '../lib/config/load-config';
+import { loadConfig } from '../lib/config/config-file-operations';
 import { openCollection } from '../lib/config/open-collection';
 import { CollectionRequiredByBundleError, ConfigChangedError } from '../lib/errors/lingo-tracker-error';
 import type { ResourceMutation } from '../lib/resource/resource-mutation';

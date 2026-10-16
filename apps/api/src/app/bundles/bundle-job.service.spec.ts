@@ -45,14 +45,17 @@ const config = {
 };
 
 const makeResult = (overrides: Partial<GenerateBundleResult> = {}): GenerateBundleResult => ({
-  outcome: overrides.typeOutcome?.status === 'failed' ? 'failed' : 'succeeded',
+  outcome: overrides.findings?.types.status === 'failed' ? 'failed' : 'succeeded',
   bundleKey: 'main',
   filesGenerated: 2,
   writtenFiles: ['dist/i18n/en.json', 'dist/i18n/fr.json', 'dist/i18n-types/main.ts'],
-  warnings: [],
+  findings: {
+    messages: [],
+    byOrigin: { generation: [], config: [], type: [] },
+    types: { status: 'written', path: 'dist/i18n-types/main.ts', keysCount: 5 },
+  },
   localesProcessed: ['en', 'fr'],
   keysPerLocale: { en: 5, fr: 5 },
-  typeOutcome: { status: 'written', path: 'dist/i18n-types/main.ts', keysCount: 5 },
   ...overrides,
 });
 
@@ -115,7 +118,13 @@ describe('BundleJobService', () => {
 
   it('completes a saved bundle with an unknown collection and its warning', async () => {
     mockGenerateBundle.mockResolvedValue(
-      makeResult({ warnings: [{ origin: 'generation', message: "Collection 'deleted' not found in config" }] }),
+      makeResult({
+        findings: {
+          ...makeResult().findings,
+          messages: ["Collection 'deleted' not found in config"],
+          byOrigin: { generation: ["Collection 'deleted' not found in config"], config: [], type: [] },
+        },
+      }),
     );
     const { jobId } = service.startJob({
       bundleName: 'main',
@@ -280,7 +289,13 @@ describe('BundleJobService', () => {
       async (_prepared: unknown, options: Pick<GenerateBundleParams, 'onProgress'>) => {
         options.onProgress?.({ locale: 'en', index: 1, total: 2, file: 'dist/i18n/en.json' });
         options.onProgress?.({ locale: 'fr', index: 2, total: 2, file: 'dist/i18n/fr.json' });
-        return makeResult({ warnings: [{ origin: 'generation', message: 'careful' }] });
+        return makeResult({
+          findings: {
+            ...makeResult().findings,
+            messages: ['careful'],
+            byOrigin: { generation: ['careful'], config: [], type: [] },
+          },
+        });
       },
     );
 

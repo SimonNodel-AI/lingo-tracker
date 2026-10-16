@@ -9,6 +9,7 @@ import { buildKeyTree, bundleOutputFile, hasTypeDistConfigured, type TokenCasing
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { BundleHierarchicalConflictError } from '../errors/internal';
 import type { RunOutcome } from '../run-outcome';
+import { type BundleFindings, bundleFindings } from './bundle-findings';
 import { bundleRunConflicts, bundleRunWarnings, type PreparedBundleRun } from './prepare-bundle-run';
 import { type GenerateBundleTypesParams, generateBundleTypes } from './type-generation/generate-types';
 
@@ -65,12 +66,10 @@ export interface GenerateBundleResult {
   readonly filesGenerated: number;
   /** Every successfully written file, in write order, relative to `cwd` with `/` separators. An output outside `cwd` begins with `../`. */
   readonly writtenFiles: string[];
-  /** Warnings in generation, config, then type order, with their origins. */
-  readonly warnings: readonly BundleWarning[];
+  readonly findings: BundleFindings;
   readonly localesProcessed: string[];
   /** Number of keys written per processed locale (empty locales are omitted). */
   readonly keysPerLocale: Record<string, number>;
-  readonly typeOutcome: BundleTypeOutcome;
 }
 
 export interface BundleWarning {
@@ -201,10 +200,9 @@ export async function generatePreparedBundle(
     bundleKey,
     filesGenerated: localesProcessed.length,
     writtenFiles,
-    warnings,
+    findings: bundleFindings(warnings, typeOutcome),
     localesProcessed,
     keysPerLocale,
-    typeOutcome,
   };
 }
 

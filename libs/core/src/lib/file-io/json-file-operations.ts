@@ -4,7 +4,6 @@ import { ErrorMessages } from '../errors/error-messages';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { ResourceEntries } from '../resource/resource-entry';
 import type { TrackerMetadata } from '../resource/tracker-metadata';
-import { hasFsErrorCode } from './fs-error';
 
 export interface JsonFileReadOptions<T> {
   /** Path to the JSON file */
@@ -24,8 +23,6 @@ export interface JsonFileWriteOptions {
   readonly pretty?: boolean;
   /** Create parent directories if they don't exist (default: false) */
   readonly ensureDirectory?: boolean;
-  /** Create the file exclusively; an existing file raises EEXIST. */
-  readonly createOnly?: boolean;
 }
 
 /**
@@ -89,7 +86,7 @@ export function readJsonFile<T>(options: JsonFileReadOptions<T>): T {
  * ```
  */
 export function writeJsonFile(options: JsonFileWriteOptions): void {
-  const { filePath, data, pretty = true, ensureDirectory = false, createOnly = false } = options;
+  const { filePath, data, pretty = true, ensureDirectory = false } = options;
 
   if (ensureDirectory) {
     const directory = dirname(filePath);
@@ -100,11 +97,8 @@ export function writeJsonFile(options: JsonFileWriteOptions): void {
 
   try {
     const content = pretty ? JSON.stringify(data, null, 2) : JSON.stringify(data);
-    writeFileSync(filePath, content, createOnly ? { encoding: 'utf8', flag: 'wx' } : 'utf8');
+    writeFileSync(filePath, content, 'utf8');
   } catch (error) {
-    if (createOnly && hasFsErrorCode(error, 'EEXIST')) {
-      throw error;
-    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     throw new CoreOperationError(ErrorMessages.fileWriteFailed(filePath, errorMessage));
   }

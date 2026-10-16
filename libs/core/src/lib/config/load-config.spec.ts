@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CONFIG_FILENAME } from '../../constants';
 import { ConfigNotFoundError, ConfigParseError, LingoTrackerError } from '../errors/lingo-tracker-error';
-import { loadConfig } from './load-config';
+import { loadConfig } from './config-file-operations';
 
 describe('loadConfig', () => {
   let dir: string;
@@ -47,6 +47,16 @@ describe('loadConfig', () => {
     expect(error).toBeInstanceOf(LingoTrackerError);
     expect((error as ConfigNotFoundError).configPath).toBe(join(dir, CONFIG_FILENAME));
     expect((error as ConfigNotFoundError).name).toBe('ConfigNotFoundError');
+  });
+
+  it('throws ConfigNotFoundError with the searched path when cwd is a regular file', () => {
+    const cwd = join(dir, 'some-file');
+    writeFileSync(cwd, 'regular file');
+
+    const error = captureError(() => loadConfig({ cwd }));
+
+    expect(error).toBeInstanceOf(ConfigNotFoundError);
+    expect((error as ConfigNotFoundError).configPath).toBe(join(cwd, CONFIG_FILENAME));
   });
 
   it.each([

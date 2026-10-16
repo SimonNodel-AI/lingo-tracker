@@ -323,6 +323,31 @@ describe('Folder Pruning (real fs)', () => {
     expect(result.problems[0]).toMatchObject({ folderPath: 'parent.blocked', absolutePath: blocked });
   });
 
+  it('preserves the raw listing error when a folder vanishes before classification', () => {
+    const vanished = folder('vanished');
+    const readdir = fs.readdirSync;
+    let listed = false;
+    let listingError: unknown;
+    vi.spyOn(fs, 'readdirSync').mockImplementation((...args) => {
+      try {
+        const entries = Reflect.apply(readdir, fs, args);
+        if (args[0] === vanished && !listed) {
+          listed = true;
+          fs.rmSync(vanished, { recursive: true });
+        }
+        return entries;
+      } catch (error) {
+        listingError = error;
+        throw error;
+      }
+    });
+    const result = pruneEmptyFolders(collection());
+    expect(listingError).toBeInstanceOf(Error);
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]?.message).toBe(listingError instanceof Error ? listingError.message : undefined);
+    expect(result.problems[0]?.message).toContain('ENOENT');
+  });
+
   it('keeps unreadable collection files and reports a problem', () => {
     const blocked = writeFolderFiles(root(), 'parent.blocked', { entries: {}, meta: {} });
     const readFile = fs.readFileSync;

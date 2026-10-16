@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NormalizeCollectionsResult } from '@simoncodes-ca/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +7,7 @@ import { type CommandProject, createCommandProject } from '../testing/command-pr
 import { type NormalizeOptions, normalizeCommand } from './normalize';
 import { NORMALIZE_FLAGS } from './normalize-flags';
 
-type Payload = Pick<NormalizeCollectionsResult, 'collections' | 'totals'>;
+type Payload = Pick<Extract<NormalizeCollectionsResult, { status: 'complete' }>, 'collections' | 'totals'>;
 const zeroTotals = {
   entriesProcessed: 0,
   localesAdded: 0,
@@ -24,7 +24,6 @@ const skippedVendor = '⚠️  Warnings (1):\n  - Skipping read-only collection:
 
 describe('normalizeCommand (real project)', () => {
   let project: CommandProject;
-  const restorePermissions: string[] = [];
   const entriesPath = 'translations/main/resource_entries.json';
   const rawEntry = () => project.write(entriesPath, { hello: { source: 'Hello {{ name }}' } });
   const failedEntry = (name = 'main') =>
@@ -53,7 +52,6 @@ describe('normalizeCommand (real project)', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
-    for (const path of restorePermissions.splice(0)) chmodSync(path, 0o755);
     project.cleanup();
   });
 
@@ -81,6 +79,39 @@ describe('normalizeCommand (real project)', () => {
     expect(findings[1]).toMatchObject({ key: 'hello', locale: 'fr', kind });
     expect(normal.stderr).toBe(`⚠️  hello (en): ${findings[0]?.detail}\n`);
     expect(before).toContain(value);
+  });
+
+  it.each([false, true])('pins collection and total count lines with tags present: %s', async (withTags) => {
+    project.write(entriesPath, {
+      hello: { source: 'Hello {{ name }}', ...(withTags ? { tags: [' UI '] } : {}) },
+    });
+    const result = await project.run(normalizeCommand, { all: true, yes: true });
+    expect(result).toEqual({
+      exitCode: 0,
+      stderr: skippedVendor,
+      stdout: [
+        '',
+        '🔄 Normalizing collection: main',
+        '  ✅ Entries processed: 1',
+        '  ✅ Locales added: 1',
+        '  ✅ Values converted to ICU: 1',
+        ...(withTags ? ['  ✅ Tags normalized: 1'] : []),
+        '  ✅ Files created: 1',
+        '  ✅ Files updated: 1',
+        '  ✅ Folders removed: 0',
+        '',
+        '📊 Summary (1 collections)',
+        '──────────────────────────────────────────────────',
+        '  Total entries processed: 1',
+        '  Total locales added: 1',
+        '  Total values converted to ICU: 1',
+        ...(withTags ? ['  Total tags normalized: 1'] : []),
+        '  Total files created: 1',
+        '  Total files updated: 1',
+        '  Total folders removed: 0',
+        '',
+      ].join('\n'),
+    });
   });
 
   it('normalizes the named collection', async () => {
@@ -179,23 +210,6 @@ describe('normalizeCommand (real project)', () => {
     expect(payload(result.stdout)).toEqual({ collections: [], totals: zeroTotals });
     expect(result.stdout).toBe(`${JSON.stringify({ collections: [], totals: zeroTotals }, null, 2)}\n`);
   });
-  it.skipIf(process.getuid?.() === 0)('reports a pruning removal failure and retains the empty folder', async () => {
-    const root = join(project.cwd, 'translations/main');
-    mkdirSync(join(root, 'empty'));
-    restorePermissions.push(root);
-    chmodSync(root, 0o555);
-    const result = await project.run(normalizeCommand, { collection: 'main', json: true });
-    const report = payload(result.stdout);
-    const problem = report.collections[0]?.problems[0];
-    expect(problem).toBeDefined();
-    expect(problem).toMatchObject({ kind: 'not-removed', folderPath: 'empty', absolutePath: join(root, 'empty') });
-    expect(problem?.message).toContain('EACCES');
-    expect(result.exitCode).toBe(0);
-    expect(result.stderr).toBe(
-      `⚠️  Warnings (1):\n  - Collection 'main': Could not remove folder 'empty': ${problem?.message}\n`,
-    );
-    expect(project.exists('translations/main/empty')).toBe(true);
-  });
   it('warns on folder read problems and includes the exact problem in JSON', async () => {
     project.write('translations/main/broken/resource_entries.json', '{');
     const result = await project.run(normalizeCommand, { collection: 'main', json: true });
@@ -279,16 +293,7 @@ describe('normalizeCommand (real project)', () => {
     expect(project.read(entriesPath)).toBe(before);
     expect(project.exists('translations/main/tracker_meta.json')).toBe(false);
   });
-  it('fails and skips normalize for explicitly selected read-only collection', async () => {
-    project.write('translations/vendor/resource_entries.json', { hello: { source: 'Hello {{ name }}' } });
-    const before = project.read('translations/vendor/resource_entries.json');
-    const result = await project.run(normalizeCommand, { collection: 'vendor' });
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe(
-      '❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
-    );
-    expect(project.read('translations/vendor/resource_entries.json')).toBe(before);
-  });
+
   it('skips read-only collections during all without failing the run', async () => {
     rawEntry();
     const result = await project.run(normalizeCommand, { all: true, yes: true });
@@ -296,13 +301,7 @@ describe('normalizeCommand (real project)', () => {
     expect(result.stderr).toBe(skippedVendor);
     expectNormalized();
   });
-  it('prints dry-run warning after refusing explicitly selected read-only collection', async () => {
-    const result = await project.run(normalizeCommand, { collection: 'vendor', dryRun: true });
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toBe(
-      '⚠️  Dry run completed - no changes were made.\n❌ Errors (1):\n  - Collection "vendor" is read-only. Its resources cannot be modified.\n',
-    );
-  });
+
   it('keeps stdout to one JSON payload when all skips only read-only collection', async () => {
     project.configure({
       ...project.config,

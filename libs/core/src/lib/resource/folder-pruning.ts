@@ -1,10 +1,11 @@
-import { readdirSync, rmdirSync, unlinkSync } from 'node:fs';
+import { rmdirSync, unlinkSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { readJsonFile } from '../file-io/json-file-operations';
 import { type CollectionFolderProblem, type CollectionFolderVisit, walkCollectionFolders } from './collection-folders';
 import { assertCollectionFolderPath, validateFolderAddress } from './folder-address';
+import { scanFolder } from './iterative-folder-walker';
 import { folderMutation, type MutationSinkOptions, resolveMutationSink } from './resource-mutation';
 
 /** The only non-collection files that pruning may delete. */
@@ -162,15 +163,16 @@ function classifyFolder(
   }
 
   try {
-    const entries = readdirSync(absolutePath, { withFileTypes: true }).filter(
+    // Refresh after child removals and before classifying; another writer may have added content.
+    const current = scanFolder(absolutePath);
+    const { resourceFileNames } = current;
+    const entries = current.entries.filter(
       (entry) => !(entry.isDirectory() && removedPaths.has(join(absolutePath, entry.name))),
     );
     const pathsOf = (names: string[]): string[] =>
       names.map((name) => relative(translationsFolder, join(absolutePath, name)));
     const knownFile = (name: string): boolean =>
-      name === RESOURCE_ENTRIES_FILENAME ||
-      name === TRACKER_META_FILENAME ||
-      PRUNABLE_OS_JUNK_FILES.some((junk) => junk === name);
+      resourceFileNames.includes(name) || PRUNABLE_OS_JUNK_FILES.some((junk) => junk === name);
     const content = entries.filter(
       (entry) => !(entry.isFile() && knownFile(entry.name)) && !visit.subfolderNames.includes(entry.name),
     );
