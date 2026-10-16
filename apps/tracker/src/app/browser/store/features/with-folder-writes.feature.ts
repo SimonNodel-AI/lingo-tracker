@@ -1,19 +1,12 @@
 import { computed, DestroyRef, inject } from '@angular/core';
 import { patchState, signalStoreFeature, type, withComputed, withMethods } from '@ngrx/signals';
 import { folderPathFromSegments, folderPathLeaf, resolveResourceKey, splitResolvedKey } from '@simoncodes-ca/domain';
-import { defer, finalize, type Observable, of, tap } from 'rxjs';
+import { defer, finalize, type Observable, of } from 'rxjs';
 import { createRestartableDelay } from '../../../shared/timed-transients';
 import { BrowserApiService } from '../../services/browser-api.service';
 import type { BeginMirrorMove, BrowserWriteResult, MirrorRollback } from '../browser-mirror';
 import { type CollectionLifecycleRegistry, withCollectionState } from '../collection-reset';
-import {
-  cancelFolderDraft,
-  dismissFolderDraftError,
-  type FolderDraft,
-  initialFolderDraft,
-  settleFolderDraft,
-  startFolderDraft,
-} from '../folder-draft';
+import { type FolderDraft, FolderDraftSession, initialFolderDraft } from '../folder-draft';
 import { folderDrop } from '../folder-drop';
 import {
   type CreateFolderOutcome,
@@ -191,39 +184,41 @@ export function withFolderWritesFeature<_>() {
         );
       }
 
+      const draftSession = new FolderDraftSession({
+        state: {
+          read: () => ({
+            isAddingFolder: store.isAddingFolder(),
+            addFolderParentPath: store.addFolderParentPath(),
+            folderDraftId: store.folderDraftId(),
+            folderCreateError: store.folderCreateError(),
+          }),
+          write: (draft) => patchState(store, draft),
+        },
+        create: createFolderResult,
+        canStart: () => !store.isReadOnly(),
+        staleDraft: 'collection-reset',
+        // The tree renders a draft's parent open; Browser Mirror expands it after creation.
+      });
+      store._collectionLifecycle.register('reset', () => draftSession.reset());
+
       return {
         startAddingFolder(parentPath: string | null): void {
-          if (!store.isReadOnly()) {
-            patchState(store, (state) => startFolderDraft(state, parentPath));
-          }
+          draftSession.start(parentPath);
         },
         cancelAddingFolder(): void {
-          patchState(store, cancelFolderDraft);
+          draftSession.cancel();
         },
         /** Retires a create refusal, once the user edits the refused name. */
         dismissFolderCreateError(): void {
-          patchState(store, dismissFolderDraftError);
+          draftSession.edit();
         },
         /** Creates a folder with no effect on the add-folder draft (the picker keeps its own). */
         createFolder(folderName: string, parentPath: string | null): Observable<CreateFolderOutcome> {
           return createFolderResult(folderName, parentPath);
         },
-        /**
-         * Creates a folder from the add-folder draft. The draft closes when the create ends
-         * (created, read-only, no collection). A refusal keeps it open and stays in
-         * `folderCreateError`, shown under the input so the name can be corrected. A create that
-         * outlived its session, or whose draft was cancelled or replaced meanwhile, leaves the
-         * draft state alone (the folder itself is still created and shown in the tree).
-         */
+        /** Folder Draft Session settles only the draft that submitted this create. */
         confirmFolderDraft(folderName: string, parentPath: string | null): Observable<CreateFolderOutcome> {
-          return defer(() => {
-            const draftId = store.folderDraftId();
-            return createFolderResult(folderName, parentPath).pipe(
-              tap((outcome) => {
-                patchState(store, (state) => settleFolderDraft(state, draftId, outcome));
-              }),
-            );
-          });
+          return draftSession.confirm(folderName, parentPath);
         },
         deleteFolder(folderPath: string): Observable<DeleteFolderOutcome> {
           return deleteFolderResult(folderPath, decideDeleteFolder);

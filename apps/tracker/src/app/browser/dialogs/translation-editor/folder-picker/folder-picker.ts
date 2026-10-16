@@ -17,13 +17,7 @@ import { collectAncestorPaths } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../../../i18n-types/tracker-resources';
 import { injectFeedback } from '../../../feedback';
 import { BrowserStore } from '../../../store/browser.store';
-import {
-  cancelFolderDraft,
-  dismissFolderDraftError,
-  initialFolderDraft,
-  settleFolderDraft,
-  startFolderDraft,
-} from '../../../store/folder-draft';
+import { FolderDraftSession } from '../../../store/folder-draft';
 import { expandTreePath, navigateTree, PICKER_NAVIGATION } from '../../../store/tree-navigation';
 import { PickerFolderNode } from './picker-folder-node/picker-folder-node';
 
@@ -78,10 +72,18 @@ export class FolderPicker implements OnInit {
   readonly expandedPaths = signal<ReadonlySet<string>>(new Set());
   readonly selectedPath = signal<string | null>(null);
   readonly focusedPath = signal<string | null>(null);
-  readonly #draft = signal(initialFolderDraft);
-  readonly isAddingFolder = computed(() => this.#draft().isAddingFolder);
-  readonly addFolderParentPath = computed(() => this.#draft().addFolderParentPath);
-  readonly isCreatingFolder = signal(false);
+  readonly isAddingFolder = computed(() => this.#draftSession.state().isAddingFolder);
+  readonly addFolderParentPath = computed(() => this.#draftSession.state().addFolderParentPath);
+  readonly #draftSession = new FolderDraftSession({
+    create: (name, parent) => this.#store.createFolder(name, parent),
+    staleDraft: 'cancel',
+    revealParent: (path) => this.expandedPaths.update((expanded) => new Set(expanded).add(path)),
+    created: (folder) => {
+      this.folderCreated.emit(folder);
+      this.selectedPath.set(folder.fullPath);
+    },
+  });
+  readonly isCreatingFolder = this.#draftSession.isCreating;
 
   /**
    * The refusal of the last create, as Folder Writes decided it, shown under the still-open input.
@@ -91,7 +93,7 @@ export class FolderPicker implements OnInit {
    * picker holds this one itself.
    */
   readonly createError = computed(() => {
-    const feedback = this.#draft().folderCreateError;
+    const feedback = this.#draftSession.state().folderCreateError;
     return feedback ? this.#feedback.text(feedback) : null;
   });
 
@@ -148,44 +150,24 @@ export class FolderPicker implements OnInit {
   }
 
   onCreateFirstFolder(): void {
-    this.#draft.update((draft) => startFolderDraft(draft, ''));
+    this.#draftSession.start('');
   }
 
   onAddFolder(parentPath: string): void {
-    this.#draft.update((draft) => startFolderDraft(draft, parentPath));
-    // Auto-expand the parent folder to show the inline input
-    this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
+    this.#draftSession.start(parentPath);
   }
 
   onFolderNameConfirmed(folderName: string): void {
-    const parentPath = this.addFolderParentPath();
-    if (parentPath === null) {
-      return;
-    }
-
-    this.isCreatingFolder.set(true);
-    const draftId = this.#draft().folderDraftId;
-
-    this.#store.createFolder(folderName, parentPath || null).subscribe((outcome) => {
-      this.isCreatingFolder.set(false);
-      this.#draft.update((draft) => settleFolderDraft(draft, draftId, outcome));
-      // The picker has no session reset, so close its draft to discard the previous collection's parent.
-      if (outcome.kind === 'stale-session' && draftId === this.#draft().folderDraftId) this.onFolderNameCancelled();
-      if (outcome.kind === 'created') {
-        this.folderCreated.emit(outcome.folder);
-        this.selectedPath.set(outcome.folder.fullPath);
-        if (parentPath) this.expandedPaths.update((expanded) => new Set(expanded).add(parentPath));
-      }
-      this.#feedback.toast(outcome.feedback);
-    });
+    if (this.addFolderParentPath() === null) return;
+    this.#draftSession.confirm(folderName).subscribe((outcome) => this.#feedback.toast(outcome.feedback));
   }
 
   onFolderNameEdited(): void {
-    this.#draft.update(dismissFolderDraftError);
+    this.#draftSession.edit();
   }
 
   onFolderNameCancelled(): void {
-    this.#draft.update(cancelFolderDraft);
+    this.#draftSession.cancel();
   }
 
   onExpandToggle(folderPath: string): void {
