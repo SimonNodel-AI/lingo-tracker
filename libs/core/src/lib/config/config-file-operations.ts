@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
@@ -56,10 +56,6 @@ export interface LoadConfigOptions {
  */
 export function loadConfig(options: LoadConfigOptions = {}): LingoTrackerConfig {
   const configPath = resolve(options.cwd ?? process.cwd(), CONFIG_FILENAME);
-
-  if (!existsSync(configPath)) {
-    throw new ConfigNotFoundError(configPath);
-  }
 
   const file = readConfigContent(configPath);
   if (file === undefined) throw new ConfigNotFoundError(configPath);
@@ -237,7 +233,7 @@ export function createConfigFileOperations(params: ConfigFileParams = {}): Confi
 }
 
 /** Apply the same preflight checks and tag normalization as a config-file read, without another read. */
-export function prepareConfigSnapshot(config: LingoTrackerConfig): void {
+function prepareConfigSnapshot(config: LingoTrackerConfig): void {
   validateConfig(config);
   normalizeCollectionTags(config);
 }
@@ -270,16 +266,6 @@ function normalizeCollectionTags(config: LingoTrackerConfig): void {
       }
     }
   }
-}
-
-/**
- * Helper function for atomic config updates.
- */
-export function updateConfig(
-  updater: (config: LingoTrackerConfig) => LingoTrackerConfig,
-  cwd?: string,
-): LingoTrackerConfig {
-  return createConfigFileOperations({ cwd }).update(updater);
 }
 
 /** The guarded write handle of an opened project or collection. */

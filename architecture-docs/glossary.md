@@ -428,7 +428,7 @@ Explained in context: [`cli.md`](cli.md#command-runner)
 
 `libs/core/src/lib/config/config-file-operations.ts` owns reading, parsing, hashing, serializing and writing `.lingo-tracker.json`. `loadConfig({ cwd? })` returns the parsed file without validation or normalization. Its exact content version stays in a private WeakMap. The same content reader supplies the version check before a guarded write; missing or changed bytes raise `ConfigChangedError`, including invalid JSON from another writer.
 
-`guardedConfigWrite(project)` keeps the existing read, write, create, update, version-check and transaction interface. Each write validates first, serializes once, writes that string and advances its baseline from the same string. Exclusive creation refuses an existing file. The [Config Write Transaction](#config-write-transaction) supplies companion snapshots and rollback; Config File owns the guard and write-state decisions used during restoration.
+`guardedConfigWrite(project)` keeps the existing read, write, create, update, version-check and transaction interface. Validation runs when enabled, which is the default for `guardedConfigWrite`. Each write serializes once, writes that string and advances its baseline from the same string. Exclusive creation refuses an existing file. The [Config Write Transaction](#config-write-transaction) supplies companion snapshots and rollback; Config File owns the guard and write-state decisions used during restoration.
 
 Explained in context: [`core-library.md`](core-library.md#config-and-collection-resolution)
 

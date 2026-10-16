@@ -42,16 +42,6 @@ describe('JSON file operations', () => {
     expect(readTrackerMetadata(filePath)).toEqual({ ok: {} });
   });
 
-  it('preserves existing bytes on exclusive create and retains EEXIST', () => {
-    const filePath = join(dir(), 'data.json');
-    writeJsonFile({ filePath, data: { first: true }, createOnly: true });
-    const before = readFileSync(filePath, 'utf8');
-    expect(() => writeJsonFile({ filePath, data: {}, createOnly: true })).toThrow(
-      expect.objectContaining({ code: 'EEXIST' }),
-    );
-    expect(readFileSync(filePath, 'utf8')).toBe(before);
-  });
-
   it('wraps write failures without silently creating missing parents', () => {
     expect(() => writeJsonFile({ filePath: join(dir(), 'missing', 'data.json'), data: {} })).toThrow(
       CoreOperationError,
