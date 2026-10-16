@@ -18,7 +18,6 @@ import { type MovePruneSource, summarizeMovePruning } from './move-cleanup';
 import { movePatternPrefix, planMove, validateMoveInput } from './move-plan';
 import { MoveReport, type MoveResult } from './move-report';
 import { InterruptedRelocation, relocateEntries } from './relocate-entries';
-import type { MutationSinkOptions } from './resource-mutation';
 
 /** Submitted addresses; patterns retain the trailing `*` syntax (including root `*`). */
 export type MoveRequest = {
@@ -27,8 +26,6 @@ export type MoveRequest = {
   readonly override?: boolean;
   readonly toCollection?: string;
 } & ({ readonly kind?: 'resource' } | { readonly kind: 'folder'; readonly nestUnderDestination?: boolean });
-
-export type MoveOptions = MutationSinkOptions;
 
 export type ExecuteMoveResult = MoveResult;
 
@@ -47,22 +44,14 @@ type PreparedMove = { readonly destinationCollection: Collection } & (
 );
 
 /** Synchronous move; selection/destination preconditions throw, operational failures enter the report. */
-export function executeMove(
-  collection: OpenedCollection,
-  request: MoveRequest,
-  options: MoveOptions = {},
-): ExecuteMoveResult {
+export function executeMove(collection: OpenedCollection, request: MoveRequest): ExecuteMoveResult {
   const selection = validateSelection(request);
   const prepared = prepareMove(collection, selection);
-  return finishMoves(collection, [prepared], options, selection.kind === 'folder');
+  return finishMoves(collection, [prepared], selection.kind === 'folder');
 }
 
 /** Preflight addresses, destinations and folder sources before writes; unavailable destinations are per-operation errors. */
-export function executeMoves(
-  collection: OpenedCollection,
-  requests: readonly MoveRequest[],
-  options: MoveOptions = {},
-): ExecuteMoveResult {
+export function executeMoves(collection: OpenedCollection, requests: readonly MoveRequest[]): ExecuteMoveResult {
   const selections = requests.map(validateSelection);
   const prepared = selections.map((selection): PreparedMove | { readonly error: string } => {
     try {
@@ -77,7 +66,6 @@ export function executeMoves(
   return finishMoves(
     collection,
     prepared,
-    options,
     selections.some(({ kind }) => kind === 'folder'),
   );
 }
@@ -85,7 +73,6 @@ export function executeMoves(
 function finishMoves(
   collection: Collection,
   prepared: readonly (PreparedMove | { readonly error: string })[],
-  options: MoveOptions,
   includesFolder: boolean,
 ): ExecuteMoveResult {
   const report = new MoveReport();
@@ -94,7 +81,7 @@ function finishMoves(
     for (const move of prepared) {
       if ('error' in move) report.fail(move.error);
       else {
-        const result = executePreparedMove(collection, move, options);
+        const result = executePreparedMove(collection, move);
         cleanup.push(result);
         report.merge(result.report);
       }
@@ -111,7 +98,6 @@ function finishMoves(
         pruneEmptiedFolders(
           collection,
           cleanup.flatMap(({ emptiedFolders }) => emptiedFolders),
-          options,
         ),
         cleanup.flatMap(({ folderSource }) => (folderSource ? [folderSource] : [])),
       ),
@@ -153,10 +139,10 @@ function resolveDestination(source: OpenedCollection, name: string | undefined):
   }
 }
 
-function executePreparedMove(collection: Collection, move: PreparedMove, options: MoveOptions): CompletedMove {
+function executePreparedMove(collection: Collection, move: PreparedMove): CompletedMove {
   const report = new MoveReport();
   const { destinationCollection, selection } = move;
-  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, options, report);
+  if (move.kind === 'folder') return executeFolder(collection, move.selection, move.plan, report);
 
   const { source, destination, override = false } = selection;
   let plannedSelection: { kind: 'key'; key: string } | { kind: 'pattern'; prefix: string; keys: readonly string[] };
@@ -178,7 +164,7 @@ function executePreparedMove(collection: Collection, move: PreparedMove, options
     selection: plannedSelection,
     destinationPath: destination,
   });
-  const relocation = relocateEntries(plan, { override, deferPruning: true, onMutation: options.onMutation });
+  const relocation = relocateEntries(plan, { override, deferPruning: true });
   report.merge(relocation);
   return { report: report.finish(), emptiedFolders: relocation.emptiedFolders ?? [] };
 }
@@ -219,7 +205,6 @@ function executeFolder(
   collection: Collection,
   selection: FolderSelection,
   plan: ReturnType<typeof prepareFolder>,
-  options: MoveOptions,
   report: MoveReport,
 ): CompletedMove {
   const { source: sourceFolderPath, override = false } = selection;
@@ -253,7 +238,6 @@ function executeFolder(
     : relocateEntries(plan.forKeys(resourceKeys), {
         override,
         deferPruning: true,
-        onMutation: options.onMutation,
       });
   report.merge(relocation);
 

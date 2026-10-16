@@ -36,14 +36,22 @@ describe('RouteProject', () => {
     expect(openProjectCollection(project, 'destination').onMutation).toBe(index.sink);
   });
 
-  it('attaches the sink for write routes and leaves GET routes without a sink', () => {
+  it('attaches the sink for writes and gives GET collections a no-op sink while their project has no sink', () => {
     const index = new CollectionIndex();
     const pipe = new RouteProjectPipe(new TestConfigService(), index);
     for (const method of ['GET', 'POST', 'PUT', 'DELETE']) {
       const writable = routeCollectionRef({}, { method, params: {} }).writable;
       const project = pipe.transform(writable);
       expect(project.onMutation).toBe(method === 'GET' ? undefined : index.sink);
-      expect(openProjectCollection(project, 'destination').onMutation).toBe(project.onMutation);
+      const collection = openProjectCollection(project, 'destination');
+      if (method === 'GET') {
+        expect(collection.onMutation).not.toBe(index.sink);
+        expect(
+          collection.onMutation({ kind: 'reindex', translationsFolder: collection.translationsFolder }),
+        ).toBeUndefined();
+      } else {
+        expect(collection.onMutation).toBe(project.onMutation);
+      }
     }
   });
 

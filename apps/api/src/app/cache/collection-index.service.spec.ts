@@ -40,7 +40,10 @@ describe('CollectionIndex', () => {
   /** Writes one entry (with metadata) the way core stores it. */
   function writeEntry(collectionName: string, key: string, value: string): void {
     const segments = key.split('.');
-    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), { baseLocale: 'en' });
+    const folder = openResourceFolder(
+      path.join(root, collectionName, ...segments.slice(0, -1)),
+      collection(collectionName),
+    );
     folder.setBase(segments[segments.length - 1], value);
     folder.save();
   }
@@ -170,9 +173,11 @@ describe('CollectionIndex', () => {
       readyTree(other);
 
       await executeMove(
-        { ...collection(), sourceConfig: config('other'), projectRoot: root },
+        {
+          ...{ ...collection(), sourceConfig: config('other'), projectRoot: root },
+          onMutation: index.sink ?? { ...collection(), sourceConfig: config('other'), projectRoot: root }.onMutation,
+        },
         { source: 'common.ok', destination: 'imported.ok', toCollection: 'other' },
-        { onMutation: index.sink },
       );
 
       expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
@@ -210,9 +215,13 @@ describe('CollectionIndex', () => {
       const configPath = path.join(root, '.lingo-tracker.json');
       fs.writeFileSync(configPath, JSON.stringify(config('main')));
 
-      await addLocaleToCollection(openCollection(loadConfig({ cwd: root }), 'main', { cwd: root }), 'de', {
-        onMutation: index.sink,
-      });
+      await addLocaleToCollection(
+        {
+          ...openCollection(loadConfig({ cwd: root }), 'main', { cwd: root }),
+          onMutation: index.sink ?? openCollection(loadConfig({ cwd: root }), 'main', { cwd: root }).onMutation,
+        },
+        'de',
+      );
 
       expect(index.tree(collection())).toEqual({ status: 'not-started' });
       expect(readyTree(collection(), 'common')?.resources.every((r) => r.translations.de !== undefined)).toBe(true);
@@ -227,7 +236,11 @@ describe('CollectionIndex', () => {
       expect(keysOf(readyTree(target, 'common'))).toEqual(['cancel', 'first', 'ok']);
 
       writeEntry('main', 'common.second', 'Second');
-      await addResource(target, { key: 'common.user', baseValue: 'User' }, { onMutation: index.sink });
+      await addResource(
+        { ...target, onMutation: index.sink ?? target.onMutation },
+        { key: 'common.user', baseValue: 'User' },
+        {},
+      );
       expect(keysOf(readyTree(target, 'common'))).toEqual(['cancel', 'first', 'ok', 'user']);
 
       index.sink(reindex);
@@ -244,7 +257,11 @@ describe('CollectionIndex', () => {
     });
 
     it('ignores mutations for collections that are not indexed', async () => {
-      await addResource(collection('elsewhere'), { key: 'ok', baseValue: 'OK' }, { onMutation: index.sink });
+      await addResource(
+        { ...collection('elsewhere'), onMutation: index.sink ?? collection('elsewhere').onMutation },
+        { key: 'ok', baseValue: 'OK' },
+        {},
+      );
 
       expect(index.tree(collection()).status).toBe('ready');
     });
@@ -253,12 +270,12 @@ describe('CollectionIndex', () => {
       fs.writeFileSync(path.join(root, 'main', 'blocked'), 'file');
       await expect(
         addResources(
-          collection(),
+          { ...collection(), onMutation: index.sink ?? collection().onMutation },
           [
             { key: 'created.ok', baseValue: 'OK' },
             { key: 'blocked.later', baseValue: 'Later' },
           ],
-          { onMutation: index.sink },
+          {},
         ),
       ).rejects.toThrow();
       expect(keysOf(readyTree(collection(), 'created'))).toEqual(['ok']);
@@ -297,13 +314,21 @@ describe('CollectionIndex', () => {
     });
 
     it('does not read its own write as an outside change', async () => {
-      await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' }, { onMutation: index.sink });
+      await addResource(
+        { ...collection(), onMutation: index.sink ?? collection().onMutation },
+        { key: 'common.yes', baseValue: 'Yes' },
+        {},
+      );
 
       expect(index.tree(collection()).status).toBe('ready');
     });
 
     it('detects an outside change made after its own write settled', async () => {
-      await addResource(collection(), { key: 'common.yes', baseValue: 'Yes' }, { onMutation: index.sink });
+      await addResource(
+        { ...collection(), onMutation: index.sink ?? collection().onMutation },
+        { key: 'common.yes', baseValue: 'Yes' },
+        {},
+      );
       // Let the deferred fingerprint refresh run.
       await new Promise((resolve) => setTimeout(resolve, 5));
 

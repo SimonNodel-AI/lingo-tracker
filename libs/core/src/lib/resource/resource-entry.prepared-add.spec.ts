@@ -156,7 +156,7 @@ describe('resource-entry prepared adds', () => {
     let before: Buffer | undefined;
     await expect(
       addResource(
-        automatic(),
+        { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
         { key: 'common.ok', baseValue: 'OK' },
         {
           provider: new InMemoryTranslationProvider(() => {
@@ -164,7 +164,6 @@ describe('resource-entry prepared adds', () => {
             before = readFileSync(join(root(), 'common', 'resource_entries.json'));
             return 'Translated';
           }),
-          onMutation: (mutation) => mutations.push(mutation),
         },
       ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
@@ -188,12 +187,12 @@ describe('resource-entry prepared adds', () => {
     });
     await expect(
       addResources(
-        automatic(),
+        { ...automatic(), onMutation: (mutation) => mutations.push(mutation) ?? automatic().onMutation },
         [
           { key: 'earlier.one', baseValue: 'Earlier' },
           { key: 'later.two', baseValue: 'Later' },
         ],
-        { provider, onMutation: (mutation) => mutations.push(mutation) },
+        { provider },
       ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(provider.calls.flat().map(({ text }) => text)).toEqual(['Earlier', 'Earlier', 'Later', 'Later']);

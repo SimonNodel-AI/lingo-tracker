@@ -1,7 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import type { TranslationOutcome, Translator } from '../machine-translation/translator';
 import { groupByFolder } from '../resource/folder-grouping';
-import { type MutationSink, upsertMutation } from '../resource/resource-mutation';
 import type { TranslationRunOutcome, TranslationRunRow } from './translation-run';
 import { writeBackTranslations } from './translation-write-back';
 
@@ -11,18 +10,17 @@ function pairKey(key: string, locale: string): string {
 
 /**
  * One Translator call followed by one write-back per folder; failures stay at their own stage.
- * The caller passes its resolved mutation sink. Rows have unique full keys and snapshots for every requested, non-base target locale.
+ * The collection carries the required mutation sink. Rows have unique full keys and snapshots for every requested, non-base target locale.
  * Translator guarantees exactly one value or skip per entry x non-base locale; an invalid
  * provider response throws INVALID_RESPONSE. The counting invariant relies on this contract.
  * Provider skips are returned first, preserving the single-resource caller's skip ordering.
- * Successful saves report upsert once per written entry; saveReporting reindexes failed saves.
+ * Successful saves report upsert once per written entry; Resource Folder reindexes failed saves.
  */
 export async function translationBatch(
   collection: Collection,
   rows: readonly TranslationRunRow[],
   locales: readonly string[],
   translator: Translator,
-  onMutation: MutationSink | undefined,
 ): Promise<TranslationRunOutcome[]> {
   const failed = (key: string, locale: string, stage: 'provider' | 'write', error: unknown): TranslationRunOutcome => ({
     key,
@@ -53,15 +51,7 @@ export async function translationBatch(
       }),
     );
     try {
-      const result = writeBackTranslations(collection, folderPath, pending, {
-        mutationSink: onMutation,
-        saved: (folder, written) => {
-          const writtenKeys = new Set(written.map(({ entryKey }) => entryKey));
-          return members
-            .filter(({ entryKey }) => writtenKeys.has(entryKey))
-            .map(({ key, entryKey }) => upsertMutation(collection.translationsFolder, key, folder.treeEntry(entryKey)));
-        },
-      });
+      const result = writeBackTranslations(collection, folderPath, pending);
       const written = new Set(result.written.map(({ entryKey, locale }) => pairKey(entryKey, locale)));
       for (const { key, entryKey } of members) {
         const entry = result.folder.treeEntry(entryKey);

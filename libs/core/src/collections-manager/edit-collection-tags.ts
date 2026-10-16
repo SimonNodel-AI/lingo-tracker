@@ -2,7 +2,6 @@ import { type ListEdit, mergeListEdit, normalizeTags, validateListEdit } from '@
 import type { OpenedCollection } from '../lib/config/open-collection';
 import { ErrorMessages } from '../lib/errors/error-messages';
 import { InvalidCollectionError } from '../lib/errors/lingo-tracker-error';
-import type { MutationSinkOptions } from '../lib/resource/resource-mutation';
 import { changeCollection } from './collection-change';
 
 export type CollectionTagEdit = ListEdit;
@@ -12,11 +11,7 @@ export type CollectionTagEdit = ListEdit;
  * Read-only registrations allow tag edits. Invalid edits and stale snapshots reject before writes
  * or mutation notifications; a changed record follows Collection Change's reindex rule.
  */
-export async function editCollectionTags(
-  collection: OpenedCollection,
-  edit: CollectionTagEdit,
-  options: MutationSinkOptions = {},
-): Promise<string[]> {
+export async function editCollectionTags(collection: OpenedCollection, edit: CollectionTagEdit): Promise<string[]> {
   validateListEdit(edit, {
     shape: () => new InvalidCollectionError('Tag edit lists must be arrays of strings'),
     conflict: () => new InvalidCollectionError(ErrorMessages.collectionTagEditConflict(), { problem: 'tag-conflict' }),
@@ -25,6 +20,6 @@ export async function editCollectionTags(
 
   const storedTags = normalizeTags(collection.config.tags ?? []);
   const tags = mergeListEdit(storedTags, edit, normalizeTags);
-  await changeCollection(collection, { patch: { tags } }, options);
+  await changeCollection(collection, { patch: { tags } });
   return tags;
 }

@@ -8,8 +8,9 @@ import { writeJsonFile } from '../file-io/json-file-operations';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { readCollection } from '../resource/read-collection';
 import { editResource } from '../resource/resource-entry';
-import { openResourceFolder } from '../resource/resource-folder';
-import { type MutationSinkOptions, resolveMutationSink } from '../resource/resource-mutation';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
+import type { MutationSink } from '../resource/resource-mutation';
 import { translateExistingResource } from './translate-existing-resource';
 import { executeTranslationRun, prepareTranslationRun, selectTranslationRow } from './translation-run';
 
@@ -45,16 +46,15 @@ describe('Translation Run rows × locales', () => {
   async function execute(
     collection: Collection,
     provider = new InMemoryTranslationProvider(),
-    options: MutationSinkOptions = {},
+    options: { onMutation?: MutationSink } = {},
   ) {
     return executeTranslationRun({
-      collection,
+      collection: { ...collection, onMutation: options.onMutation ?? collection.onMutation },
       translationConfig,
       rows: rows(collection),
       locales,
       failurePolicy: 'tally',
       provider,
-      mutationSink: resolveMutationSink(collection, options),
     });
   }
 
@@ -121,13 +121,12 @@ describe('Translation Run rows × locales', () => {
     const delay = vi.fn(async () => undefined);
     await expect(
       executeTranslationRun({
-        collection,
+        collection: { ...collection, onMutation },
         translationConfig: { ...translationConfig, batchSize: 1 },
         rows: rows(collection),
         locales,
         failurePolicy: 'throw-first',
         provider: throwFirst,
-        mutationSink: onMutation,
         delay,
       }),
     ).rejects.toBe(cause);
@@ -188,7 +187,7 @@ describe('Translation Run rows × locales', () => {
     const collection = testCollection(dir());
     seedResources(collection, { 'first.ok': { source: 'OK' } });
     const provider = new InMemoryTranslationProvider(({ text, targetLocale }) => {
-      const folder = openResourceFolder(join(dir(), 'first'), collection);
+      const folder = openUnreportedResourceFolder(join(dir(), 'first'), collection);
       folder.setTranslation('ok', 'fr', 'Humain', 'verified');
       folder.save();
       return `[${targetLocale}] ${text}`;
@@ -201,7 +200,7 @@ describe('Translation Run rows × locales', () => {
     expect(read('first')['ok']).toMatchObject({ fr: 'Humain', es: '[es] OK' });
   });
 
-  it('resolves an inherited sink once and falls back for an undefined override', async () => {
+  it('uses the inherited collection sink throughout writes', async () => {
     const inherited = vi.fn();
     const readSink = vi.fn(() => inherited);
     const collection = {
@@ -214,26 +213,26 @@ describe('Translation Run rows × locales', () => {
     readSink.mockClear();
     inherited.mockClear();
     await execute(collection);
-    expect(readSink).toHaveBeenCalledTimes(1);
+    expect(readSink).toHaveBeenCalled();
     expect(inherited).toHaveBeenCalledTimes(1);
-    const folder = openResourceFolder(join(dir(), 'first'), collection);
+    const folder = openUnreportedResourceFolder(join(dir(), 'first'), collection);
     for (const locale of locales) folder.setStatus('ok', locale, 'new');
     folder.save();
     readSink.mockClear();
     inherited.mockClear();
     await execute(collection, new InMemoryTranslationProvider(), { onMutation: undefined });
-    expect(readSink).toHaveBeenCalledTimes(1);
+    expect(readSink).toHaveBeenCalled();
     expect(inherited).toHaveBeenCalledTimes(1);
 
     readSink.mockClear();
     inherited.mockClear();
-    await translateExistingResource(collection, 'first.ok', { onMutation: undefined });
-    expect(readSink).toHaveBeenCalledTimes(1);
+    await translateExistingResource(collection, 'first.ok', {});
+    expect(readSink).toHaveBeenCalled();
     expect(inherited).not.toHaveBeenCalled();
 
     readSink.mockClear();
-    await prepareTranslationRun(collection, { onMutation: undefined }).forLocale('fr').execute();
-    expect(readSink).toHaveBeenCalledTimes(1);
+    await prepareTranslationRun(collection, {}).forLocale('fr').execute();
+    expect(readSink).not.toHaveBeenCalled();
     expect(inherited).not.toHaveBeenCalled();
 
     for (const enabled of [true, false]) {
@@ -247,16 +246,8 @@ describe('Translation Run rows × locales', () => {
       seedResources(target, { [key]: { source: 'Before' } });
       readSink.mockClear();
       inherited.mockClear();
-      await editResource(
-        target,
-        key,
-        { baseValue: 'After' },
-        {
-          provider: new InMemoryTranslationProvider(),
-          onMutation: undefined,
-        },
-      );
-      expect(readSink).toHaveBeenCalledTimes(1);
+      await editResource(target, key, { baseValue: 'After' }, { provider: new InMemoryTranslationProvider() });
+      expect(readSink).toHaveBeenCalled();
       expect(inherited).toHaveBeenCalledTimes(2);
     }
   });

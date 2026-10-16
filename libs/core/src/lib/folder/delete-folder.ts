@@ -4,12 +4,7 @@ import { FolderNotFoundError, InvalidCollectionFolderError } from '../errors/lin
 import { walkCollectionFolders } from '../resource/collection-folders';
 import { sweepCollection } from '../resource/collection-sweep';
 import { inspectFolderAddress, validateFolderAddress } from '../resource/folder-address';
-import {
-  folderMutation,
-  type MutationSinkOptions,
-  reindexMutation,
-  resolveMutationSink,
-} from '../resource/resource-mutation';
+import { reportResourceDirectoryWrite } from '../resource/resource-folder';
 
 export interface DeleteFolderParams {
   /** The folder path to delete (dot-delimited path like "apps.common.buttons") */
@@ -45,11 +40,7 @@ export interface DeleteFolderResult {
  * // Result: { folderPath: 'apps.common.buttons', resourcesDeleted: 5 }
  * ```
  */
-export function deleteFolder(
-  collection: Collection,
-  params: DeleteFolderParams,
-  options: MutationSinkOptions = {},
-): DeleteFolderResult {
+export function deleteFolder(collection: Collection, params: DeleteFolderParams): DeleteFolderResult {
   const { folderPath } = params;
   const { translationsFolder } = collection;
 
@@ -73,13 +64,14 @@ export function deleteFolder(
   }
 
   const resourcesDeleted = countResources(collection, folderPath);
-  try {
-    rmSync(absoluteFolderPath, { recursive: true, force: true });
-  } catch (error) {
-    resolveMutationSink(collection, options)?.(reindexMutation(translationsFolder));
-    throw error;
-  }
-  resolveMutationSink(collection, options)?.(folderMutation('remove-folder', translationsFolder, folderPath));
+  reportResourceDirectoryWrite(
+    collection,
+    () => {
+      rmSync(absoluteFolderPath, { recursive: true, force: true });
+    },
+    folderPath,
+    'remove-folder',
+  );
 
   return {
     folderPath,

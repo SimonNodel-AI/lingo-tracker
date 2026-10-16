@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { testCollection, useTempDir, writeFolderFiles } from '../../testing/temp-dir.spec-helpers';
 import { InMemoryTranslationProvider } from '../machine-translation/in-memory-translation-provider';
 import { prepareTranslationRun } from '../translation/translation-run';
-import { openResourceFolder } from './resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from './resource-folder';
 
 // Stored keys use path resolution, not the submitted-key validation seam.
 describe('locale translation of stored keys', () => {
@@ -38,7 +39,7 @@ describe('locale translation of stored keys', () => {
         { text: 'Last', sourceLocale: 'en', targetLocale: 'fr' },
       ],
     ]);
-    const reopened = openResourceFolder(root(), collection);
+    const reopened = openUnreportedResourceFolder(root(), collection);
     for (const [key, source] of [
       ['first', 'First'],
       ['bad@key', 'Stored'],

@@ -67,7 +67,8 @@ export async function normalize(collection: Collection, options: NormalizeOption
   const problems: CollectionFolderProblem[] = [];
   const findings: NormalizeFinding[] = [];
 
-  for (const { folder, folderPath, problem } of sweepCollection(collection)) {
+  // Normalize JSON saves were silent at HEAD; only successful pruning reports mutations.
+  for (const { folder, folderPath, problem } of sweepCollection(collection, { unreported: true })) {
     if (problem) {
       problems.push(problem);
     } else {

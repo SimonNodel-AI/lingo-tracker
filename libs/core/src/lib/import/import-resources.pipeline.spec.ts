@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { calculateChecksum } from '../resource/checksum';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
 import { parseJsonImport } from './parse-json-import';
 import { parseXliffImport } from './parse-xliff-import';
@@ -40,7 +41,7 @@ describe('importResources pipeline', () => {
     return path;
   };
   const folder = (key: string) =>
-    openResourceFolder(join(collection.translationsFolder, ...key.split('.')), { baseLocale: 'en' });
+    openUnreportedResourceFolder(join(collection.translationsFolder, ...key.split('.')), { baseLocale: 'en' });
   const seed = (
     folderKey: string,
     entries: Record<string, { source: string; es?: string; status?: 'translated' | 'verified' }>,

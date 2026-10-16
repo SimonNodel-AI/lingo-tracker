@@ -17,7 +17,8 @@ import { InMemoryTranslationProvider } from '../machine-translation/in-memory-tr
 import { calculateChecksum as md5 } from './checksum';
 import { addResource, addResources } from './resource-entry';
 import * as resourceFolder from './resource-folder';
-import { openResourceFolder } from './resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from './resource-folder';
 import type { ResourceMutation } from './resource-mutation';
 
 const collected: ResourceMutation[] = [];
@@ -62,7 +63,9 @@ describe('addResources (real fs)', () => {
         { key: 'common.ok', baseValue: 'OK' },
         { key: 'new.bad', baseValue },
       ];
-      await expect(addResources(target, items, { provider, onMutation })).rejects.toThrow(InvalidBaseValueError);
+      await expect(
+        addResources({ ...target, onMutation: onMutation ?? target.onMutation }, items, { provider }),
+      ).rejects.toThrow(InvalidBaseValueError);
       expect(existsSync(join(root, 'translations'))).toBe(false);
     }
     await addResource(collection(), { key: 'common.existing', baseValue: 'Existing' });
@@ -72,12 +75,12 @@ describe('addResources (real fs)', () => {
     const before = paths.map((path) => readFileSync(path));
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'common.ok', baseValue: 'OK' },
           { key: 'new.bad', baseValue: '   ' },
         ],
-        { provider, onMutation },
+        { provider },
       ),
     ).rejects.toThrow('Base value must not be empty.');
     expect(paths.map((path) => readFileSync(path))).toEqual(before);
@@ -89,12 +92,12 @@ describe('addResources (real fs)', () => {
   it('rejects a braced value in a later batch item before any writes', async () => {
     await expect(
       addResources(
-        collection(),
+        { ...collection(), onMutation: onMutation ?? collection().onMutation },
         [
           { key: 'common.ok', baseValue: 'OK' },
           { key: 'common.bad', baseValue: 'Bad', translations: [{ locale: 'fr', value: '{{{a}}}' }] },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(BracedPlaceholderError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
@@ -106,12 +109,12 @@ describe('addResources (real fs)', () => {
     const before = paths.map((path) => readFileSync(path));
     await expect(
       addResources(
-        collection(),
+        { ...collection(), onMutation: onMutation ?? collection().onMutation },
         [
           { key: 'common.ok', baseValue: 'OK' },
           { key: 'common.bad', baseValue: '{{{a}}}' },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(BracedPlaceholderError);
     expect(paths.map((path) => readFileSync(path))).toEqual(before);
@@ -140,13 +143,19 @@ describe('addResources (real fs)', () => {
     const target = collection({ translation: { enabled: true, provider: 'google-translate', apiKeyEnv: 'KEY' } });
     const invalid = { key: 'common.ok', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal' }] };
     await expect(
-      addResources(target, [{ key: 'common.ok', baseValue: 'First' }, invalid], { provider, onMutation }),
+      addResources(
+        { ...target, onMutation: onMutation ?? target.onMutation },
+        [{ key: 'common.ok', baseValue: 'First' }, invalid],
+        { provider },
+      ),
     ).rejects.toThrow(LocaleNotFoundError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
     await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
     const entries = readFileSync(file('common', 'resource_entries.json'));
     const meta = readFileSync(file('common', 'tracker_meta.json'));
-    await expect(addResources(target, [invalid], { provider, onMutation })).rejects.toThrow(LocaleNotFoundError);
+    await expect(
+      addResources({ ...target, onMutation: onMutation ?? target.onMutation }, [invalid], { provider }),
+    ).rejects.toThrow(LocaleNotFoundError);
     expect(readFileSync(file('common', 'resource_entries.json'))).toEqual(entries);
     expect(readFileSync(file('common', 'tracker_meta.json'))).toEqual(meta);
     expect(provider.calls).toEqual([]);
@@ -163,12 +172,12 @@ describe('addResources (real fs)', () => {
     try {
       await expect(
         addResources(
-          collection(),
+          { ...collection(), onMutation: onMutation ?? collection().onMutation },
           [
             { key: 'common.ok', baseValue: 'First' },
             { key: 'common.ok', baseValue: 'Duplicate' },
           ],
-          { onMutation },
+          {},
         ),
       ).rejects.toBe(failure);
       expect(opened).toHaveBeenCalledTimes(2);
@@ -187,13 +196,13 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'existing.new', baseValue: 'New' },
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'invalid@key', baseValue: 'Bad' },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(InvalidResourceKeyError);
 
@@ -207,12 +216,12 @@ describe('addResources (real fs)', () => {
     const target = collection();
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'ok', targetFolder: 'common', baseValue: 'OK' },
           { key: 'common.ok', baseValue: 'Again' },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
@@ -237,13 +246,13 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'existing.new', baseValue: 'New' },
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'last', targetFolder: 'bad@folder', baseValue: 'Bad' },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(InvalidResourceKeyError);
 
@@ -261,13 +270,13 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'existing.new', baseValue: 'New' },
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'last', baseValue: 'Bad', translations: [{ locale: 'es', value: 'Mal', status: 'translated' }] },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(LocaleNotFoundError);
 
@@ -289,13 +298,13 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'existing.new', baseValue: 'New' },
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'fresh.last', baseValue: 'Fail' },
         ],
-        { onMutation, provider },
+        { provider },
       ),
     ).rejects.toThrow(TranslationError);
 
@@ -309,10 +318,11 @@ describe('addResources (real fs)', () => {
     const target = collection();
     await addResource(target, { key: 'common.ok', baseValue: 'Old', comment: 'Old note' });
 
-    const result = await addResources(target, [{ key: 'common.ok', baseValue: 'New' }], {
-      onMutation,
-      onExisting: 'replace',
-    });
+    const result = await addResources(
+      { ...target, onMutation: onMutation ?? target.onMutation },
+      [{ key: 'common.ok', baseValue: 'New' }],
+      { onExisting: 'replace' },
+    );
 
     expect(result.entriesCreated).toBe(0);
     expect(result.created).toBe(false);
@@ -335,12 +345,12 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'New' },
         ],
-        { onMutation, provider, onExisting: 'fail' },
+        { provider, onExisting: 'fail' },
       ),
     ).rejects.toMatchObject({ key: 'common.ok' });
 
@@ -362,7 +372,7 @@ describe('addResources (real fs)', () => {
     let entriesAfterProvider: Buffer | undefined;
     let metaAfterProvider: Buffer | undefined;
     const provider = new InMemoryTranslationProvider(() => {
-      const folder = openResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
       folder.setEntry('ok', { source: 'Concurrent' }, {});
       folder.setBase('ok', 'Concurrent');
       folder.save();
@@ -373,12 +383,12 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'fresh.first', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'Requested' },
         ],
-        { onMutation, provider, onExisting: 'fail' },
+        { provider, onExisting: 'fail' },
       ),
     ).rejects.toMatchObject({ key: 'common.ok' });
 
@@ -394,12 +404,12 @@ describe('addResources (real fs)', () => {
     const target = collection();
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'ok', targetFolder: 'common', baseValue: 'First' },
           { key: 'common.ok', baseValue: 'Second' },
         ],
-        { onMutation, onExisting: 'replace' },
+        { onExisting: 'replace' },
       ),
     ).rejects.toThrow(ResourceAlreadyExistsError);
     expect(existsSync(join(root, 'translations'))).toBe(false);
@@ -413,12 +423,12 @@ describe('addResources (real fs)', () => {
 
     await expect(
       addResources(
-        target,
+        { ...target, onMutation: onMutation ?? target.onMutation },
         [
           { key: 'created.ok', baseValue: 'OK' },
           { key: 'later', targetFolder: 'blocked', baseValue: 'Later' },
         ],
-        { onMutation },
+        {},
       ),
     ).rejects.toThrow(/Creating resource folder/);
 
@@ -446,12 +456,12 @@ describe('addResources (real fs)', () => {
     try {
       await expect(
         addResources(
-          collection(),
+          { ...collection(), onMutation: onMutation ?? collection().onMutation },
           [
             { key: 'first.ok', baseValue: 'OK' },
             { key: 'second.later', baseValue: 'Later' },
           ],
-          { onMutation },
+          {},
         ),
       ).rejects.toThrow('second metadata write failed');
     } finally {
@@ -475,12 +485,12 @@ describe('addResources (real fs)', () => {
     const provider = new InMemoryTranslationProvider();
 
     const result = await addResources(
-      target,
+      { ...target, onMutation: onMutation ?? target.onMutation },
       [
         { key: 'budget.one', baseValue: 'Expenditure {count, plural, other {items}}' },
         { key: 'budget.two', baseValue: 'More expenditure {count, plural, other {items}}' },
       ],
-      { onMutation, provider },
+      { provider },
     );
 
     expect(result.entriesCreated).toBe(2);

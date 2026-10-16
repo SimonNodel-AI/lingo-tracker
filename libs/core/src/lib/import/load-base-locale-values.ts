@@ -1,6 +1,6 @@
 import type { Collection } from '../config/open-collection';
 import { groupByFolder } from '../resource/folder-grouping';
-import { openResourceFolder } from '../resource/resource-folder';
+import { openReadonlyResourceFolder } from '../resource/resource-folder';
 import type { ImportedResource } from './types';
 
 /**
@@ -19,7 +19,8 @@ export function loadBaseLocaleValues(resources: ImportedResource[], collection: 
   // This read phase is separate from the later import write phase.
   for (const { folderPath, members } of groupByFolder(collection, resources, (resource) => resource.key)) {
     try {
-      const folder = openResourceFolder(folderPath, collection);
+      // This reader never saves resource files.
+      const folder = openReadonlyResourceFolder(folderPath, collection);
 
       for (const { key, entryKey } of members) {
         const source = folder.get(entryKey)?.entry.source;

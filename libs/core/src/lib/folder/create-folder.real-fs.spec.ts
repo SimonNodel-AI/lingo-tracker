@@ -40,7 +40,10 @@ it('resolves a whitespace-only parent to the root Folder Address', () => {
   };
   const collection = openCollection(config, 'main', { cwd: root });
 
-  const result = createFolder(collection, { folderName: 'buttons', parentPath: '  ' }, { onMutation });
+  const result = createFolder(
+    { ...collection, onMutation: onMutation ?? collection.onMutation },
+    { folderName: 'buttons', parentPath: '  ' },
+  );
 
   expect(result.folderAddress).toBe('buttons');
   expect(result.folderPath).toBe(join(root, 'translations', 'buttons'));
@@ -60,9 +63,12 @@ it('still rejects a nonempty parent with surrounding whitespace', () => {
   };
   const collection = openCollection(config, 'main', { cwd: root });
 
-  expect(() => createFolder(collection, { folderName: 'buttons', parentPath: ' apps ' }, { onMutation })).toThrow(
-    InvalidFolderPathError,
-  );
+  expect(() =>
+    createFolder(
+      { ...collection, onMutation: onMutation ?? collection.onMutation },
+      { folderName: 'buttons', parentPath: ' apps ' },
+    ),
+  ).toThrow(InvalidFolderPathError);
   expect(existsSync(join(root, 'translations', 'apps', 'buttons'))).toBe(false);
 });
 
@@ -85,7 +91,9 @@ it('reindexes when directory creation succeeds but the writable check fails', as
   });
 
   try {
-    expect(() => createFolder(collection, { folderName: 'buttons' }, { onMutation })).toThrow('writable check failed');
+    expect(() =>
+      createFolder({ ...collection, onMutation: onMutation ?? collection.onMutation }, { folderName: 'buttons' }),
+    ).toThrow('writable check failed');
   } finally {
     ensure.mockImplementation(actual.ensureDirectoryExists);
   }

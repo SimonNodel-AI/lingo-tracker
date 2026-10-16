@@ -53,6 +53,7 @@ describe('openCollection', () => {
     const collection = openCollection(config, 'inherits', { cwd: dir });
 
     expect(collection).toEqual({
+      onMutation: expect.any(Function),
       name: 'inherits',
       sourceConfig: config,
       projectRoot: dir,

@@ -47,7 +47,11 @@ describe('RouteCollection', () => {
 
   it('attaches the index sink only when opening a writable route collection', () => {
     expect(open('a%b', 'POST').onMutation).toBe(sink);
-    expect(open('a%b', 'GET').onMutation).toBeUndefined();
+    const read = open('a%b', 'GET');
+    expect(read.onMutation).not.toBe(sink);
+    sink.mockClear();
+    read.onMutation({ kind: 'reindex', translationsFolder: read.translationsFolder });
+    expect(sink).not.toHaveBeenCalled();
   });
 
   it('refuses a write to a read-only collection with the core message', () => {

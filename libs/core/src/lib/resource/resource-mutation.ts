@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import type { Collection } from '../config/open-collection';
 import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
@@ -26,64 +25,21 @@ export type ResourceMutation =
 
 export type MutationSink = (mutation: ResourceMutation) => void;
 
-export interface MutationSinkOptions {
-  /** Called as soon as a change may be on disk, whether or not the write then completes. */
-  readonly onMutation?: MutationSink;
-}
-
-/** An explicit write callback overrides the collection's default consumer. */
-export function resolveMutationSink(
-  collection: Pick<Collection, 'translationsFolder' | 'onMutation'>,
-  options: MutationSinkOptions = {},
-): MutationSink | undefined {
-  return options.onMutation ?? collection.onMutation;
-}
-
-/** Reports a completed folder save, or reindexes after a save that may have written one file. */
-export function saveReporting<T>(
-  folder: { save(): T },
-  translationsFolder: string,
-  onMutation: MutationSink | undefined,
-  saved: () => readonly ResourceMutation[],
-): T {
-  let result: T;
-  try {
-    result = folder.save();
-  } catch (error) {
-    onMutation?.(reindexMutation(translationsFolder));
-    throw error;
-  }
-  if (onMutation) for (const mutation of saved()) onMutation(mutation);
-  return result;
-}
-
-/**
- * The mutation for a resource that was written. When the stored entry cannot be read back
- * (it has no metadata), the result is a `reindex` of the folder, which is always safe.
- */
-export function upsertMutation(
-  translationsFolder: string,
-  key: string,
-  entry: ResourceTreeEntry | undefined,
-): ResourceMutation {
-  const folder = resolve(translationsFolder);
-  return entry
-    ? { kind: 'upsert', translationsFolder: folder, key, entry }
-    : { kind: 'reindex', translationsFolder: folder };
-}
-
-export function removeMutation(translationsFolder: string, key: string): ResourceMutation {
-  return { kind: 'remove', translationsFolder: resolve(translationsFolder), key };
-}
-
-export function folderMutation(
-  kind: 'add-folder' | 'remove-folder',
-  translationsFolder: string,
-  path: string,
-): ResourceMutation {
-  return { kind, translationsFolder: resolve(translationsFolder), path };
-}
-
-export function reindexMutation(translationsFolder: string): ResourceMutation {
-  return { kind: 'reindex', translationsFolder: resolve(translationsFolder) };
-}
+/** Resource Mutation constructors; reporting lives in Resource Folder. */
+export const resourceMutations = {
+  upsert(translationsFolder: string, key: string, entry: ResourceTreeEntry | undefined): ResourceMutation {
+    const folder = resolve(translationsFolder);
+    return entry
+      ? { kind: 'upsert', translationsFolder: folder, key, entry }
+      : { kind: 'reindex', translationsFolder: folder };
+  },
+  remove(translationsFolder: string, key: string): ResourceMutation {
+    return { kind: 'remove', translationsFolder: resolve(translationsFolder), key };
+  },
+  folder(kind: 'add-folder' | 'remove-folder', translationsFolder: string, path: string): ResourceMutation {
+    return { kind, translationsFolder: resolve(translationsFolder), path };
+  },
+  reindex(translationsFolder: string): ResourceMutation {
+    return { kind: 'reindex', translationsFolder: resolve(translationsFolder) };
+  },
+};

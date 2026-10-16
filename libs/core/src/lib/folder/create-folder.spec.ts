@@ -7,6 +7,7 @@ import { createFolder } from './create-folder';
 
 function collection(translationsFolder: string): Collection {
   return {
+    onMutation: () => undefined,
     name: 'main',
     translationsFolder,
     baseLocale: 'en',

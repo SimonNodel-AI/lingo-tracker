@@ -59,7 +59,9 @@ describe('editCollectionTags', () => {
     const other = `${read()}\n`;
     writeFileSync(join(cwd, CONFIG_FILENAME), other);
     const onMutation = vi.fn();
-    await expect(editCollectionTags(collection, { add: ['new'] }, { onMutation })).rejects.toThrow(ConfigChangedError);
+    await expect(
+      editCollectionTags({ ...collection, onMutation: onMutation ?? collection.onMutation }, { add: ['new'] }),
+    ).rejects.toThrow(ConfigChangedError);
     expect(onMutation).not.toHaveBeenCalled();
     expect(read()).toBe(other);
   });
@@ -83,7 +85,9 @@ describe('editCollectionTags', () => {
     writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify(config));
     const onMutation = vi.fn();
     const collection = openCollection(loadConfig({ cwd }), 'app', { cwd });
-    await expect(editCollectionTags(collection, { set: ['New'] }, { onMutation })).resolves.toEqual(['new']);
+    await expect(
+      editCollectionTags({ ...collection, onMutation: onMutation ?? collection.onMutation }, { set: ['New'] }),
+    ).resolves.toEqual(['new']);
     expect(onMutation.mock.calls).toEqual([[{ kind: 'reindex', translationsFolder: join(cwd, 'app') }]]);
   });
 
@@ -92,7 +96,9 @@ describe('editCollectionTags', () => {
     const onMutation = vi.fn();
     const collection = openCollection(loadConfig({ cwd }), 'app', { cwd });
     const edit = { add: [42] } as unknown as Parameters<typeof editCollectionTags>[1];
-    await expect(editCollectionTags(collection, edit, { onMutation })).rejects.toThrow(InvalidCollectionError);
+    await expect(
+      editCollectionTags({ ...collection, onMutation: onMutation ?? collection.onMutation }, edit),
+    ).rejects.toThrow(InvalidCollectionError);
     expect(read()).toBe(before);
     expect(onMutation).not.toHaveBeenCalled();
   });
@@ -100,9 +106,9 @@ describe('editCollectionTags', () => {
   it('does not reindex an unchanged tag registration', async () => {
     const onMutation = vi.fn();
     const collection = openCollection(loadConfig({ cwd }), 'app', { cwd });
-    await expect(editCollectionTags(collection, { add: ['existing-tag'] }, { onMutation })).resolves.toEqual([
-      'existing-tag',
-    ]);
+    await expect(
+      editCollectionTags({ ...collection, onMutation: onMutation ?? collection.onMutation }, { add: ['existing-tag'] }),
+    ).resolves.toEqual(['existing-tag']);
     expect(onMutation).not.toHaveBeenCalled();
   });
 });

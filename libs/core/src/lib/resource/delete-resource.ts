@@ -5,7 +5,6 @@ import { describeFolderProblem } from './collection-folders';
 import { pruneEmptiedFolders } from './folder-pruning';
 import { removeEntry } from './resource-entry';
 import { resolveResourcePaths } from './resource-file-paths';
-import type { MutationSinkOptions } from './resource-mutation';
 
 export interface DeleteResourceParams {
   keys: string[];
@@ -24,11 +23,7 @@ export interface DeleteResourceResult {
 }
 
 /** Deletes entries after checking every key's folder. Folder-policy refusals throw; other per-key failures are reported. */
-export function deleteResource(
-  collection: Collection,
-  params: DeleteResourceParams,
-  options: MutationSinkOptions = {},
-): DeleteResourceResult {
+export function deleteResource(collection: Collection, params: DeleteResourceParams): DeleteResourceResult {
   const { translationsFolder } = collection;
   let entriesDeleted = 0;
   const errors: Array<{ key: string; error: string }> = [];
@@ -47,7 +42,7 @@ export function deleteResource(
 
   for (const key of params.keys) {
     try {
-      const { emptied } = removeEntry(collection, key, options);
+      const { emptied } = removeEntry(collection, key);
       if (emptied) emptiedFolders.add(emptied);
       entriesDeleted++;
     } catch (caughtError) {
@@ -60,7 +55,7 @@ export function deleteResource(
     }
   }
 
-  const pruning = pruneEmptiedFolders(collection, emptiedFolders, options);
+  const pruning = pruneEmptiedFolders(collection, emptiedFolders);
   const warnings = pruning.problems.map((problem) => describeFolderProblem(problem));
   return {
     ...(warnings.length > 0 ? { warnings } : {}),
