@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
 import { CoreOperationError, InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
 import { exportTargetLocales, runExport } from './run-export';
 
@@ -41,7 +42,7 @@ describe('runExport', () => {
     entries: Record<string, { source: string; translations?: Record<string, string>; tags?: string[] }>,
     status: 'translated' | 'verified' = 'translated',
   ): void => {
-    const resourceFolder = openResourceFolder(join(collection.translationsFolder, folder), {
+    const resourceFolder = openUnreportedResourceFolder(join(collection.translationsFolder, folder), {
       baseLocale: collection.baseLocale,
     });
     for (const [key, { source, translations = {}, tags }] of Object.entries(entries)) {

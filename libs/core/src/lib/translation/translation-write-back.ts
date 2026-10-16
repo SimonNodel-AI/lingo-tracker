@@ -2,7 +2,6 @@ import { type LocaleMetadata, needsTranslation, type TranslationStatus } from '@
 import type { Collection } from '../config/open-collection';
 import { calculateChecksum } from '../resource/checksum';
 import { openResourceFolder, type ResourceFolder, type ResourceFolderEntry } from '../resource/resource-folder';
-import { type MutationSink, type ResourceMutation, saveReporting } from '../resource/resource-mutation';
 
 /** The entry as read before the provider call; what a write is compared against. */
 export interface TranslationSnapshot {
@@ -29,12 +28,6 @@ export interface PendingTranslation {
   readonly snapshot: TranslationSnapshot;
 }
 
-export interface TranslationWriteBackOptions {
-  readonly mutationSink: MutationSink | undefined;
-  /** Caller-supplied mutations after a successful save. */
-  readonly saved: (folder: ResourceFolder, written: readonly PendingTranslation[]) => readonly ResourceMutation[];
-}
-
 export interface TranslationWriteBack {
   /** The folder reopened from disk; callers read the fresh entry from it. */
   readonly folder: ResourceFolder;
@@ -55,23 +48,21 @@ function isStale(current: ResourceFolderEntry | undefined, locale: string, snaps
 
 /**
  * Reopens the folder, writes pending values whose entries still match their snapshots and need
- * translation, and saves once through saveReporting, only when something was written.
- * The caller supplies its resolved mutation sink and saved mutations, sent after a successful save.
+ * translation, and saves once through Resource Folder, only when something was written.
+ * The collection carries the required sink; Resource Folder reports each written key once.
  * Missing entries, changed base checksums, and changed target checksums or statuses are skipped.
  * A synchronous TOCTOU gap remains between reopening and saving; there is no await inside.
  * This does not lock the files or make the two-file save atomic.
  * @throws Whatever openResourceFolder/save throw (invalid JSON, fs failure). A failed save has
- * already sent reindex through saveReporting.
+ * already sent reindex through Resource Folder.
  */
 export function writeBackTranslations(
-  collection: Pick<Collection, 'baseLocale' | 'translationsFolder'>,
+  collection: Pick<Collection, 'baseLocale' | 'translationsFolder' | 'onMutation'>,
   folderPath: string,
   pending: readonly PendingTranslation[],
-  options: TranslationWriteBackOptions,
 ): TranslationWriteBack {
-  const onMutation = options.mutationSink;
-  const folder = openResourceFolder(folderPath, collection);
   const written: PendingTranslation[] = [];
+  const folder = openResourceFolder(folderPath, collection);
   const skipped: PendingTranslation[] = [];
   for (const translation of pending) {
     const { entryKey, locale, value, status, snapshot } = translation;
@@ -83,7 +74,7 @@ export function writeBackTranslations(
     written.push(translation);
   }
   if (written.length > 0) {
-    saveReporting(folder, collection.translationsFolder, onMutation, () => options.saved(folder, written));
+    folder.save();
   }
   return { folder, written, skipped };
 }

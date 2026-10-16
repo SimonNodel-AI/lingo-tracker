@@ -7,8 +7,8 @@ import {
 } from '@simoncodes-ca/domain';
 import type { ProjectTerms } from '../config/project-terms';
 import type { FolderGroup } from '../resource/folder-grouping';
-import { openResourceFolder, type ResourceFolder } from '../resource/resource-folder';
-import { type ImportSession, recordImportIssues, type ResolvedImportOptions } from './import-session';
+import { openUnreportedResourceFolder, type ResourceFolder } from '../resource/resource-folder';
+import { type ImportSession, type ResolvedImportOptions, recordImportIssues } from './import-session';
 import type { ImportChange, ImportedResource } from './types';
 
 // ---------------------------------------------------------------------------
@@ -233,7 +233,8 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
 
   let folder: ResourceFolder;
   try {
-    folder = openResourceFolder(group.folderPath, {
+    // Import resource saves were unreported at HEAD.
+    folder = openUnreportedResourceFolder(group.folderPath, {
       baseLocale,
       translationsFolder: session.collection.translationsFolder,
     });

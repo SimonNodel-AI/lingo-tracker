@@ -137,7 +137,6 @@ export type {
   EditResourceOptions,
   EditResourceResult,
   ExistingResourcePolicy,
-  OpenResourceFolderOptions,
   ResourceEntryMetadata,
   ResourceTranslation,
 } from './lib/resource';
@@ -158,7 +157,6 @@ export {
   type FolderChild,
   type MatchType,
   type MutationSink,
-  type MutationSinkOptions,
   type NormalizedSearchRequest,
   type NormalizeEntryReport,
   normalizeSearchRequest,
@@ -186,7 +184,6 @@ export {
   type ExecuteMoveResult,
   executeMove,
   executeMoves,
-  type MoveOptions,
   type MoveRequest,
 } from './lib/resource/execute-move';
 export type { MoveResult } from './lib/resource/move-report';

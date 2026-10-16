@@ -39,7 +39,7 @@ describe('Collection Change', () => {
     collections: { app: { tags: ['app'], translationsFolder: './i18n' } },
   });
   const save = (value: LingoTrackerConfig) => writeFileSync(join(cwd, CONFIG_FILENAME), JSON.stringify(value));
-  const open = () => openCollection(loadConfig({ cwd }), 'app', { cwd });
+  const open = () => openCollection(loadConfig({ cwd }), 'app', { cwd, ...options() });
 
   beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'collection-change-'));
@@ -56,15 +56,11 @@ describe('Collection Change', () => {
       enabled: false,
     };
     save(value);
-    const result = await changeCollection(
-      open(),
-      {
-        patch: {
-          translation: { enabled: false, apiKeyEnv: 'KEY', provider: 'google' },
-        },
+    const result = await changeCollection(open(), {
+      patch: {
+        translation: { enabled: false, apiKeyEnv: 'KEY', provider: 'google' },
       },
-      options(),
-    );
+    });
     expect(result).toEqual({
       message: 'Collection "app" updated successfully',
       entriesAdded: 0,
@@ -78,7 +74,7 @@ describe('Collection Change', () => {
     const value = config();
     value.collections['app'].locales = ['es', 'en'];
     save(value);
-    await changeCollection(open(), { patch: { locales: ['en', 'es'] } }, options());
+    await changeCollection(open(), { patch: { locales: ['en', 'es'] } });
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: join(cwd, 'i18n') }]);
   });
 
@@ -87,7 +83,6 @@ describe('Collection Change', () => {
       open(),
       { patch: { protectedTermsFile: 'terms.json' } },
       {
-        ...options(),
         protectedTerms: ['Pixel'],
       },
     );
@@ -104,7 +99,6 @@ describe('Collection Change', () => {
         open(),
         { patch: { protectedTermsFile: 'terms.json' } },
         {
-          ...options(),
           protectedTerms: ['Pixel'],
         },
       ),
@@ -122,7 +116,6 @@ describe('Collection Change', () => {
         undefined,
         { protectedTermsFile: 'terms.json' },
         {
-          ...options(),
           protectedTerms: ['Pixel'],
         },
       ),
@@ -138,10 +131,10 @@ describe('Collection Change', () => {
     const current = open();
     writeFileSync(join(cwd, CONFIG_FILENAME), `${JSON.stringify(value)}\n`);
     const before = readFileSync(join(cwd, CONFIG_FILENAME), 'utf8');
-    await expect(changeCollection(current, { patch: { locales: ['en', 'es', 'de'] } }, options())).rejects.toThrow(
+    await expect(changeCollection(current, { patch: { locales: ['en', 'es', 'de'] } })).rejects.toThrow(
       ConfigChangedError,
     );
-    await expect(updateCollection(current, undefined, { locales: ['en', 'es', 'de'] }, options())).rejects.toThrow(
+    await expect(updateCollection(current, undefined, { locales: ['en', 'es', 'de'] })).rejects.toThrow(
       ConfigChangedError,
     );
     expect(readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')).toBe(before);
@@ -154,11 +147,11 @@ describe('Collection Change', () => {
     save(value);
     const current = open();
     writeFileSync(join(cwd, CONFIG_FILENAME), `${JSON.stringify(value)}\n`);
-    await expect(
-      changeCollection(current, { patch: {}, targetLocales: () => ['en', 'es', 'de'] }, options()),
-    ).rejects.toThrow(ReadOnlyCollectionError);
-    await expect(addLocaleToCollection(current, 'de', options())).rejects.toThrow(ReadOnlyCollectionError);
-    await expect(removeLocaleFromCollection(current, 'es', options())).rejects.toThrow(ReadOnlyCollectionError);
+    await expect(changeCollection(current, { patch: {}, targetLocales: () => ['en', 'es', 'de'] })).rejects.toThrow(
+      ReadOnlyCollectionError,
+    );
+    await expect(addLocaleToCollection(current, 'de')).rejects.toThrow(ReadOnlyCollectionError);
+    await expect(removeLocaleFromCollection(current, 'es')).rejects.toThrow(ReadOnlyCollectionError);
     expect(mutations).toEqual([]);
   });
 
@@ -174,9 +167,7 @@ describe('Collection Change', () => {
       return actual.writeJsonFile(options);
     });
     try {
-      await expect(changeCollection(open(), { patch: { locales: ['en', 'es', 'de'] } }, options())).rejects.toThrow(
-        'seed failed',
-      );
+      await expect(changeCollection(open(), { patch: { locales: ['en', 'es', 'de'] } })).rejects.toThrow('seed failed');
     } finally {
       writer.mockImplementation(actual.writeJsonFile);
     }
@@ -203,16 +194,12 @@ describe('Collection Change', () => {
     });
     try {
       await expect(
-        changeCollection(
-          current,
-          {
-            patch: {
-              translationsFolder: './moved',
-              locales: ['en', 'es', 'de'],
-            },
+        changeCollection(current, {
+          patch: {
+            translationsFolder: './moved',
+            locales: ['en', 'es', 'de'],
           },
-          options(),
-        ),
+        }),
       ).rejects.toThrow(ConfigChangedError);
     } finally {
       writer.mockImplementation(actual.writeJsonFile);
@@ -225,14 +212,10 @@ describe('Collection Change', () => {
   });
 
   it('reports both old and new folders on rename', async () => {
-    const result = await changeCollection(
-      open(),
-      {
-        newName: 'renamed',
-        patch: { translationsFolder: './moved' },
-      },
-      options(),
-    );
+    const result = await changeCollection(open(), {
+      newName: 'renamed',
+      patch: { translationsFolder: './moved' },
+    });
     expect(result.message).toBe('Collection "app" renamed to "renamed" and updated successfully');
     expect(loadConfig({ cwd }).collections['app']).toBeUndefined();
     expect(loadConfig({ cwd }).collections['renamed'].translationsFolder).toBe('./moved');
@@ -246,13 +229,9 @@ describe('Collection Change', () => {
     const value = config();
     value.collections['app'].readOnly = true;
     save(value);
-    const result = await changeCollection(
-      open(),
-      {
-        patch: { tags: ['updated'], locales: ['en', 'es'] },
-      },
-      options(),
-    );
+    const result = await changeCollection(open(), {
+      patch: { tags: ['updated'], locales: ['en', 'es'] },
+    });
     expect(result.message).toBe('Collection "app" updated successfully');
     expect(loadConfig({ cwd }).collections['app'].tags).toEqual(['updated']);
     expect(open().readOnly).toBe(true);
@@ -269,7 +248,6 @@ describe('Collection Change', () => {
         current,
         { patch: {} },
         {
-          ...options(),
           protectedTerms: ['valid', 42] as unknown as string[],
         },
       ),
@@ -290,7 +268,6 @@ describe('Collection Change', () => {
           targetLocales: () => ['en', 'es', 'de'],
         },
         {
-          ...options(),
           protectedTerms: ['valid', 42] as unknown as string[],
         },
       ),
@@ -305,7 +282,7 @@ describe('Collection Change', () => {
     const current = open();
     const concurrent = `${JSON.stringify(value)}\n`;
     writeFileSync(join(cwd, CONFIG_FILENAME), concurrent);
-    await expect(changeCollection(current, { newName: 'taken', patch: {} }, options())).rejects.toThrow(
+    await expect(changeCollection(current, { newName: 'taken', patch: {} })).rejects.toThrow(
       CollectionAlreadyExistsError,
     );
     expect(readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')).toBe(concurrent);
@@ -317,13 +294,9 @@ describe('Collection Change', () => {
     const concurrent = `${readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')}\n`;
     writeFileSync(join(cwd, CONFIG_FILENAME), concurrent);
     await expect(
-      changeCollection(
-        current,
-        {
-          patch: { locales: ['en', 'es', '!invalid!'] },
-        },
-        options(),
-      ),
+      changeCollection(current, {
+        patch: { locales: ['en', 'es', '!invalid!'] },
+      }),
     ).rejects.toThrow(ConfigChangedError);
     expect(readFileSync(join(cwd, CONFIG_FILENAME), 'utf8')).toBe(concurrent);
     expect(mutations).toEqual([]);
@@ -334,20 +307,16 @@ describe('Collection Change', () => {
     value.collections['app'].readOnly = true;
     save(value);
     await expect(
-      changeCollection(
-        open(),
-        {
-          patch: { locales: ['en', 'es', '!invalid!'] },
-        },
-        options(),
-      ),
+      changeCollection(open(), {
+        patch: { locales: ['en', 'es', '!invalid!'] },
+      }),
     ).rejects.toThrow(ReadOnlyCollectionError);
     expect(mutations).toEqual([]);
   });
 
   it('does not reindex an otherwise equal record with an undefined-valued patch key', async () => {
     const current = open();
-    await changeCollection(current, { patch: { tags: undefined } }, options());
+    await changeCollection(current, { patch: { tags: undefined } });
     expect(loadConfig({ cwd }).collections['app']).toEqual(current.sourceConfig.collections['app']);
     expect(mutations).toEqual([]);
   });

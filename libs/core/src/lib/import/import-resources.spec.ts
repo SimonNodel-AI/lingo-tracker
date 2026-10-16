@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { type Collection, openCollection } from '../config/open-collection';
 import { ProtectedTermsFileError } from '../errors/lingo-tracker-error';
 import { calculateChecksum } from '../resource/checksum';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import { importResources } from './import-resources';
 import type { ImportedResource } from './types';
 
@@ -48,7 +49,7 @@ describe('importResources', () => {
     folderKey: string,
     entries: Record<string, { source: string; es?: string; esStatus?: 'translated' | 'verified' }>,
   ): void => {
-    const folder = openResourceFolder(folderOf(folderKey), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(folderOf(folderKey), { baseLocale: 'en' });
     for (const [key, { source, es, esStatus }] of Object.entries(entries)) {
       folder.setBase(key, source);
       if (es !== undefined) folder.setTranslation(key, 'es', es, esStatus ?? 'translated');
@@ -57,7 +58,7 @@ describe('importResources', () => {
   };
 
   const stored = (folderKey: string, key: string) =>
-    openResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
+    openUnreportedResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
 
   it.each([false, true])('records every rejection kind once in each channel (dryRun=%s)', (dryRun) => {
     seed('common', {

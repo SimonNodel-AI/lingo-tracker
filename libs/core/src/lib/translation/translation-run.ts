@@ -12,12 +12,7 @@ import {
   openPreparedTranslator,
 } from '../machine-translation/translator';
 import { readCollection } from '../resource/read-collection';
-import {
-  type MutationSink,
-  type MutationSinkOptions,
-  reindexMutation,
-  resolveMutationSink,
-} from '../resource/resource-mutation';
+import { resourceMutations } from '../resource/resource-mutation';
 import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import type { RunOutcome } from '../run-outcome';
 import { translationBatch } from './translation-batch';
@@ -82,7 +77,7 @@ export function prepareTranslationRun(collection: Collection, options: Translati
   };
 }
 
-export interface TranslationRunOptions extends OpenTranslatorOptions, MutationSinkOptions {
+export interface TranslationRunOptions extends OpenTranslatorOptions {
   readonly delay?: (ms: number) => Promise<void>;
 }
 
@@ -95,8 +90,7 @@ interface TranslationRunTally {
   readonly failures: Array<Extract<TranslationRunOutcome, { status: 'failed' }>>;
 }
 
-interface ExecuteTranslationRunOptions extends Omit<TranslationRunOptions, 'onMutation'> {
-  readonly mutationSink: MutationSink | undefined;
+interface ExecuteTranslationRunOptions extends TranslationRunOptions {
   readonly collection: Collection;
   readonly translationConfig: TranslationConfig;
   readonly rows: readonly TranslationRunRow[];
@@ -151,7 +145,7 @@ export async function executeTranslationRun(
   };
   if (rows.length === 0 || locales.length === 0) return { tally, warnings: [] };
   const translator = openPreparedTranslator(collection, translationConfig, options);
-  const sink = options.mutationSink;
+  const sink = collection.onMutation;
   const tallyFailures = options.failurePolicy === 'tally';
   const batchSize = translationConfig.batchSize ?? 5;
   const totalBatches = Math.ceil(rows.length / batchSize);
@@ -159,17 +153,19 @@ export async function executeTranslationRun(
   for (let index = 0; index < totalBatches; index++) {
     let mutated = false;
     const outcomes = await translationBatch(
-      collection,
+      tallyFailures
+        ? {
+            ...collection,
+            onMutation: () => {
+              mutated = true;
+            },
+          }
+        : collection,
       rows.slice(index * batchSize, (index + 1) * batchSize),
       locales,
       translator,
-      tallyFailures
-        ? () => {
-            mutated = true;
-          }
-        : sink,
     );
-    if (mutated) sink?.(reindexMutation(collection.translationsFolder));
+    if (mutated) sink(resourceMutations.reindex(collection.translationsFolder));
     for (const outcome of outcomes) {
       if (outcome.status === 'failed') {
         if (!tallyFailures) throw outcome.error;
@@ -204,7 +200,6 @@ async function executeLocale(
   translationConfig: TranslationConfig,
   options: TranslationRunOptions & TranslationRunExecutionOptions,
 ): Promise<TranslateLocaleResult> {
-  const mutationSink = resolveMutationSink(collection, options);
   const { resources, problems } = readCollection(collection);
   const rows = resources
     .map(({ fullKey, entry }) => selectTranslationRow(fullKey, entry, [targetLocale]))
@@ -212,7 +207,6 @@ async function executeLocale(
     .map(({ row }) => row);
   const { tally, warnings } = await executeTranslationRun({
     ...options,
-    mutationSink,
     collection,
     translationConfig,
     rows,

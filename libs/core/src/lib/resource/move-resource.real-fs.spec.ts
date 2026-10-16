@@ -37,6 +37,7 @@ describe('moving resources keeps metadata (real fs)', () => {
   let root: string;
 
   const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
+    onMutation: () => undefined,
     name,
     translationsFolder,
     baseLocale: 'en',
@@ -86,9 +87,8 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('common');
 
     const result = await executeMove(
-      collection(),
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
       { source: 'common.ok', destination: 'shared.buttons.confirm' },
-      { onMutation },
     );
 
     expect(result).toEqual({
@@ -111,7 +111,10 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('executeMove with a pattern keeps statuses', async () => {
     writeFolder('common', 'buttons');
 
-    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation });
+    await executeMove(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { source: 'common.*', destination: 'shared' },
+    );
 
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.fr.status).toBe('verified');
     expect(read('tracker_meta.json', 'shared', 'buttons').ok.es.status).toBe('stale');
@@ -123,17 +126,30 @@ describe('moving resources keeps metadata (real fs)', () => {
 
     await executeMove(
       {
-        ...collection(),
-        sourceConfig: {
-          exportFolder: 'dist',
-          importFolder: 'import',
-          baseLocale: 'en',
-          locales: ['en', 'fr', 'es'],
-          collections: { other: { translationsFolder: otherCollection } },
+        ...{
+          ...collection(),
+          sourceConfig: {
+            exportFolder: 'dist',
+            importFolder: 'import',
+            baseLocale: 'en',
+            locales: ['en', 'fr', 'es'],
+            collections: { other: { translationsFolder: otherCollection } },
+          },
         },
+        onMutation:
+          onMutation ??
+          {
+            ...collection(),
+            sourceConfig: {
+              exportFolder: 'dist',
+              importFolder: 'import',
+              baseLocale: 'en',
+              locales: ['en', 'fr', 'es'],
+              collections: { other: { translationsFolder: otherCollection } },
+            },
+          }.onMutation,
       },
       { source: 'common.ok', destination: 'common.ok', toCollection: 'other' },
-      { onMutation },
     );
 
     expect(read('tracker_meta.json', 'other', 'common')).toEqual(meta);
@@ -150,9 +166,11 @@ describe('moving resources keeps metadata (real fs)', () => {
     };
     expect(() =>
       executeMove(
-        { ...collection(), sourceConfig: config },
+        {
+          ...{ ...collection(), sourceConfig: config },
+          onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+        },
         { source: 'common.ok', destination: 'shared.ok', toCollection: 'missing' },
-        { onMutation },
       ),
     ).toThrow(CollectionNotFoundError);
     expect(collected).toEqual([]);
@@ -170,9 +188,11 @@ describe('moving resources keeps metadata (real fs)', () => {
     };
     expect(() =>
       executeMove(
-        { ...collection(), sourceConfig: config, projectRoot: root },
+        {
+          ...{ ...collection(), sourceConfig: config, projectRoot: root },
+          onMutation: onMutation ?? { ...collection(), sourceConfig: config, projectRoot: root }.onMutation,
+        },
         { source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' },
-        { onMutation },
       ),
     ).toThrow(ReadOnlyCollectionError);
     expect(collected).toEqual([]);
@@ -189,9 +209,11 @@ describe('moving resources keeps metadata (real fs)', () => {
       collections: { other: { translationsFolder: 'other' } },
     };
     const result = await executeMove(
-      { ...collection(), sourceConfig: config, projectRoot: root },
+      {
+        ...{ ...collection(), sourceConfig: config, projectRoot: root },
+        onMutation: onMutation ?? { ...collection(), sourceConfig: config, projectRoot: root }.onMutation,
+      },
       { source: 'common.ok', destination: 'shared.ok', toCollection: 'other' },
-      { onMutation },
     );
     expect(result.movedCount).toBe(1);
     expect(read('resource_entries.json', 'other', 'shared')).toEqual(entries);
@@ -202,9 +224,8 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('apps', 'buttons');
 
     const result = await executeMove(
-      collection(),
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
       { kind: 'folder', source: 'apps.buttons', destination: 'shared' },
-      { onMutation },
     );
 
     expect(result.errors).toEqual([]);
@@ -218,7 +239,10 @@ describe('moving resources keeps metadata (real fs)', () => {
     writeFolder('common');
     writeFolder('shared');
 
-    const result = await executeMove(collection(), { source: 'common.ok', destination: 'shared.ok' }, { onMutation });
+    const result = await executeMove(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { source: 'common.ok', destination: 'shared.ok' },
+    );
 
     expect(result.movedCount).toBe(0);
     expect(result.warnings[0]).toContain('Destination key already exists');
@@ -228,7 +252,10 @@ describe('moving resources keeps metadata (real fs)', () => {
   it('moves a pattern to the collection root with an empty destination', async () => {
     writeFolder('common', 'buttons');
 
-    const result = await executeMove(collection(), { source: 'common.*', destination: '' }, { onMutation });
+    const result = await executeMove(
+      { ...collection(), onMutation: onMutation ?? collection().onMutation },
+      { source: 'common.*', destination: '' },
+    );
 
     expect(result.errors).toEqual([]);
     expect(result.outcome).toBe('succeeded');
@@ -248,12 +275,14 @@ describe('moving resources keeps metadata (real fs)', () => {
     };
 
     const result = await executeMoves(
-      { ...collection(), sourceConfig: config },
+      {
+        ...{ ...collection(), sourceConfig: config },
+        onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+      },
       [
         { source: 'common.ok', destination: 'ignored.ok', toCollection: 'missing' },
         { source: 'common.ok', destination: 'shared.ok' },
       ],
-      { onMutation },
     );
 
     expect(result.errors).toEqual(['Destination collection "missing" not found']);
@@ -277,13 +306,15 @@ describe('moving resources keeps metadata (real fs)', () => {
     const metadataBefore = readFileSync(join(root, 'common', 'tracker_meta.json'), 'utf8');
     expect(() =>
       executeMoves(
-        { ...collection(), sourceConfig: config },
+        {
+          ...{ ...collection(), sourceConfig: config },
+          onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+        },
         [
           { source: 'common.ok', destination: 'shared.ok' },
           { source: 'invalid@char*', destination: 'dest' },
           { source: 'later.ok', destination: 'never.ok' },
         ],
-        { onMutation },
       ),
     ).toThrow(InvalidResourceKeyError);
     expect(readFileSync(join(root, 'common', 'resource_entries.json'), 'utf8')).toBe(before);
@@ -311,9 +342,11 @@ describe('moving resources keeps metadata (real fs)', () => {
     ]) {
       expect(() =>
         executeMoves(
-          { ...collection(), sourceConfig: config },
+          {
+            ...{ ...collection(), sourceConfig: config },
+            onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+          },
           [{ source: 'common.ok', destination: 'shared.ok' }, { ...malformed }],
-          { onMutation },
         ),
       ).toThrow(InvalidResourceKeyError);
       expect(read('resource_entries.json', 'common')).toEqual(entries);
@@ -333,13 +366,15 @@ describe('moving resources keeps metadata (real fs)', () => {
       collections: { main: { translationsFolder: root } },
     };
     const result = await executeMoves(
-      { ...collection(), sourceConfig: config },
+      {
+        ...{ ...collection(), sourceConfig: config },
+        onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+      },
       [
         { source: 'missing.key', destination: 'dest.key' },
         { source: 'absent.*', destination: '' },
         { source: 'common.*', destination: '' },
       ],
-      { onMutation },
     );
     expect(result).toMatchObject({ movedCount: 1, outcome: 'failed' });
     expect(result.errors).toHaveLength(1);
@@ -369,12 +404,14 @@ describe('moving resources keeps metadata (real fs)', () => {
     let result: Awaited<ReturnType<typeof executeMoves>>;
     try {
       result = await executeMoves(
-        { ...collection(), sourceConfig: config },
+        {
+          ...{ ...collection(), sourceConfig: config },
+          onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+        },
         [
           { source: 'common.ok', destination: 'shared.ok' },
           { source: 'second.ok', destination: 'blocked.ok' },
         ],
-        { onMutation },
       );
     } finally {
       writer.mockImplementation(actual.writeJsonFile);
@@ -403,9 +440,11 @@ describe('moving resources keeps metadata (real fs)', () => {
     };
 
     const result = await executeMoves(
-      { ...collection(), sourceConfig: config },
+      {
+        ...{ ...collection(), sourceConfig: config },
+        onMutation: onMutation ?? { ...collection(), sourceConfig: config }.onMutation,
+      },
       [{ source: 'common.ok', destination: 'shared.ok', toCollection: 'vendor' }],
-      { onMutation },
     );
 
     expect(result.errors).toEqual(['Collection "vendor" is read-only. Its resources cannot be modified.']);
@@ -428,12 +467,14 @@ describe('moving resources keeps metadata (real fs)', () => {
       },
     };
     const result = await executeMoves(
-      { ...collection(), sourceConfig: config, projectRoot: root },
+      {
+        ...{ ...collection(), sourceConfig: config, projectRoot: root },
+        onMutation: onMutation ?? { ...collection(), sourceConfig: config, projectRoot: root }.onMutation,
+      },
       [
         { source: 'common.ok', destination: 'ignored.ok', toCollection: 'vendor' },
         { source: 'common.ok', destination: 'shared.ok', toCollection: 'other' },
       ],
-      { onMutation },
     );
     expect(result).toEqual({
       outcome: 'failed',

@@ -10,7 +10,7 @@ import {
   type WalkCollectionFoldersOptions,
   walkCollectionFolders,
 } from './collection-folders';
-import { openResourceFolder } from './resource-folder';
+import { openReadonlyResourceFolder } from './resource-folder';
 import type { ResourceTreeEntry } from './resource-tree-types';
 
 /**
@@ -19,7 +19,7 @@ import type { ResourceTreeEntry } from './resource-tree-types';
  * Every read of a whole collection (export, validate, bundle, type generation, search, the
  * resource tree, glossary) walks the translations folder here, so one set of rules applies:
  *
- * - Folders are opened with the collection's base locale, through `openResourceFolder`.
+ * - Folders are opened with the collection's base locale, through `openReadonlyResourceFolder`.
  * - Which folders are read is the shared collection-folder policy (`collection-folders.ts`): hidden
  *   folders are skipped, a missing translations folder is an empty collection, and a folder that
  *   exists but cannot be listed is a problem.
@@ -147,7 +147,8 @@ function readFolder(
   collectionTags: string[],
   translationsFolder: string,
 ): StoredResource[] {
-  const folder = openResourceFolder(absolutePath, { baseLocale, translationsFolder });
+  // This reader never saves resource files.
+  const folder = openReadonlyResourceFolder(absolutePath, { baseLocale, translationsFolder });
   const resources: StoredResource[] = [];
 
   for (const entryKey of folder.keys()) {

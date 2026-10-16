@@ -13,9 +13,10 @@ import {
   type FolderChild,
   type LingoTrackerConfig,
   openCollection,
-  openResourceFolder,
   type ResourceTreeNode,
 } from '../../index';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from './resource-folder';
 import type { MutationSink } from './resource-mutation';
 import { ResourceTreeIndex } from './resource-tree-index';
 
@@ -41,7 +42,9 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
   /** Writes one entry (with metadata) the way core stores it. */
   function writeEntry(collectionName: string, key: string, value: string): void {
     const segments = key.split('.');
-    const folder = openResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), {
+      baseLocale: 'en',
+    });
     folder.setBase(segments[segments.length - 1], value);
     folder.save();
   }
@@ -102,12 +105,12 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
 
   it('adds a resource, creating its folders', async () => {
     await addResource(
-      collection(),
+      { ...collection(), onMutation: sink ?? collection().onMutation },
       {
         key: 'apps.dialogs.confirm.yes',
         baseValue: 'Yes',
       },
-      { onMutation: sink },
+      {},
     );
 
     expect(keysOf(readyTree(collection(), 'apps.dialogs.confirm'))).toEqual(['yes']);
@@ -115,21 +118,32 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
   });
 
   it('replaces an edited resource in place', async () => {
-    await editResource(collection(), 'common.ok', { baseValue: 'Okay' }, { onMutation: sink });
+    await editResource(
+      { ...collection(), onMutation: sink ?? collection().onMutation },
+      'common.ok',
+      { baseValue: 'Okay' },
+      {},
+    );
 
     expect(readyTree(collection(), 'common')?.resources.find((r) => r.key === 'ok')?.source).toBe('Okay');
     expectIndexMatchesDisk();
   });
 
   it('removes deleted resources', () => {
-    deleteResource(collection(), { keys: ['common.ok', 'apps.title'] }, { onMutation: sink });
+    deleteResource(
+      { ...collection(), onMutation: sink ?? collection().onMutation },
+      { keys: ['common.ok', 'apps.title'] },
+    );
 
     expect(keysOf(readyTree(collection(), 'common'))).toEqual(['cancel']);
     expectIndexMatchesDisk();
   });
 
   it('moves resources by pattern', async () => {
-    await executeMove(collection(), { source: 'common.*', destination: 'shared' }, { onMutation: sink });
+    await executeMove(
+      { ...collection(), onMutation: sink ?? collection().onMutation },
+      { source: 'common.*', destination: 'shared' },
+    );
 
     expect(keysOf(readyTree(collection(), 'shared'))).toEqual(['cancel', 'ok']);
     expect(keysOf(readyTree(collection(), 'common'))).toEqual([]);
@@ -137,15 +151,21 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
   });
 
   it('creates, moves and deletes folders', async () => {
-    createFolder(collection(), { folderName: 'empty', parentPath: 'apps' }, { onMutation: sink });
+    createFolder(
+      { ...collection(), onMutation: sink ?? collection().onMutation },
+      { folderName: 'empty', parentPath: 'apps' },
+    );
     expect(readyTree(collection(), 'apps.empty')).not.toBeNull();
 
-    await executeMove(collection(), { kind: 'folder', source: 'common', destination: 'apps' }, { onMutation: sink });
+    await executeMove(
+      { ...collection(), onMutation: sink ?? collection().onMutation },
+      { kind: 'folder', source: 'common', destination: 'apps' },
+    );
 
     expect(keysOf(readyTree(collection(), 'apps.common'))).toEqual(['cancel', 'ok']);
     expect(readyTree(collection(), 'common')).toBeNull();
 
-    deleteFolder(collection(), { folderPath: 'apps.empty' }, { onMutation: sink });
+    deleteFolder({ ...collection(), onMutation: sink ?? collection().onMutation }, { folderPath: 'apps.empty' });
     expect(readyTree(collection(), 'apps.empty')).toBeNull();
 
     expectIndexMatchesDisk();

@@ -68,7 +68,7 @@ describe('deleteCollection', () => {
   it('delivers a reindex after the config write', () => {
     write(config());
     const mutations: ResourceMutation[] = [];
-    deleteCollection(open(), { onMutation: (mutation) => mutations.push(mutation) });
+    deleteCollection({ ...open(), onMutation: (mutation) => mutations.push(mutation) ?? open().onMutation });
     expect(mutations).toEqual([{ kind: 'reindex', translationsFolder: join(tempDir(), 'translations/main') }]);
   });
 
@@ -105,7 +105,7 @@ describe('deleteCollection', () => {
     });
     const mutations: ResourceMutation[] = [];
 
-    deleteCollection(collection, { onMutation: (mutation) => mutations.push(mutation) });
+    deleteCollection({ ...collection, onMutation: (mutation) => mutations.push(mutation) ?? collection.onMutation });
 
     expect(JSON.parse(readFileSync(path(), 'utf8')).collections.broken).toBeUndefined();
     expect(mutations).toEqual([]);

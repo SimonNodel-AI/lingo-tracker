@@ -61,7 +61,7 @@ interface IndexEntry {
 /**
  * Collection Index — the API's in-memory copy of each open collection's resource tree.
  *
- * Callers read with `tree()`, `searchPage()` and `status()`, and pass `sink` to core writes.
+ * Callers read with `tree()`, `searchPage()` and `status()`, and the route pipe attaches `sink` when opening collections.
  * Everything else is internal: indexing on first read, dropping the copy when
  * the disk changed outside this process, patching the tree after a write (or dropping it
  * when a patch cannot be applied), and the memory cap.
@@ -140,7 +140,7 @@ export class CollectionIndex {
   /**
    * Updates every indexed collection that a write changed. A collection whose tree does not
    * match what a mutation expects (or that got a `reindex`) is dropped, and the next read
-   * indexes it again. Controllers pass `sink` to core and never call this directly.
+   * indexes it again. The route pipe attaches `sink` to the Opened Collection; controllers never call this directly.
    */
   apply(changes: readonly ResourceMutation[]): void {
     const patched = new Set<IndexEntry>();

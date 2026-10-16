@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import {
   addResources,
-  type Collection,
   deleteResource,
   editResource,
   executeMoves,
@@ -76,7 +75,7 @@ export class ResourcesController {
 
   @Post('translate')
   async translateResource(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(translateResourceBody) dto: TranslateResourceDto,
   ): Promise<TranslateResourceResponseDto> {
     const result = await translateExistingResource(collection, dto.key);
@@ -86,7 +85,7 @@ export class ResourcesController {
 
   @Post()
   async createResources(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(createResourcesBody) body: CreateResourceDto | CreateResourceDto[],
   ): Promise<CreateResourceResponseDto> {
     // Normalize to array
@@ -98,7 +97,7 @@ export class ResourcesController {
 
   @Delete()
   async delete(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(deleteResourcesBody) dto: DeleteResourceDto,
   ): Promise<DeleteResourceResponseDto> {
     const result = deleteResource(collection, dto);
@@ -117,7 +116,7 @@ export class ResourcesController {
 
   @Patch()
   async update(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(updateResourceBody) dto: UpdateResourceDto,
   ): Promise<UpdateResourceResponseDto> {
     const result = await editResource(collection, dto.key, {
@@ -131,7 +130,7 @@ export class ResourcesController {
 
   @Get('tree')
   async getTree(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidQuery(treeQuery) query: TreeQuery,
     @Res({ passthrough: true }) response: Response,
   ): Promise<ResourceTreeDto | TreeStatusResponseDto> {
@@ -148,13 +147,13 @@ export class ResourcesController {
   }
 
   @Get('cache/status')
-  async getCacheStatus(@RouteCollection() collection: Collection): Promise<CacheStatusDto> {
+  async getCacheStatus(@RouteCollection() collection: OpenedCollection): Promise<CacheStatusDto> {
     return this.#index.status(collection);
   }
 
   @Get('search')
   async search(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidQuery(searchQuery) dto: SearchQuery,
   ): Promise<SearchResultsDto> {
     const request = searchRequestFromQuery(dto);
@@ -169,7 +168,7 @@ export class ResourcesController {
   @Post('translate-locale')
   @HttpCode(HttpStatus.ACCEPTED)
   async startTranslationJob(
-    @RouteCollection() collection: Collection,
+    @RouteCollection() collection: OpenedCollection,
     @ValidBody(translateLocaleBody) dto: TranslateLocaleRequestDto,
   ): Promise<TranslateLocaleJobDto> {
     return this.#translationJobService.startJob(prepareTranslationRun(collection).forLocale(dto.locale));

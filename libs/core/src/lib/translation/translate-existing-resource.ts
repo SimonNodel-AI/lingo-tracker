@@ -3,7 +3,6 @@ import { ResourceNotFoundError } from '../errors/lingo-tracker-error';
 import { assertAutoTranslationEnabled } from '../machine-translation/translator';
 import { resolveResourcePaths } from '../resource/resource-file-paths';
 import { openResourceFolder } from '../resource/resource-folder';
-import { resolveMutationSink } from '../resource/resource-mutation';
 import type { ResourceTreeEntry } from '../resource/resource-tree-types';
 import { executeTranslationRun, selectTranslationRow, type TranslationRunOptions } from './translation-run';
 
@@ -40,7 +39,6 @@ export async function translateExistingResource(
   key: string,
   options: TranslateExistingResourceOptions = {},
 ): Promise<TranslateExistingResourceResult> {
-  const onMutation = resolveMutationSink(collection, options);
   const config = assertAutoTranslationEnabled(collection);
   const { resolvedKey, entryKey, folderPath } = resolveResourcePaths({
     key,
@@ -58,7 +56,6 @@ export async function translateExistingResource(
     rows: [row],
     locales,
     failurePolicy: 'throw-first',
-    mutationSink: onMutation,
   });
   const outcomes = tally.outcomes;
   const freshEntry = outcomes.find((outcome) => outcome.status !== 'failed')?.entry;

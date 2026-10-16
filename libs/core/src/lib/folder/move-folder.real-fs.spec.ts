@@ -18,7 +18,8 @@ import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/ling
 import { executeMove } from '../resource/execute-move';
 import { PRUNABLE_OS_JUNK_FILES } from '../resource/folder-pruning';
 import { addResource } from '../resource/resource-entry';
-import { openResourceFolder } from '../resource/resource-folder';
+// Standalone fixtures and readback retain unreported saves.
+import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import type { ResourceMutation } from '../resource/resource-mutation';
 
 vi.mock('node:fs', async (importOriginal) => ({ ...(await importOriginal<typeof import('node:fs')>()) }));
@@ -33,6 +34,7 @@ beforeEach(() => {
 
 function collection(translationsFolder: string): OpenedCollection {
   return {
+    onMutation: () => undefined,
     name: 'main',
     translationsFolder,
     baseLocale: 'en',
@@ -81,9 +83,8 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     for (const sourceFolderPath of ['linked', 'linked.nested']) {
       expect(() =>
         executeMove(
-          collection(root),
+          { ...collection(root), onMutation: onMutation ?? collection(root).onMutation },
           { kind: 'folder', source: sourceFolderPath, destination: 'shared' },
-          { onMutation },
         ),
       ).toThrow(`Cannot move folder '${sourceFolderPath}':`);
       expect(collected).toEqual([]);
@@ -99,9 +100,11 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     const config = { exportFolder: 'dist', importFolder: 'import', baseLocale: 'en', locales: ['en'], collections: {} };
     expect(() =>
       executeMove(
-        { ...collection(root), sourceConfig: config },
+        {
+          ...{ ...collection(root), sourceConfig: config },
+          onMutation: onMutation ?? { ...collection(root), sourceConfig: config }.onMutation,
+        },
         { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'missing' },
-        { onMutation },
       ),
     ).toThrow(CollectionNotFoundError);
     expect(collected).toEqual([]);
@@ -119,9 +122,11 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     };
     expect(() =>
       executeMove(
-        { ...collection(root), sourceConfig: config, projectRoot: root },
+        {
+          ...{ ...collection(root), sourceConfig: config, projectRoot: root },
+          onMutation: onMutation ?? { ...collection(root), sourceConfig: config, projectRoot: root }.onMutation,
+        },
         { kind: 'folder', source: 'apps', destination: 'shared', toCollection: 'vendor' },
-        { onMutation },
       ),
     ).toThrow(ReadOnlyCollectionError);
     expect(collected).toEqual([]);
@@ -133,9 +138,8 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     writeFolder('{ not json', 'apps', 'bad');
 
     const result = await executeMove(
-      collection(root),
+      { ...collection(root), onMutation: onMutation ?? collection(root).onMutation },
       { kind: 'folder', source: 'apps', destination: 'shared' },
-      { onMutation },
     );
 
     expect(result.errors).toHaveLength(1);
@@ -152,9 +156,8 @@ describe('executeMove for folders with an unreadable folder (real fs)', () => {
     writeFolder('{ not json', 'apps', 'bad');
 
     const result = await executeMove(
-      collection(root),
+      { ...collection(root), onMutation: onMutation ?? collection(root).onMutation },
       { kind: 'folder', source: 'apps.bad', destination: 'shared' },
-      { onMutation },
     );
 
     expect(result.errors).toHaveLength(1);
@@ -172,16 +175,17 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
 
     const result = await executeMove(
-      source,
+      { ...source, onMutation: onMutation ?? source.onMutation },
       { kind: 'folder', source: 'apps', destination: '', nestUnderDestination: false },
-      { onMutation },
     );
 
     expect(result.warnings).toEqual(['Folder is already at this location. No move performed.']);
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(0);
     expect(collected).toEqual([]);
-    expect(openResourceFolder(join(root(), 'apps'), { baseLocale: 'en' }).get('one')?.entry.source).toBe('One');
+    expect(openUnreportedResourceFolder(join(root(), 'apps'), { baseLocale: 'en' }).get('one')?.entry.source).toBe(
+      'One',
+    );
   });
 
   it('nests a depth-two source under the root', async () => {
@@ -189,14 +193,15 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
     await addResource(source, { key: 'apps.deep.one', baseValue: 'One' });
 
     const result = await executeMove(
-      source,
+      { ...source, onMutation: onMutation ?? source.onMutation },
       { kind: 'folder', source: 'apps.deep', destination: '', nestUnderDestination: false },
-      { onMutation },
     );
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
-    expect(openResourceFolder(join(root(), 'deep'), { baseLocale: 'en' }).get('one')?.entry.source).toBe('One');
+    expect(openUnreportedResourceFolder(join(root(), 'deep'), { baseLocale: 'en' }).get('one')?.entry.source).toBe(
+      'One',
+    );
     expect(existsSync(join(root(), 'apps', 'deep'))).toBe(false);
     expect(collected.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
       ['remove', 'apps.deep.one'],
@@ -211,15 +216,16 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
     await addResource(source, { key: 'common.testdata.foo', baseValue: 'Foo' });
 
     const result = await executeMove(
-      source,
+      { ...source, onMutation: onMutation ?? source.onMutation },
       { kind: 'folder', source: 'common.testdata', destination: '' },
-      { onMutation },
     );
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
     expect(result.foldersDeleted).toBe(1);
-    expect(openResourceFolder(join(root(), 'testdata'), { baseLocale: 'en' }).get('foo')?.entry.source).toBe('Foo');
+    expect(openUnreportedResourceFolder(join(root(), 'testdata'), { baseLocale: 'en' }).get('foo')?.entry.source).toBe(
+      'Foo',
+    );
     expect(existsSync(join(root(), 'testdata', 'resource_entries.json'))).toBe(true);
     expect(existsSync(join(root(), 'common', 'testdata'))).toBe(false);
   });
@@ -245,9 +251,8 @@ describe('executeMove for folders with a destination collision (real fs)', () =>
 
   it('moves the other resources, keeps the source folder with the skipped one, and reports matching mutations', async () => {
     const result = await executeMove(
-      collection(root),
+      { ...collection(root), onMutation: onMutation ?? collection(root).onMutation },
       { kind: 'folder', source: 'src', destination: 'dst', override: false },
-      { onMutation },
     );
 
     expect(result.movedCount).toBe(1);
@@ -256,9 +261,11 @@ describe('executeMove for folders with a destination collision (real fs)', () =>
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('src.a')]));
 
     expect(existsSync(join(root, 'src'))).toBe(true);
-    expect(openResourceFolder(join(root, 'src'), { baseLocale: 'en' }).keys()).toEqual(['a']);
-    expect(openResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('b')?.entry.source).toBe('Source B');
-    expect(openResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('a')?.entry.source).toBe(
+    expect(openUnreportedResourceFolder(join(root, 'src'), { baseLocale: 'en' }).keys()).toEqual(['a']);
+    expect(openUnreportedResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('b')?.entry.source).toBe(
+      'Source B',
+    );
+    expect(openUnreportedResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('a')?.entry.source).toBe(
       'Existing A',
     );
 
@@ -290,7 +297,10 @@ describe('executeMove for folders across collections and around content outside 
     mkdirSync(hidden);
     writeFileSync(join(hidden, 'resource_entries.json'), JSON.stringify({ old: { source: 'Old' } }));
 
-    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+    const result = await executeMove(
+      { ...source, onMutation: onMutation ?? source.onMutation },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
+    );
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(2);
@@ -301,7 +311,9 @@ describe('executeMove for folders across collections and around content outside 
     expect(existsSync(join(source.translationsFolder, 'apps', 'resource_entries.json'))).toBe(false);
     expect(existsSync(join(source.translationsFolder, 'apps', 'nested'))).toBe(false);
     expect(
-      openResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested'), { baseLocale: 'en' }).keys(),
+      openUnreportedResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested'), {
+        baseLocale: 'en',
+      }).keys(),
     ).toEqual(['two']);
     expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
       { kind: 'remove-folder', translationsFolder: source.translationsFolder, path: 'apps.nested' },
@@ -313,7 +325,10 @@ describe('executeMove for folders across collections and around content outside 
     mkdirSync(join(source.translationsFolder, 'apps'), { recursive: true });
     writeFileSync(join(source.translationsFolder, 'apps', 'README.md'), 'notes');
 
-    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+    const result = await executeMove(
+      { ...source, onMutation: onMutation ?? source.onMutation },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
+    );
 
     expect(result.foldersDeleted).toBe(0);
     expect(collected).toEqual([]);
@@ -331,7 +346,10 @@ describe('executeMove for folders across collections and around content outside 
       rmdir(path);
     });
     try {
-      const result = executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+      const result = executeMove(
+        { ...source, onMutation: onMutation ?? source.onMutation },
+        { kind: 'folder', source: 'apps', destination: 'shared' },
+      );
       expect(result).toMatchObject({ outcome: 'failed', movedCount: 0, foldersDeleted: 0 });
       expect(result.errors).toEqual([
         "Failed to delete empty source folder: Could not remove folder 'apps': Injected removal failure",
@@ -350,9 +368,8 @@ describe('executeMove for folders across collections and around content outside 
     mkdirSync(sourcePath, { recursive: true });
     writeFileSync(join(source.translationsFolder, 'parent', 'tracker_meta.json'), '{ malformed');
     const result = executeMove(
-      source,
+      { ...source, onMutation: onMutation ?? source.onMutation },
       { kind: 'folder', source: 'parent.apps', destination: 'shared' },
-      { onMutation },
     );
     expect(result).toMatchObject({ outcome: 'succeeded', movedCount: 0, foldersDeleted: 1, errors: [] });
     expect(result.warnings).toEqual([
@@ -375,7 +392,10 @@ describe('executeMove for folders across collections and around content outside 
       rmdir(path);
     });
     try {
-      const result = executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+      const result = executeMove(
+        { ...source, onMutation: onMutation ?? source.onMutation },
+        { kind: 'folder', source: 'apps', destination: 'shared' },
+      );
       expect(result).toMatchObject({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 0, errors: [] });
       expect(result.warnings).toEqual(["Could not remove folder 'apps': Injected removal failure"]);
       expect(existsSync(sourcePath)).toBe(true);
@@ -389,7 +409,10 @@ describe('executeMove for folders across collections and around content outside 
     const source = collection(join(root, 'main'));
     mkdirSync(join(source.translationsFolder, 'apps', 'deep'), { recursive: true });
 
-    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+    const result = await executeMove(
+      { ...source, onMutation: onMutation ?? source.onMutation },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
+    );
 
     expect(result.foldersDeleted).toBe(1);
     expect(collected).toEqual([
@@ -410,9 +433,8 @@ describe('executeMove for folders across collections and around content outside 
     collected.length = 0;
 
     const result = await executeMove(
-      source,
-      { kind: 'folder', source: 'common', destination: 'apps' },
       {
+        ...source,
         onMutation: (mutation) => {
           onMutation(mutation);
           if (mutation.kind === 'remove-folder') {
@@ -420,6 +442,7 @@ describe('executeMove for folders across collections and around content outside 
           }
         },
       },
+      { kind: 'folder', source: 'common', destination: 'apps' },
     );
 
     expect(result).toEqual({ outcome: 'succeeded', movedCount: 3, foldersDeleted: 1, warnings: [], errors: [] });
@@ -451,7 +474,10 @@ describe('executeMove for folders across collections and around content outside 
       writeFileSync(join(source.translationsFolder, 'apps', 'deep', name), 'junk');
     }
     collected.length = 0;
-    const result = await executeMove(source, { kind: 'folder', source: 'apps', destination: 'shared' }, { onMutation });
+    const result = await executeMove(
+      { ...source, onMutation: onMutation ?? source.onMutation },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
+    );
     expect(result).toEqual({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 1, warnings: [], errors: [] });
     expect(existsSync(join(source.translationsFolder, 'apps'))).toBe(false);
     expect(collected.filter((mutation) => mutation.kind === 'remove-folder')).toEqual([
@@ -465,19 +491,19 @@ describe('executeMove for folders across collections and around content outside 
     await addResource(source, { key: 'apps.one', baseValue: 'One' });
     collected.length = 0;
     const result = await executeMove(
-      source,
-      { kind: 'folder', source: 'apps', destination: 'shared' },
       {
+        ...source,
         onMutation: (mutation) => {
           onMutation(mutation);
           // Relocation saved the emptied source; simulate another writer before pruning begins.
           if (mutation.kind === 'remove' && mutation.key === 'apps.one') {
-            const folder = openResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' });
+            const folder = openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' });
             folder.setBase('fresh', 'Added during the move');
             folder.save();
           }
         },
       },
+      { kind: 'folder', source: 'apps', destination: 'shared' },
     );
     expect(result).toEqual({
       outcome: 'succeeded',
@@ -486,7 +512,9 @@ describe('executeMove for folders across collections and around content outside 
       warnings: [expect.stringContaining('it has resources again')],
       errors: [],
     });
-    expect(openResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' }).keys()).toEqual(['fresh']);
+    expect(openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' }).keys()).toEqual([
+      'fresh',
+    ]);
     expect(collected.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
   });
 
@@ -513,21 +541,34 @@ describe('executeMove for folders across collections and around content outside 
 
     const result = await executeMove(
       {
-        ...source,
-        sourceConfig: {
-          exportFolder: 'dist',
-          importFolder: 'import',
-          baseLocale: target.baseLocale,
-          locales: [...target.locales],
-          collections: { other: { translationsFolder: target.translationsFolder } },
+        ...{
+          ...source,
+          sourceConfig: {
+            exportFolder: 'dist',
+            importFolder: 'import',
+            baseLocale: target.baseLocale,
+            locales: [...target.locales],
+            collections: { other: { translationsFolder: target.translationsFolder } },
+          },
         },
+        onMutation:
+          onMutation ??
+          {
+            ...source,
+            sourceConfig: {
+              exportFolder: 'dist',
+              importFolder: 'import',
+              baseLocale: target.baseLocale,
+              locales: [...target.locales],
+              collections: { other: { translationsFolder: target.translationsFolder } },
+            },
+          }.onMutation,
       },
       { kind: 'folder', source: 'apps', destination: '', toCollection: 'other' },
-      { onMutation },
     );
 
     expect(result.movedCount).toBe(1);
-    const moved = openResourceFolder(join(target.translationsFolder, 'apps'), { baseLocale: 'en' }).get('ok');
+    const moved = openUnreportedResourceFolder(join(target.translationsFolder, 'apps'), { baseLocale: 'en' }).get('ok');
     expect(moved?.entry).toEqual({ source: 'OK', fr: 'Bien', de: 'OK' });
     expect(moved?.meta?.['de']?.status).toBe('new');
     expect(moved?.meta?.['es']).toBeUndefined();

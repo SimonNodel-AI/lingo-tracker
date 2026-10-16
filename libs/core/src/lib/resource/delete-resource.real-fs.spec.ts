@@ -72,9 +72,13 @@ describe('writes prune emptied folders (real fs)', () => {
     const mutations: ResourceMutation[] = [];
     const defaultMutations: ResourceMutation[] = [];
     const result = executeMove(
-      testCollection(root(), { onMutation: (mutation) => defaultMutations.push(mutation) }),
+      {
+        ...testCollection(root(), { onMutation: (mutation) => defaultMutations.push(mutation) }),
+        onMutation: (mutation) =>
+          mutations.push(mutation) ??
+          testCollection(root(), { onMutation: (mutation) => defaultMutations.push(mutation) }).onMutation,
+      },
       { source: 'a.b.c.ok', destination: 'shared.ok' },
-      { onMutation: (mutation) => mutations.push(mutation) },
     );
     expect(result.movedCount).toBe(1);
     expect(existsSync(join(root(), 'a'))).toBe(false);
@@ -101,10 +105,10 @@ describe('writes prune emptied folders (real fs)', () => {
     seed();
     const mutations: ResourceMutation[] = [];
     await editResource(
-      collection(),
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
       'a.b.c.ok',
       { moveTo: 'shared' },
-      { onMutation: (mutation) => mutations.push(mutation) },
+      {},
     );
     expect(existsSync(join(root(), 'a'))).toBe(false);
     expect(mutations.filter((mutation) => mutation.kind === 'remove-folder').map((mutation) => mutation.path)).toEqual([
@@ -120,17 +124,30 @@ describe('writes prune emptied folders (real fs)', () => {
     const mutations: ResourceMutation[] = [];
     const result = executeMove(
       {
-        ...collection(),
-        sourceConfig: {
-          baseLocale: 'en',
-          locales: ['en'],
-          exportFolder: 'export',
-          importFolder: 'import',
-          collections: { other: { translationsFolder: destination } },
+        ...{
+          ...collection(),
+          sourceConfig: {
+            baseLocale: 'en',
+            locales: ['en'],
+            exportFolder: 'export',
+            importFolder: 'import',
+            collections: { other: { translationsFolder: destination } },
+          },
         },
+        onMutation: (mutation) =>
+          mutations.push(mutation) ??
+          {
+            ...collection(),
+            sourceConfig: {
+              baseLocale: 'en',
+              locales: ['en'],
+              exportFolder: 'export',
+              importFolder: 'import',
+              collections: { other: { translationsFolder: destination } },
+            },
+          }.onMutation,
       },
       { source: 'a.b.c.ok', destination: 'shared.ok', toCollection: 'other' },
-      { onMutation: (mutation) => mutations.push(mutation) },
     );
     expect(result.movedCount).toBe(1);
     expect(existsSync(join(root(), 'a'))).toBe(false);
@@ -154,16 +171,21 @@ describe('writes prune emptied folders (real fs)', () => {
     folder.remove('ok');
     expect(folder.save().emptied).toBe(true);
     expect(existsSync(folder.folderPath)).toBe(true);
-    expect(mutations).toEqual([]);
-    pruneEmptiedFolders(collection(), [folder.folderPath], { onMutation: (mutation) => mutations.push(mutation) });
+    expect(mutations).toEqual([{ kind: 'remove', translationsFolder: root(), key: 'a.b.c.ok' }]);
+    pruneEmptiedFolders(
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+      [folder.folderPath],
+      {},
+    );
     expect(existsSync(join(root(), 'a'))).toBe(false);
-    expect(mutations).toEqual(
-      ['a.b.c', 'a.b', 'a'].map((path) => ({
+    expect(mutations).toEqual([
+      { kind: 'remove', translationsFolder: root(), key: 'a.b.c.ok' },
+      ...['a.b.c', 'a.b', 'a'].map((path) => ({
         kind: 'remove-folder',
         translationsFolder: root(),
         path,
       })),
-    );
+    ]);
   });
 
   it('retains missing-key diagnostics in a folder emptied earlier in the delete batch', () => {
@@ -181,11 +203,8 @@ describe('writes prune emptied folders (real fs)', () => {
     seed();
     const mutations: ResourceMutation[] = [];
     const result = deleteResource(
-      collection(),
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
       { keys: ['a.b.c.ok', 'a.b.c.ok'] },
-      {
-        onMutation: (mutation) => mutations.push(mutation),
-      },
     );
     expect(result.errors).toEqual([{ key: 'a.b.c.ok', error: 'Resource not found: a.b.c.ok' }]);
     expect(mutations.map((mutation) => mutation.kind)).toEqual([
@@ -200,12 +219,11 @@ describe('writes prune emptied folders (real fs)', () => {
     seedResources(collection(), { 'a.x': { source: 'X' } });
     const mutations: ResourceMutation[] = [];
     const result = executeMoves(
-      collection(),
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
       [
         { source: 'a.x', destination: 'b.x' },
         { kind: 'folder', source: 'a', destination: 'c' },
       ],
-      { onMutation: (mutation) => mutations.push(mutation) },
     );
     expect(result).toMatchObject({ outcome: 'succeeded', movedCount: 1, foldersDeleted: 1, errors: [] });
     expect(result.warnings).toEqual(['No resources found in source folder. Nothing to move.']);
@@ -246,11 +264,8 @@ describe('writes prune emptied folders (real fs)', () => {
     writeFolderFiles(root(), 'a.b.empty', { entries: {} });
     const mutations: ResourceMutation[] = [];
     const result = executeMove(
-      collection(),
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
       { kind: 'folder', source: 'a.b', destination: 'shared' },
-      {
-        onMutation: (mutation) => mutations.push(mutation),
-      },
     );
     expect(result).toMatchObject({ movedCount: 2, foldersDeleted: 1, outcome: 'succeeded' });
     const removals = mutations.filter((mutation) => mutation.kind === 'remove-folder');
@@ -261,10 +276,11 @@ describe('writes prune emptied folders (real fs)', () => {
   it('deduplicates dry-run pruning plans and leaves every directory and file unchanged', () => {
     const path = writeFolderFiles(root(), 'a.b.c', { entries: {}, meta: {} });
     const mutations: ResourceMutation[] = [];
-    const result = pruneEmptiedFolders(collection(), [path, path, join(root(), 'a', 'b')], {
-      dryRun: true,
-      onMutation: (mutation) => mutations.push(mutation),
-    });
+    const result = pruneEmptiedFolders(
+      { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+      [path, path, join(root(), 'a', 'b')],
+      { dryRun: true },
+    );
     expect(result.removed).toEqual(['a.b.c', 'a.b', 'a']);
     expect(existsSync(join(path, 'resource_entries.json'))).toBe(true);
     expect(existsSync(join(path, 'tracker_meta.json'))).toBe(true);
@@ -299,7 +315,10 @@ describe('deleteResource behavioural cases (real fs)', () => {
     writeFolderFiles(root(), '', { entries: {}, meta: {} });
     const mutations: ResourceMutation[] = [];
     expect(
-      deleteResource(collection(), { keys: ['missing'] }, { onMutation: (mutation) => mutations.push(mutation) }),
+      deleteResource(
+        { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+        { keys: ['missing'] },
+      ),
     ).toMatchObject({ entriesDeleted: 0, errors: [{ key: 'missing', error: 'Resource not found: missing' }] });
     expect(mutations).toEqual([]);
   });
@@ -307,8 +326,10 @@ describe('deleteResource behavioural cases (real fs)', () => {
   it('retains the missing folder diagnostic when opened for deletion', () => {
     const mutations: ResourceMutation[] = [];
     expect(
-      deleteResource(collection(), { keys: ['apps.ok'] }, { onMutation: (mutation) => mutations.push(mutation) })
-        .errors,
+      deleteResource(
+        { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+        { keys: ['apps.ok'] },
+      ).errors,
     ).toEqual([{ key: 'apps.ok', error: 'Folder not found: apps' }]);
     expect(mutations).toEqual([]);
   });
@@ -317,7 +338,10 @@ describe('deleteResource behavioural cases (real fs)', () => {
     writeFolderFiles(root(), '', { meta: '{ invalid' });
     const mutations: ResourceMutation[] = [];
     expect(
-      deleteResource(collection(), { keys: ['ok'] }, { onMutation: (mutation) => mutations.push(mutation) }).errors,
+      deleteResource(
+        { ...collection(), onMutation: (mutation) => mutations.push(mutation) ?? collection().onMutation },
+        { keys: ['ok'] },
+      ).errors,
     ).toEqual([{ key: 'ok', error: 'Resource not found: ok' }]);
     expect(mutations).toEqual([]);
   });

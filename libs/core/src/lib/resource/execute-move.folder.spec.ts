@@ -13,6 +13,7 @@ import { executeMove } from './execute-move';
 
 function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {
+    onMutation: () => undefined,
     name,
     translationsFolder,
     baseLocale: 'en',
@@ -465,7 +466,6 @@ describe('Move Folder', () => {
       const result = await executeMove(
         { ...collection(testDir), sourceConfig: moveConfig('alias', testDir) },
         { kind: 'folder', source: 'apps.buttons', destination: 'apps.buttons', toCollection: 'alias' },
-        {},
       );
 
       expect(result.movedCount).toBe(0);
@@ -550,7 +550,6 @@ describe('Move Folder', () => {
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
-        {},
       );
 
       expect(result.movedCount).toBe(1);
@@ -608,7 +607,6 @@ describe('Move Folder', () => {
           nestUnderDestination: false,
           toCollection: 'collectionB',
         },
-        {},
       );
 
       expect(result.movedCount).toBe(1);

@@ -9,14 +9,16 @@ import { resolvePreferredTerminologyFile } from './preferred-terminology-file';
 import { resolveCollectionProtectedTermsFilePath, resolveGlobalProtectedTermsFile } from './protected-terms-file';
 import type { TermFile } from './term-file';
 
+const ignoreMutations: MutationSink = () => undefined;
+
 /**
  * A collection with every setting resolved: the collection's own value where it has one,
  * otherwise the global value, otherwise the default. Get one from {@link openCollection};
  * shared inheritance comes from domain's {@link inheritCollectionSettings}.
  */
 export interface Collection {
-  /** Default consumer of mutations from writes against this collection. */
-  readonly onMutation?: MutationSink;
+  /** Required consumer of resource writes; openCollection supplies a no-op when omitted. */
+  readonly onMutation: MutationSink;
   readonly name: string;
   /** Absolute path of the collection's translations folder. */
   readonly translationsFolder: string;
@@ -48,8 +50,8 @@ export interface OpenedProject {
   readonly projectRoot: string;
 }
 
-/** An opened collection is an opened project plus the resolved collection. */
-export interface OpenedCollection extends Collection, OpenedProject {}
+/** An opened collection carries the project snapshot and the Mutation Sink inherited by Resource Folder saves. */
+export interface OpenedCollection extends Collection, Omit<OpenedProject, 'onMutation'> {}
 
 /** The term files in force for a collection (see `readProjectTerms`). */
 export interface TermFiles {
@@ -69,7 +71,7 @@ export interface OpenCollectionOptions {
   readonly cwd?: string;
   /** Refuse a read-only collection. Set this for operations that change resources. */
   readonly writable?: boolean;
-  /** Default consumer for writes; an operation can override it with its own callback. */
+  /** Consumer for writes; CLI handles use a no-op consumer when omitted. */
   readonly onMutation?: MutationSink;
   /**
    * Open a collection for deletion only. A missing or non-string `translationsFolder` becomes
@@ -104,7 +106,7 @@ export function openCollection(
 
   return {
     name,
-    onMutation,
+    onMutation: onMutation ?? ignoreMutations,
     sourceConfig: config,
     projectRoot: cwd,
     translationsFolder:

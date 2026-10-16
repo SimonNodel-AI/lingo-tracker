@@ -16,6 +16,7 @@ import type { ResourceMutation } from './resource-mutation';
 
 function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {
+    onMutation: () => undefined,
     name,
     translationsFolder,
     baseLocale: 'en',
@@ -273,7 +274,6 @@ describe('Move Resource (real fs)', () => {
       const result = await executeMove(
         { ...collection(collectionAFolder, 'collectionA'), sourceConfig: moveConfig('collectionB', collectionBFolder) },
         { source: 'common.buttons.ok', destination: 'common.actions.ok', toCollection: 'collectionB' },
-        {},
       );
 
       expect(result.movedCount).toBe(1);
@@ -317,7 +317,6 @@ describe('Move Resource (real fs)', () => {
       const result = await executeMove(
         { ...collection(collectionAFolder, 'collectionA'), sourceConfig: moveConfig('collectionB', collectionBFolder) },
         { source: 'common.buttons.*', destination: 'common.actions', toCollection: 'collectionB' },
-        {},
       );
 
       expect(result.movedCount).toBe(2);
@@ -414,11 +413,23 @@ describe('Move Resource (real fs)', () => {
             destination: 'dest',
             toCollection: name,
           };
-          expect(() => executeMove({ ...collection(testDir), sourceConfig: config }, request, { onMutation })).toThrow(
-            error,
-          );
+          expect(() =>
+            executeMove(
+              {
+                ...{ ...collection(testDir), sourceConfig: config },
+                onMutation: onMutation ?? { ...collection(testDir), sourceConfig: config }.onMutation,
+              },
+              request,
+            ),
+          ).toThrow(error);
           expect(
-            executeMoves({ ...collection(testDir), sourceConfig: config }, [request], { onMutation }),
+            executeMoves(
+              {
+                ...{ ...collection(testDir), sourceConfig: config },
+                onMutation: onMutation ?? { ...collection(testDir), sourceConfig: config }.onMutation,
+              },
+              [request],
+            ),
           ).toMatchObject({
             outcome: 'failed',
             movedCount: 0,
@@ -445,20 +456,17 @@ describe('Move Resource (real fs)', () => {
     const write = vi.spyOn(fs, 'writeFileSync');
     const first: MoveRequest = { source: 'source.ok', destination: 'dest.ok', toCollection: 'other' };
     expect(() =>
-      executeMoves(collection(testDir), [first, { kind: 'folder', source: 'invalid@folder', destination: 'dest' }], {
-        onMutation,
-      }),
+      executeMoves({ ...collection(testDir), onMutation: onMutation ?? collection(testDir).onMutation }, [
+        first,
+        { kind: 'folder', source: 'invalid@folder', destination: 'dest' },
+      ]),
     ).toThrow(expect.objectContaining({ code: 'INVALID_FOLDER_PATH' }));
     expect(
-      executeMoves(
-        collection(testDir),
-        [
-          first,
-          { source: 'source.*', destination: 'dest', toCollection: 'other' },
-          { kind: 'folder', source: 'source', destination: 'dest', toCollection: 'other' },
-        ],
-        { onMutation },
-      ),
+      executeMoves({ ...collection(testDir), onMutation: onMutation ?? collection(testDir).onMutation }, [
+        first,
+        { source: 'source.*', destination: 'dest', toCollection: 'other' },
+        { kind: 'folder', source: 'source', destination: 'dest', toCollection: 'other' },
+      ]),
     ).toMatchObject({
       outcome: 'failed',
       movedCount: 0,
@@ -479,11 +487,14 @@ describe('Move Resource (real fs)', () => {
     const onMutation = vi.fn();
     const write = vi.spyOn(fs, 'writeFileSync');
     const missing: MoveRequest = { kind: 'folder', source: 'absent', destination: 'dest' };
-    expect(() => executeMove(collection(testDir), missing, { onMutation })).toThrow(
-      expect.objectContaining({ code: 'FOLDER_NOT_FOUND' }),
-    );
     expect(() =>
-      executeMoves(collection(testDir), [{ source: 'source.ok', destination: 'dest.ok' }, missing], { onMutation }),
+      executeMove({ ...collection(testDir), onMutation: onMutation ?? collection(testDir).onMutation }, missing),
+    ).toThrow(expect.objectContaining({ code: 'FOLDER_NOT_FOUND' }));
+    expect(() =>
+      executeMoves({ ...collection(testDir), onMutation: onMutation ?? collection(testDir).onMutation }, [
+        { source: 'source.ok', destination: 'dest.ok' },
+        missing,
+      ]),
     ).toThrow(expect.objectContaining({ code: 'FOLDER_NOT_FOUND' }));
     expect(write).not.toHaveBeenCalled();
     expect(onMutation).not.toHaveBeenCalled();
@@ -492,15 +503,11 @@ describe('Move Resource (real fs)', () => {
   it('aggregates folder removals and continues mixed selections after a destination refusal', async () => {
     writeFolderFiles(testDir, 'source', { entries: { ok: { source: 'OK' } } });
     writeFolderFiles(testDir, 'tree', { entries: { ok: { source: 'Folder OK' } } });
-    const result = await executeMoves(
-      { ...collection(testDir), sourceConfig: moveConfig('main', testDir) },
-      [
-        { source: 'source.*', destination: 'ignored', toCollection: 'missing' },
-        { source: 'source.ok', destination: 'dest.ok' },
-        { kind: 'folder', source: 'tree', destination: 'shared' },
-      ],
-      {},
-    );
+    const result = await executeMoves({ ...collection(testDir), sourceConfig: moveConfig('main', testDir) }, [
+      { source: 'source.*', destination: 'ignored', toCollection: 'missing' },
+      { source: 'source.ok', destination: 'dest.ok' },
+      { kind: 'folder', source: 'tree', destination: 'shared' },
+    ]);
     expect(result).toEqual({
       outcome: 'failed',
       movedCount: 2,
@@ -527,15 +534,11 @@ describe('Move Run interrupted mutation reporting', () => {
     });
 
     expect(() =>
-      executeMoves(
-        collection(root()),
-        [
-          { source: 'a.*', destination: 'b' },
-          { source: 'c.*', destination: 'd' },
-          { source: 'later.*', destination: 'untouched' },
-        ],
-        { onMutation },
-      ),
+      executeMoves({ ...collection(root()), onMutation: onMutation ?? collection(root()).onMutation }, [
+        { source: 'a.*', destination: 'b' },
+        { source: 'c.*', destination: 'd' },
+        { source: 'later.*', destination: 'untouched' },
+      ]),
     ).toThrow(failure);
 
     expect(fs.existsSync(join(root(), 'a'))).toBe(false);

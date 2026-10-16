@@ -7,13 +7,13 @@ import { resolveRenameTarget } from '../lib/config/entry-name';
 import { type Collection, type OpenedCollection, openCollection } from '../lib/config/open-collection';
 import { assertProtectedTerms } from '../lib/config/protected-terms-request';
 import { ReadOnlyCollectionError } from '../lib/errors/lingo-tracker-error';
-import { type MutationSinkOptions, reindexMutation, resolveMutationSink } from '../lib/resource/resource-mutation';
+import { reindexResourceCollection } from '../lib/resource/resource-folder';
 import { assertValidLocale } from './assert-valid-locale';
 import { prepareCollectionProtectedTerms } from './collection-protected-terms';
 import { jsonValuesEqual } from './json-values-equal';
 import { dropLocaleFiles, openLocaleFolders, seedLocaleFiles } from './locale-files';
 
-export interface CollectionChangeOptions extends MutationSinkOptions {
+export interface CollectionChangeOptions {
   protectedTerms?: string[];
 }
 
@@ -88,7 +88,7 @@ export async function changeCollection(
       const key = resolve(folder);
       if (reported.has(key)) continue;
       reported.add(key);
-      resolveMutationSink(current, options)?.(reindexMutation(folder));
+      reindexResourceCollection(current, folder);
     }
   }
 

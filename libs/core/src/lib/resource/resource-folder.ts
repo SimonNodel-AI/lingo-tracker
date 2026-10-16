@@ -1,8 +1,8 @@
 import { existsSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, resolve, sep } from 'node:path';
 import {
-  applyBaseChange,
   admitValue,
+  applyBaseChange,
   type ImportStrategy,
   importStrategyPolicy,
   type LocaleMetadata,
@@ -13,11 +13,13 @@ import {
   translocoToICU,
 } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../../constants';
+import type { Collection, OpenedCollection } from '../config/open-collection';
 import { readResourceEntries, readTrackerMetadata, writeJsonFile } from '../file-io/json-file-operations';
 import { calculateChecksum } from './checksum';
 import { assertCollectionFolderPath } from './folder-address';
 import type { ResourceEntries, ResourceEntry } from './resource-entry';
 import type { ResourceEntryMetadata } from './resource-entry-metadata';
+import { type MutationSink, resourceMutations } from './resource-mutation';
 import type { ResourceTreeEntry } from './resource-tree-types';
 import type { TrackerMetadata } from './tracker-metadata';
 import { assertTranslationStatus } from './translation-status-input';
@@ -32,7 +34,7 @@ import { assertTranslationStatus } from './translation-status-input';
  *
  * Changes stay in memory until `save()`.
  */
-export interface ResourceFolder {
+export interface ReadonlyResourceFolder {
   /** Absolute or cwd-relative folder path this instance was opened with. */
   readonly folderPath: string;
 
@@ -49,7 +51,9 @@ export interface ResourceFolder {
    * With requireMetadata, that entry returns undefined instead.
    */
   treeEntry(key: string, options?: { readonly requireMetadata?: boolean }): ResourceTreeEntry | undefined;
+}
 
+export interface ResourceFolder extends ReadonlyResourceFolder {
   /**
    * Sets the base value. Creates the entry when it does not exist.
    * When an existing base value changes (or its stored checksum is out of date), the
@@ -168,7 +172,7 @@ export interface ResourceFolderSaveResult {
   readonly removed: string[];
 }
 
-export interface OpenResourceFolderOptions {
+export interface UnreportedResourceFolderOptions {
   /** Collection root for guarded reads and saves; omit only for standalone folder fixtures. */
   readonly translationsFolder?: string;
   /** Base locale of the collection. Needed to find the base checksum in metadata. */
@@ -193,7 +197,31 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
  * Opens the resource folder at `folderPath`. Missing files are treated as empty.
  * @throws Error when a file exists but is not valid JSON
  */
-export function openResourceFolder(folderPath: string, options: OpenResourceFolderOptions): ResourceFolder {
+export function openResourceFolder(
+  folderPath: string,
+  collection: Pick<OpenedCollection, 'baseLocale' | 'translationsFolder' | 'onMutation'>,
+): ResourceFolder {
+  const onMutation = collection.onMutation;
+  if (typeof onMutation !== 'function') {
+    throw new TypeError('Reported Resource Folder requires an Opened Collection Mutation Sink');
+  }
+  assertCollectionFolderPath(collection.translationsFolder, folderPath);
+  return new FileResourceFolder(folderPath, collection.baseLocale, collection.translationsFolder, onMutation);
+}
+
+/** Opens a folder for reading; its type exposes no setters or save. */
+export function openReadonlyResourceFolder(
+  folderPath: string,
+  options: UnreportedResourceFolderOptions,
+): ReadonlyResourceFolder {
+  return openUnreportedResourceFolder(folderPath, options);
+}
+
+/** Explicit legacy/fixture path: saving this folder sends no mutations. */
+export function openUnreportedResourceFolder(
+  folderPath: string,
+  options: UnreportedResourceFolderOptions,
+): ResourceFolder {
   if (options.translationsFolder !== undefined) assertCollectionFolderPath(options.translationsFolder, folderPath);
   return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder);
 }
@@ -236,7 +264,10 @@ function rebaseConvertedLocale(
   if (meta && !hasBaseDrift(meta, previousBaseChecksum)) meta.baseChecksum = currentBaseChecksum;
 }
 
+const saveFolderFiles = Symbol('saveFolderFiles');
+
 class FileResourceFolder implements ResourceFolder {
+  private readonly changedKeys = new Set<string>();
   private readonly entriesPath: string;
   private readonly metaPath: string;
   private readonly entries: ResourceEntries;
@@ -248,6 +279,7 @@ class FileResourceFolder implements ResourceFolder {
     readonly folderPath: string,
     private readonly baseLocale: string,
     private readonly translationsFolder?: string,
+    private readonly onMutation?: MutationSink,
   ) {
     this.entriesPath = join(folderPath, RESOURCE_ENTRIES_FILENAME);
     this.metaPath = join(folderPath, TRACKER_META_FILENAME);
@@ -328,6 +360,7 @@ class FileResourceFolder implements ResourceFolder {
       ? applyBaseChange(entryMeta, this.baseLocale, checksum)
       : { ...entryMeta, [this.baseLocale]: { ...entryMeta[this.baseLocale], checksum } };
 
+    this.changedKeys.add(key);
     return true;
   }
 
@@ -352,6 +385,7 @@ class FileResourceFolder implements ResourceFolder {
       changed = true;
     }
 
+    if (changed) this.changedKeys.add(key);
     return changed;
   }
 
@@ -371,6 +405,8 @@ class FileResourceFolder implements ResourceFolder {
       throw new Error(`Cannot set a translation for the base locale "${locale}"; use setBase`);
     }
     const entry = this.requireEntry(key);
+    const previousValue = entry[locale];
+    const previousMeta = JSON.stringify(this.metaOf(key)[locale]);
     entry[locale] = value;
 
     const entryMeta = this.metaOf(key);
@@ -381,6 +417,7 @@ class FileResourceFolder implements ResourceFolder {
       baseChecksum ?? this.currentBaseChecksum(key),
       status,
     );
+    if (previousValue !== value || previousMeta !== JSON.stringify(this.meta[key][locale])) this.changedKeys.add(key);
   }
 
   setStatus(key: string, locale: string, status: TranslationStatus): void {
@@ -390,7 +427,9 @@ class FileResourceFolder implements ResourceFolder {
     if (!localeMeta) {
       throw new Error(`No metadata for locale "${locale}" of resource "${key}"`);
     }
+    if (localeMeta.status === status) return;
     localeMeta.status = status;
+    this.changedKeys.add(key);
   }
 
   reconfirmTranslation(
@@ -419,6 +458,7 @@ class FileResourceFolder implements ResourceFolder {
       if (previous) {
         this.setStatus(key, locale, status);
         if (baseChecksum !== undefined) previous.baseChecksum = baseChecksum;
+        this.changedKeys.add(key);
       } else {
         this.setTranslationICU(key, locale, translocoToICU(entry[locale] as string), status, baseChecksum);
       }
@@ -438,6 +478,7 @@ class FileResourceFolder implements ResourceFolder {
     );
     this.entries[key] = stored;
     this.meta[key] = storedMeta;
+    this.changedKeys.add(key);
 
     // Conversion changes syntax, not meaning. Keep a copied status and update only the
     // checksums that referred to a converted value.
@@ -533,7 +574,9 @@ class FileResourceFolder implements ResourceFolder {
       if (this.seedEntryLocale(key, locale, entry.source)) localesAdded++;
     }
 
-    return { valuesConverted, tagsNormalized, localesAdded, changed: JSON.stringify(this.get(key)) !== before };
+    const changed = JSON.stringify(this.get(key)) !== before;
+    if (changed) this.changedKeys.add(key);
+    return { valuesConverted, tagsNormalized, localesAdded, changed };
   }
 
   seedLocale(locale: string): number {
@@ -560,7 +603,10 @@ class FileResourceFolder implements ResourceFolder {
         delete entryMeta[locale];
         changed = true;
       }
-      if (changed) changedEntries++;
+      if (changed) {
+        this.changedKeys.add(key);
+        changedEntries++;
+      }
     }
     return changedEntries;
   }
@@ -569,10 +615,35 @@ class FileResourceFolder implements ResourceFolder {
     if (!this.has(key)) return false;
     delete this.entries[key];
     delete this.meta[key];
+    this.changedKeys.add(key);
     return true;
   }
 
   save(options: { readonly dryRun?: boolean } = {}): ResourceFolderSaveResult {
+    let result: ResourceFolderSaveResult;
+    try {
+      result = this[saveFolderFiles](options);
+    } catch (error) {
+      if (!options.dryRun && this.translationsFolder !== undefined)
+        this.onMutation?.(resourceMutations.reindex(this.translationsFolder));
+      throw error;
+    }
+    if (!options.dryRun && this.translationsFolder !== undefined && this.onMutation) {
+      const path = relative(this.translationsFolder, this.folderPath).split(sep).join('.');
+      for (const key of this.changedKeys) {
+        const fullKey = path ? `${path}.${key}` : key;
+        this.onMutation(
+          this.has(key)
+            ? resourceMutations.upsert(this.translationsFolder, fullKey, this.treeEntry(key))
+            : resourceMutations.remove(this.translationsFolder, fullKey),
+        );
+      }
+      this.changedKeys.clear();
+    }
+    return result;
+  }
+
+  [saveFolderFiles](options: { readonly dryRun?: boolean } = {}): ResourceFolderSaveResult {
     const dryRun = options.dryRun ?? false;
     if (this.translationsFolder !== undefined) assertCollectionFolderPath(this.translationsFolder, this.folderPath);
 
@@ -625,4 +696,63 @@ class FileResourceFolder implements ResourceFolder {
 function sameTags(current: readonly string[] | undefined, next: readonly string[]): boolean {
   if (!current) return false;
   return current.length === next.length && current.every((tag, index) => tag === next[index]);
+}
+
+/** Relocation alone batches private unreported saves, then all removes before all upserts. */
+function saveRelocation(
+  source: Collection,
+  destination: Collection,
+  folders: readonly ResourceFolder[],
+  moved: () => readonly { readonly from: string; readonly to: string; readonly entry: ResourceTreeEntry }[],
+  saved: (folder: ResourceFolder, result: ResourceFolderSaveResult) => void,
+): { readonly error: unknown } | undefined {
+  let failure: { readonly error: unknown } | undefined;
+  try {
+    for (const folder of folders) {
+      // Relocation opens these folders here; the raw save capability is absent from ResourceFolder.
+      saved(folder, (folder as FileResourceFolder)[saveFolderFiles]());
+    }
+  } catch (error) {
+    failure = { error };
+  }
+  if (failure) {
+    destination.onMutation(resourceMutations.reindex(destination.translationsFolder));
+    if (resolve(source.translationsFolder) !== resolve(destination.translationsFolder))
+      source.onMutation(resourceMutations.reindex(source.translationsFolder));
+    return failure;
+  }
+  const entries = moved();
+  for (const { from } of entries) source.onMutation(resourceMutations.remove(source.translationsFolder, from));
+  for (const { to, entry } of entries)
+    destination.onMutation(resourceMutations.upsert(destination.translationsFolder, to, entry));
+  return undefined;
+}
+
+export { saveRelocation as saveResourceRelocation };
+
+/** Directory operations have no JSON-pair save; keep their legacy success/failure notifications. */
+export function reportResourceDirectoryWrite<T>(
+  collection: Pick<Collection, 'translationsFolder' | 'onMutation'>,
+  write: () => T,
+  path: string,
+  kind: 'add-folder' | 'remove-folder',
+  changed: (result?: T) => boolean = () => true,
+): T {
+  let result: T;
+  try {
+    result = write();
+  } catch (error) {
+    if (changed()) collection.onMutation(resourceMutations.reindex(collection.translationsFolder));
+    throw error;
+  }
+  if (changed(result)) collection.onMutation(resourceMutations.folder(kind, collection.translationsFolder, path));
+  return result;
+}
+
+/** Config/lifecycle operations retain one broad reindex per affected root. */
+export function reindexResourceCollection(
+  collection: { readonly translationsFolder: string; readonly onMutation?: MutationSink },
+  translationsFolder = collection.translationsFolder,
+): void {
+  collection.onMutation?.(resourceMutations.reindex(translationsFolder));
 }

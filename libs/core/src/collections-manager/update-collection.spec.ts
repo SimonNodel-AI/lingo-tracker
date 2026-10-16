@@ -70,10 +70,15 @@ describe('updateCollection', () => {
     patch: Partial<LingoTrackerCollection>,
     options: UpdateCollectionOptions = {},
   ) => {
-    return updateCollection(openCollection(loadConfig({ cwd: cwd() }), name, { cwd: cwd() }), newName, patch, {
-      ...options,
-      onMutation,
-    });
+    return updateCollection(
+      {
+        ...openCollection(loadConfig({ cwd: cwd() }), name, { cwd: cwd() }),
+        onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), name, { cwd: cwd() }).onMutation,
+      },
+      newName,
+      patch,
+      { ...options },
+    );
   };
 
   beforeEach(() => {
@@ -89,9 +94,14 @@ describe('updateCollection', () => {
     const folderBytes = readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME));
     writeConfig(externalConfig);
 
-    await expect(updateCollection(current, undefined, { locales: ['en', 'es', 'de'] }, { onMutation })).rejects.toThrow(
-      ConfigChangedError,
-    );
+    await expect(
+      updateCollection(
+        { ...current, onMutation: onMutation ?? current.onMutation },
+        undefined,
+        { locales: ['en', 'es', 'de'] },
+        {},
+      ),
+    ).rejects.toThrow(ConfigChangedError);
 
     expect(readConfig()).toEqual(externalConfig);
     expect(readFileSync(join(i18n(), 'apps', RESOURCE_ENTRIES_FILENAME))).toEqual(folderBytes);
@@ -342,7 +352,10 @@ describe('updateCollection', () => {
     });
 
     writeConfig({ ...config(), bundles: malformed as unknown as LingoTrackerConfig['bundles'] });
-    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
+    deleteCollection({
+      ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+      onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+    });
 
     expect(readConfig().bundles).toEqual({
       ...malformed,
@@ -369,7 +382,10 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
+    deleteCollection({
+      ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+      onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+    });
 
     expect(readConfig().bundles?.['main']?.collections).toEqual([{ name: 'other', entriesSelectionRules: 'All' }]);
     expect(readConfig().bundles?.['all']).toEqual(original.bundles['all']);
@@ -406,10 +422,16 @@ describe('updateCollection', () => {
     const metaBytes = readFileSync(join(i18n(), 'apps', TRACKER_META_FILENAME));
 
     expect(() =>
-      deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation }),
+      deleteCollection({
+        ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+        onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+      }),
     ).toThrow(CollectionRequiredByBundleError);
     expect(() =>
-      deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation }),
+      deleteCollection({
+        ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+        onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+      }),
     ).toThrow(
       'Collection "myApp" is the only collection of bundle(s) "first", "second". Remove it from those bundles or delete them first.',
     );
@@ -429,13 +451,19 @@ describe('updateCollection', () => {
     };
     writeConfig(original);
 
-    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
+    deleteCollection({
+      ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+      onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+    });
 
     expect(readConfig().bundles).toEqual(original.bundles);
   });
 
   it('delivers the deleted collection folder for reindexing', () => {
-    deleteCollection(openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }), { onMutation });
+    deleteCollection({
+      ...openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }),
+      onMutation: onMutation ?? openCollection(loadConfig({ cwd: cwd() }), 'myApp', { cwd: cwd() }).onMutation,
+    });
 
     expect(collected).toEqual([{ kind: 'reindex', translationsFolder: i18n() }]);
     expect(readConfig().collections).not.toHaveProperty('myApp');

@@ -7,10 +7,15 @@ import {
   type WalkCollectionFoldersOptions,
   walkCollectionFolders,
 } from './collection-folders';
-import { openResourceFolder, type ResourceFolder } from './resource-folder';
+import {
+  openReadonlyResourceFolder,
+  openUnreportedResourceFolder,
+  type ReadonlyResourceFolder,
+  type ResourceFolder,
+} from './resource-folder';
 
 /**
- * Collection Sweep — the write side of the Resource Folder, the twin of the Collection Reader.
+ * Collection Sweep — lazy folder access, read-only unless unreported writes are explicitly requested.
  *
  * Every write that goes over many folders of a collection (add/remove locale, normalize, folder
  * move and delete, pattern move) walks them here, so one set of rules applies:
@@ -19,8 +24,8 @@ import { openResourceFolder, type ResourceFolder } from './resource-folder';
  *   (`collection-folders.ts`): hidden folders and everything below them are not part of the
  *   collection, a missing translations folder is an empty collection, and a folder that cannot be
  *   listed is a problem.
- * - Each folder is opened with the collection's base locale, through `openResourceFolder`, and
- *   handed to the caller to change and save. Folders without entries are swept too.
+ * - Folders are read-only by default. Normalize and locale rewrites explicitly request unreported
+ *   writable folders to retain their silent-at-HEAD JSON saves. Folders without entries are swept too.
  * - A folder whose files are not valid JSON is not opened; it is yielded as a problem, and the
  *   sweep continues. The caller decides what a problem means.
  */
@@ -29,8 +34,8 @@ import { openResourceFolder, type ResourceFolder } from './resource-folder';
 export type CollectionSweepTarget = Pick<Collection, 'translationsFolder' | 'baseLocale'>;
 
 /** One folder of a sweep: opened, or a problem. */
-export type SweptFolder =
-  | (CollectionFolderAddress & { readonly folder: ResourceFolder; readonly problem?: undefined })
+export type SweptFolder<Folder extends ReadonlyResourceFolder = ReadonlyResourceFolder> =
+  | (CollectionFolderAddress & { readonly folder: Folder; readonly problem?: undefined })
   | (CollectionFolderAddress & { readonly folder?: undefined; readonly problem: CollectionFolderProblem });
 
 export type SweepCollectionOptions = Pick<WalkCollectionFoldersOptions, 'startPath'>;
@@ -40,9 +45,17 @@ export type SweepCollectionOptions = Pick<WalkCollectionFoldersOptions, 'startPa
  * in directory order. Lazy: a folder is opened when the caller reaches it, so a save made to an
  * earlier folder is on disk before the next one is read.
  */
+export function sweepCollection(
+  collection: CollectionSweepTarget,
+  options: SweepCollectionOptions & { readonly unreported: true },
+): Generator<SweptFolder<ResourceFolder>>;
+export function sweepCollection(
+  collection: CollectionSweepTarget,
+  options?: SweepCollectionOptions,
+): Generator<SweptFolder>;
 export function* sweepCollection(
   collection: CollectionSweepTarget,
-  options: SweepCollectionOptions = {},
+  options: SweepCollectionOptions & { readonly unreported?: true } = {},
 ): Generator<SweptFolder> {
   for (const visit of walkCollectionFolders(collection.translationsFolder, options)) {
     const { segments, folderPath, absolutePath, depth } = visit;
@@ -52,9 +65,10 @@ export function* sweepCollection(
       continue;
     }
 
-    let folder: ResourceFolder;
+    let folder: ReadonlyResourceFolder;
     try {
-      folder = openResourceFolder(absolutePath, {
+      const openFolder = options.unreported ? openUnreportedResourceFolder : openReadonlyResourceFolder;
+      folder = openFolder(absolutePath, {
         baseLocale: collection.baseLocale,
         translationsFolder: collection.translationsFolder,
       });

@@ -29,18 +29,14 @@ export type { ResourceEntryMetadata } from './resource-entry-metadata';
 export {
   type EntryDetails,
   type NormalizeEntryReport,
-  type OpenResourceFolderOptions,
   openResourceFolder,
   type ResourceFolder,
   type ResourceFolderEntry,
   type ResourceFolderSaveResult,
 } from './resource-folder';
-export {
-  type MutationSink,
-  type MutationSinkOptions,
-  type ResourceMutation,
-  reindexMutation,
-  saveReporting,
+export type {
+  MutationSink,
+  ResourceMutation,
 } from './resource-mutation';
 export { type ResourceTreeApplyResult, ResourceTreeIndex } from './resource-tree-index';
 export type { FolderChild, ResourceTreeEntry, ResourceTreeNode } from './resource-tree-types';

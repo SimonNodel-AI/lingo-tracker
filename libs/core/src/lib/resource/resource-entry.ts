@@ -30,21 +30,8 @@ import {
 import { planMove } from './move-plan';
 import { relocateEntries } from './relocate-entries';
 import { type ResolvedResourcePaths, resolveResolvedResourcePaths, resolveResourcePaths } from './resource-file-paths';
-import {
-  openResourceFolder,
-  type ResourceFolder,
-  type ResourceFolderSaveResult,
-  resourceFolderPresence,
-} from './resource-folder';
+import { openResourceFolder, type ResourceFolder, resourceFolderPresence } from './resource-folder';
 import { resolveCheckedResourceKey } from './resource-key';
-import {
-  type MutationSink,
-  type MutationSinkOptions,
-  removeMutation,
-  resolveMutationSink,
-  saveReporting,
-  upsertMutation,
-} from './resource-mutation';
 import type { ResourceTreeEntry } from './resource-tree-types';
 import { assertTranslationStatus } from './translation-status-input';
 
@@ -159,7 +146,7 @@ interface EntryEditResult extends EditResourceResult {
   readonly entry: ResourceTreeEntry;
 }
 
-interface EntryWriteOptions extends OpenTranslatorOptions, MutationSinkOptions {}
+type EntryWriteOptions = OpenTranslatorOptions;
 
 export interface AddResourceParams extends EntryAddChanges {
   /** Dot-delimited key, e.g., "apps.common.buttons.ok". */
@@ -200,7 +187,6 @@ interface EditContext {
   readonly collection: Collection;
   readonly resource: LocatedEntry;
   readonly options: EntryWriteOptions;
-  readonly onMutation?: MutationSink;
 }
 
 type SuppliedEditTranslations = [string, { readonly value: string; readonly status?: TranslationStatus }][];
@@ -243,22 +229,6 @@ function assertConversionSafe(locale: string, value: string): void {
       admission.violations.map((violation) => violation.description),
     );
   }
-}
-
-function saveEntry(
-  collection: Collection,
-  resource: LocatedEntry,
-  onMutation?: MutationSink,
-): ResourceFolderSaveResult {
-  return saveReporting(resource.folder, collection.translationsFolder, onMutation, () => [
-    resource.folder.has(resource.entryKey)
-      ? upsertMutation(
-          collection.translationsFolder,
-          resource.resolvedKey,
-          resource.folder.treeEntry(resource.entryKey),
-        )
-      : removeMutation(collection.translationsFolder, resource.resolvedKey),
-  ]);
 }
 
 /** Add: prepare values before single or batch writes. */
@@ -307,12 +277,11 @@ export async function addResource(
   options: AddResourceOptions = {},
 ): Promise<AddResourceResult> {
   const resolvedKey = resolveCheckedResourceKey(params.key, params.targetFolder);
-  const onMutation = resolveMutationSink(collection, options);
   const prepared = await prepareAdd(
     preflightAdd(collection, resolvedKey, params, options.onExisting ?? 'fail'),
     options,
   );
-  return commitPrepared(prepared, onMutation);
+  return commitPrepared(prepared);
 }
 
 /** Validates supplied values, then checks existence, without seeding or writing. */
@@ -355,14 +324,8 @@ async function prepareAdd(preflight: AddPreflight, options: OpenTranslatorOption
 }
 
 /** Reopens fresh state and writes the prepared values through the shared save/report path. */
-function commitPrepared(prepared: PreparedAdd, onMutation?: MutationSink): AddResourceResult {
-  const committed = commitAdd(
-    prepared.collection,
-    prepared.resolvedKey,
-    prepared.changes,
-    prepared.onExisting,
-    onMutation,
-  );
+function commitPrepared(prepared: PreparedAdd): AddResourceResult {
+  const committed = commitAdd(prepared.collection, prepared.resolvedKey, prepared.changes, prepared.onExisting);
   return {
     ...committed,
     ...(prepared.skippedLocales !== undefined && { skippedLocales: prepared.skippedLocales }),
@@ -376,12 +339,11 @@ function commitAdd(
   resolvedKey: string,
   changes: EntryAddChanges,
   onExisting: ExistingResourcePolicy,
-  onMutation?: MutationSink,
 ): Pick<AddResourceResult, 'resolvedKey' | 'created' | 'translations'> {
   const resource = locateResolvedEntry(collection, resolvedKey);
   const created = checkWriteConflict(resource, onExisting);
   const translations = applyEntryAdd(resource, changes);
-  saveEntry(collection, resource, onMutation);
+  resource.folder.save();
   return { resolvedKey, created, translations };
 }
 
@@ -396,7 +358,7 @@ function checkWriteConflict(resource: LocatedEntry, onExisting: ExistingResource
   return created;
 }
 
-/** Applies normalized add values; the owning write reports the save through saveEntry. */
+/** Applies normalized add values; the Resource Folder reports the save. */
 function applyEntryAdd(resource: LocatedEntry, changes: EntryAddChanges): ResourceTranslation[] {
   const { folder, entryKey } = resource;
   ensureDirectoryExists({ directoryPath: folder.folderPath, errorContext: 'Creating resource folder' });
@@ -466,7 +428,7 @@ export async function addResources(
   const findings: TerminologyFinding[] = [];
   const problems = new Set<string>();
   for (const candidate of prepared) {
-    const result = commitPrepared(candidate, resolveMutationSink(collection, options));
+    const result = commitPrepared(candidate);
     if (result.created) entriesCreated++;
     for (const locale of result.skippedLocales ?? []) skippedLocales.add(locale);
     findings.push(...result.terminology.findings);
@@ -514,9 +476,8 @@ export async function editResource(
   changes: EditResourceChanges,
   options: EditResourceOptions = {},
 ): Promise<EditResourceResult> {
-  const onMutation = resolveMutationSink(collection, options);
   const { resource, translations, destination, liveEntry } = validateEntryEdit(collection, key, changes);
-  const context: EditContext = { collection, resource, options, onMutation };
+  const context: EditContext = { collection, resource, options };
   const previousBase = liveEntry.source;
   const base = applyEditBaseAndDetails(resource, changes, previousBase);
   const translationsChanged = applySuppliedEditTranslations(resource, translations, liveEntry);
@@ -529,7 +490,7 @@ export async function editResource(
   }
 
   // Two-phase write: the edit is saved before auto-translation, so it is kept if the provider fails.
-  if (base.hasChanges || translationsChanged) saveEntry(collection, resource, onMutation);
+  if (base.hasChanges || translationsChanged) resource.folder.save();
   const seeded =
     base.baseValue !== undefined && base.baseValue !== previousBase
       ? await seedEditedEntry(context, base.baseValue, previousBase, translations, liveEntry)
@@ -626,9 +587,8 @@ async function seedEditedEntry(
   translations: SuppliedEditTranslations,
   liveEntry: ResourceEntry,
 ) {
-  const { collection, resource, options, onMutation } = context;
+  const { collection, resource, options } = context;
   const { folder, entryKey } = resource;
-  const { translationsFolder } = collection;
   let skippedLocales: string[] | undefined;
   const snapshots = new Map(
     collection.targetLocales.map((locale) => [
@@ -654,10 +614,8 @@ async function seedEditedEntry(
     const snapshot = snapshots.get(translation.locale);
     return snapshot ? [{ entryKey, ...translation, snapshot }] : [];
   });
-  const writeBack = writeBackTranslations(collection, folder.folderPath, pending, {
-    mutationSink: onMutation,
-    saved: (folder) => [upsertMutation(translationsFolder, resource.resolvedKey, folder.treeEntry(entryKey))],
-  });
+  const writeBack = writeBackTranslations(collection, folder.folderPath, pending);
+
   if (!writeBack.folder.has(entryKey)) {
     throw new ResourceNotFoundError(resource.resolvedKey);
   }
@@ -674,9 +632,9 @@ function finishEntryEdit(
   baseValue: string | undefined,
   seeded: Awaited<ReturnType<typeof seedEditedEntry>> | undefined,
 ): EntryEditResult {
-  const { collection, resource, onMutation } = context;
+  const { collection, resource } = context;
   const { skippedLocales, translatorProblems } = seeded ?? {};
-  const moved = destination ? moveEntry(collection, resource.resolvedKey, destination, onMutation) : undefined;
+  const moved = destination ? moveEntry(collection, resource.resolvedKey, destination) : undefined;
   const resolvedKey = moved?.resolvedKey ?? resource.resolvedKey;
   const updatedEntry = moved?.entry ?? (seeded?.folder ?? resource.folder).treeEntry(resource.entryKey);
   if (!updatedEntry) {
@@ -736,7 +694,6 @@ function moveEntry(
   collection: Collection,
   sourceKey: string,
   destinationKey: string,
-  onMutation?: MutationSink,
 ): { resolvedKey: string; entry: ResourceTreeEntry; warnings?: string[] } {
   const plan = planMove({
     source: collection,
@@ -744,7 +701,7 @@ function moveEntry(
     selection: { kind: 'key', key: sourceKey },
     destinationPath: destinationKey,
   });
-  const relocation = relocateEntries(plan, { onMutation });
+  const relocation = relocateEntries(plan);
   if (relocation.collisions.length > 0) {
     throw new ResourceAlreadyExistsError(destinationKey);
   }
@@ -756,12 +713,7 @@ function moveEntry(
 }
 
 /** Remove an existing entry. */
-export function removeEntry(
-  collection: Collection,
-  key: string,
-  options: MutationSinkOptions = {},
-): ResourceEntryRemoval {
-  const onMutation = resolveMutationSink(collection, options);
+export function removeEntry(collection: Collection, key: string): ResourceEntryRemoval {
   const paths = resolveResourcePaths({ key, translationsFolder: collection.translationsFolder });
   const folderAddress = paths.folderPathSegments.join('.') || '.';
   const presence = resourceFolderPresence(paths.folderPath);
@@ -785,9 +737,6 @@ export function removeEntry(
     `could not update folder ${folderAddress}`,
   );
   if (!removed) throw new ResourceNotFoundError(paths.resolvedKey);
-  const saved = deletionStep(
-    () => saveEntry(collection, resource, onMutation),
-    `could not write folder ${folderAddress}`,
-  );
+  const saved = deletionStep(() => resource.folder.save(), `could not write folder ${folderAddress}`);
   return { resolvedKey: paths.resolvedKey, emptied: saved.emptied ? paths.folderPath : undefined };
 }

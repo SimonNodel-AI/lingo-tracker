@@ -4,6 +4,7 @@ import { mapGetTreeResultToDto, mapResourceTreeToDto } from './resource-tree.map
 /** The mapper only reads the base locale, the target locales and the tags. */
 function collectionWith(overrides: Partial<Collection> = {}): Collection {
   return {
+    onMutation: () => undefined,
     name: 'test',
     translationsFolder: '/t',
     baseLocale: 'en',
