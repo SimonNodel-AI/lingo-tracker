@@ -480,7 +480,7 @@ export async function addResources(
     terminology: { findings, problems: [...problems] },
   };
 }
-/** Edit an existing entry. */
+
 /**
  * Edits an existing resource entry of a collection.
  *
