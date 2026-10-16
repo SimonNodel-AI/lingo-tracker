@@ -42,8 +42,8 @@
         <mat-icon aria-hidden="true">output</mat-icon>
         <span class="rail-stack">
           <span class="rail-label">{{ TOKENS.BUNDLES.DIALOG.SECTIONS.OUTPUT | transloco }}</span>
-          <span class="rail-sub" [class.rail-sub--empty]="!model.outputSummary()">{{
-            model.outputSummary() || (placeholderPattern | transloco)
+          <span class="rail-sub" [class.rail-sub--empty]="!model.preview.outputSummary()">{{
+            model.preview.outputSummary() || (placeholderPattern | transloco)
           }}</span>
         </span>
         @if (model.sectionErrors().has('output')) {
@@ -136,8 +136,8 @@
         <span class="rail-stack">
           <span class="rail-label">{{ TOKENS.BUNDLES.DIALOG.SECTIONS.TYPES | transloco }}</span>
           @if (model.form.controls.typesEnabled.value) {
-            <span class="rail-sub" [class.rail-sub--empty]="!model.typeFileName()">{{
-              model.typeFileName() || (placeholderTypeFile | transloco)
+            <span class="rail-sub" [class.rail-sub--empty]="!model.preview.typeFileName()">{{
+              model.preview.typeFileName() || (placeholderTypeFile | transloco)
             }}</span>
           } @else {
             <span class="rail-sub rail-sub--prose">{{ TOKENS.BUNDLES.DIALOG.OFF | transloco }}</span>
@@ -258,7 +258,7 @@
             </div>
           </div>
 
-          @if (model.patternFiles().length > 0) {
+          @if (model.preview.patternFiles().length > 0) {
             <p id="bundle-pattern-hint" class="field-hint field-hint--icon">
               <mat-icon aria-hidden="true">description</mat-icon>
               <span [innerHTML]="TOKENS.BUNDLES.DIALOG.OUTPUT.WRITESHINTX | transloco: writesHintParams()"></span>
@@ -659,11 +659,11 @@
         >
           <mat-icon class="disclosure-icon" aria-hidden="true">visibility</mat-icon>
           <span class="disclosure-title">{{ TOKENS.BUNDLES.DIALOG.PREVIEW.DISCLOSURETITLE | transloco }}</span>
-          <span class="disclosure-summary">{{ TOKENS.BUNDLES.DIALOG.FOOTER.FILESCOUNTX | transloco: { count: model.previewFileCount() } }}</span>
+          <span class="disclosure-summary">{{ TOKENS.BUNDLES.DIALOG.FOOTER.FILESCOUNTX | transloco: { count: model.preview.previewFileCount() } }}</span>
           <mat-icon class="disclosure-chevron" aria-hidden="true">expand_more</mat-icon>
         </button>
         @if (previewOpen()) {
-          <div id="bundle-preview-panel" class="disclosure-panel preview" [attr.aria-busy]="model.previewStale()" [class.preview--stale]="model.previewStale()">
+          <div id="bundle-preview-panel" class="disclosure-panel preview" [attr.aria-busy]="model.preview.previewStale()" [class.preview--stale]="model.preview.previewStale()">
             <ng-container *ngTemplateOutlet="previewBlocks" />
           </div>
         }
@@ -675,8 +675,8 @@
       class="prev col preview"
       data-testid="preview-column"
       [attr.aria-label]="TOKENS.BUNDLES.DIALOG.PREVIEW.ARIALABEL | transloco"
-      [attr.aria-busy]="model.previewStale()"
-      [class.preview--stale]="model.previewStale()"
+      [attr.aria-busy]="model.preview.previewStale()"
+      [class.preview--stale]="model.preview.previewStale()"
     >
       <ng-container *ngTemplateOutlet="previewBlocks" />
     </aside>
@@ -698,7 +698,7 @@
       }}</mat-icon>
       <span>
         {{ TOKENS.BUNDLES.DIALOG.FOOTER.COLLECTIONSCOUNTX | transloco: { count: model.collectionCount() } }}
-        · {{ TOKENS.BUNDLES.DIALOG.FOOTER.FILESCOUNTX | transloco: { count: model.previewFileCount() } }}
+        · {{ TOKENS.BUNDLES.DIALOG.FOOTER.FILESCOUNTX | transloco: { count: model.preview.previewFileCount() } }}
         · {{ TOKENS.BUNDLES.DIALOG.FOOTER.TYPESX | transloco: { state: (model.form.controls.typesEnabled.value ? TOKENS.BUNDLES.DIALOG.ON : TOKENS.BUNDLES.DIALOG.OFF) | transloco } }}
       </span>
     </div>
@@ -716,11 +716,11 @@
 <ng-template #previewBlocks>
   <section class="preview-block">
     <h4><mat-icon aria-hidden="true">visibility</mat-icon>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.WILLWRITE | transloco }}</h4>
-    @if (model.previewTree().length === 0) {
+    @if (model.preview.previewTree().length === 0) {
       <p class="preview-note">{{ TOKENS.BUNDLES.DIALOG.PREVIEW.WAITING | transloco }}</p>
     } @else {
       <ul class="tree" data-testid="preview-tree">
-        @for (folder of model.previewTree(); track folder.path) {
+        @for (folder of model.preview.previewTree(); track folder.path) {
           <li class="tree-folder">
             <span class="tree-dir">
               <mat-icon aria-hidden="true">folder_open</mat-icon>
@@ -754,14 +754,14 @@
 
   <section class="preview-block">
     <h4><mat-icon aria-hidden="true">functions</mat-icon>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.DRYRUN | transloco }}</h4>
-    @if (model.previewStatus() === 'error') {
+    @if (model.preview.previewStatus() === 'error') {
       <p class="preview-note" data-testid="counts-unavailable">{{ TOKENS.BUNDLES.DIALOG.PREVIEW.COUNTSUNAVAILABLE | transloco }}</p>
-    } @else if (model.dryRun(); as result) {
+    } @else if (model.preview.dryRun(); as result) {
       <dl class="kv" data-testid="dry-run">
         <dt>{{ TOKENS.BUNDLES.DIALOG.SECTIONS.COLLECTIONS | transloco }}</dt>
         <dd class="num">{{ model.collectionCount() }}</dd>
         <dt>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.KEYSPERLOCALE | transloco }}</dt>
-        <dd class="num">≈ {{ model.keysPerLocale() }}</dd>
+        <dd class="num">≈ {{ model.preview.keysPerLocale() }}</dd>
         <dt>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.CONFLICTS | transloco }}</dt>
         <dd>
           <span class="num">{{ result.conflictsCount }}</span>
@@ -772,10 +772,10 @@
         <dt>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.LOCALES | transloco }}</dt>
         <dd class="num">{{ result.locales.length }}</dd>
       </dl>
-      @if (model.hierarchicalConflicts().length > 0) {
+      @if (model.preview.hierarchicalConflicts().length > 0) {
         <p class="preview-error" role="alert" data-testid="hierarchical-conflicts">
           <mat-icon aria-hidden="true">error_outline</mat-icon>
-          <span>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.HIERARCHICALCONFLICTSX | transloco: { keys: model.hierarchicalConflictList() } }}</span>
+          <span>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.HIERARCHICALCONFLICTSX | transloco: { keys: model.preview.hierarchicalConflictList() } }}</span>
         </p>
       }
       <p class="preview-caption">{{ TOKENS.BUNDLES.DIALOG.PREVIEW.CAPTION | transloco }}</p>
@@ -793,8 +793,8 @@
     }
   </section>
 
-  @if (model.dryRun(); as result) {
-    @if (model.previewStatus() !== 'error') {
+  @if (model.preview.dryRun(); as result) {
+    @if (model.preview.previewStatus() !== 'error') {
       <section class="preview-block">
         <h4><mat-icon aria-hidden="true">key</mat-icon>{{ TOKENS.BUNDLES.DIALOG.PREVIEW.EXAMPLEKEY | transloco }}</h4>
         @if (result.exampleKey; as example) {
@@ -814,7 +814,7 @@
               <div class="example-line">
                 <mat-icon aria-hidden="true">data_object</mat-icon>
                 <b data-testid="example-token-path">
-                  @for (part of model.tokenPathParts(); track $index) {
+                  @for (part of model.preview.tokenPathParts(); track $index) {
                     <span>{{ part }}</span><wbr />
                   }
                 </b>

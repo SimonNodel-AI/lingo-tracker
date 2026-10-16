@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
+import { signal } from '@angular/core';
+import type { BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
+import { of, Subject, Subscription } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { toBundleDraft } from './bundle-draft';
+import { BundlePreview, bundleOutputPreview, bundlePlannedOutputPreview } from './bundle-output-preview';
 
 const draft = {
   dist: './dist/i18n',
@@ -111,5 +115,130 @@ describe('bundleOutputPreview', () => {
       { path: 'dist/i18n/en', names: ['admin.json'] },
       { path: 'dist/i18n/fr', names: ['admin.json'] },
     ]);
+  });
+});
+
+describe('BundlePreview with a fake dry run', () => {
+  let subscriptions: Subscription;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    subscriptions = new Subscription();
+  });
+  afterEach(() => {
+    subscriptions.unsubscribe();
+    vi.useRealTimers();
+  });
+
+  const result: BundleDryRunResultDto = {
+    name: 'main',
+    locales: ['en', 'fr'],
+    files: [{ path: 'dist/main.en.json', kind: 'bundle', locale: 'en', exists: true, keysCount: 12 }],
+    keysPerLocale: { en: 12, fr: 10 },
+    conflictsCount: 0,
+    conflictKeys: [],
+    hierarchicalConflicts: ['a.b'],
+    warnings: [],
+  };
+  function setup(dryRun = vi.fn(() => new Subject<BundleDryRunResultDto>())) {
+    const draft = signal({
+      ...toBundleDraft({ dist: './dist', bundleName: 'main.{locale}', collections: 'All' }, []),
+      name: 'main',
+    });
+    const locales = signal(['en']);
+    const baseLocale = signal('en');
+    const changes = new Subject<void>();
+    const preview = new BundlePreview({ draft, locales, baseLocale, dryRun });
+    subscriptions.add(preview.connect(changes));
+    const edit = (dist: string) => {
+      draft.update((value) => ({ ...value, dist }));
+      changes.next();
+    };
+    return { preview, draft, locales, baseLocale, changes, edit, dryRun };
+  }
+
+  it('debounces edits, cancels at the next request, and releases in-flight work', () => {
+    const first = new Subject<BundleDryRunResultDto>();
+    const second = new Subject<BundleDryRunResultDto>();
+    const dryRun = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const { preview, edit } = setup(dryRun);
+    expect(preview.previewStatus()).toBe('waiting');
+    expect(preview.previewStale()).toBe(true);
+    vi.advanceTimersByTime(200);
+    edit('./other');
+    vi.advanceTimersByTime(299);
+    expect(dryRun).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(dryRun).toHaveBeenCalledWith({
+      name: 'main',
+      bundle: { dist: './other', bundleName: 'main.{locale}', collections: 'All' },
+    });
+    expect(preview.previewStatus()).toBe('loading');
+    edit('./latest');
+    vi.advanceTimersByTime(299);
+    expect(first.observed).toBe(true);
+    vi.advanceTimersByTime(1);
+    expect(first.observed).toBe(false);
+    first.next(result);
+    expect(preview.dryRun()).toBeUndefined();
+    second.next(result);
+    expect(preview.dryRun()).toBe(result);
+    expect(preview.previewStatus()).toBe('ready');
+    expect(preview.previewStale()).toBe(false);
+    subscriptions.unsubscribe();
+    expect(second.observed).toBe(false);
+    edit('./ignored');
+    vi.advanceTimersByTime(300);
+    expect(dryRun).toHaveBeenCalledTimes(2);
+  });
+
+  it('retains ready output while stale, falls back after errors, and recovers', () => {
+    const refresh = new Subject<BundleDryRunResultDto>();
+    const recovery = new Subject<BundleDryRunResultDto>();
+    const { preview, edit, locales, baseLocale } = setup(
+      vi.fn().mockReturnValueOnce(of(result)).mockReturnValueOnce(refresh).mockReturnValueOnce(recovery),
+    );
+    vi.advanceTimersByTime(300);
+    const tree = preview.previewTree();
+    edit('./new');
+    locales.set(['de']);
+    expect(preview.previewTree()).toBe(tree);
+    expect(preview.previewStale()).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(preview.previewStatus()).toBe('ready');
+    refresh.error(new Error('failed'));
+    expect(preview.previewStatus()).toBe('error');
+    expect(preview.previewStale()).toBe(false);
+    expect(preview.dryRun()).toBe(result);
+    expect(preview.previewTree()).toEqual(preview.localTree());
+    expect(preview.hierarchicalConflicts()).toEqual([]);
+    expect(preview.keysPerLocale()).toBe(12);
+    baseLocale.set('fr');
+    expect(preview.keysPerLocale()).toBe(10);
+    baseLocale.set('missing');
+    expect(preview.keysPerLocale()).toBe(12);
+    edit('./recovered');
+    vi.advanceTimersByTime(300);
+    expect(preview.previewStatus()).toBe('loading');
+    recovery.next(result);
+    expect(preview.previewStatus()).toBe('ready');
+    expect(preview.hierarchicalConflictList()).toBe('a.b');
+    expect(preview.previewFileCount()).toBe(1);
+  });
+
+  it('clears the result after the gate closes and cancels pending debounce on disposal', () => {
+    const { preview, edit, dryRun } = setup(vi.fn().mockReturnValue(of(result)));
+    vi.advanceTimersByTime(300);
+    edit(' ');
+    expect(preview.dryRun()).toBe(result);
+    expect(preview.previewStale()).toBe(true);
+    vi.advanceTimersByTime(300);
+    expect(preview.previewStatus()).toBe('waiting');
+    expect(preview.previewStale()).toBe(false);
+    expect(preview.dryRun()).toBeUndefined();
+    expect(dryRun).toHaveBeenCalledTimes(1);
+    edit('./pending');
+    subscriptions.unsubscribe();
+    vi.advanceTimersByTime(300);
+    expect(dryRun).toHaveBeenCalledTimes(1);
   });
 });
