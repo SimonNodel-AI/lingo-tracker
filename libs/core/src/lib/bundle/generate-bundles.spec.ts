@@ -35,6 +35,17 @@ describe('generateBundles', () => {
     expect(result.outcome).toBe('succeeded');
     expect(result.outcomes.map((item) => item.outcome)).toEqual(['succeeded', 'succeeded']);
     expect(result.totals).toEqual({ bundlesProcessed: 2, filesGenerated: 0 });
+    for (const outcome of result.outcomes) expect(outcome.findings).toBe(outcome.result?.findings);
+  });
+
+  it('returns empty findings when preparation fails before any advisory exists', async () => {
+    const run = await generateBundles(config, { names: ['missing'], cwd: cwd() });
+    expect(run.outcomes[0]?.findings).toEqual({
+      messages: [],
+      byOrigin: { generation: [], config: [], type: [] },
+      types: { status: 'none' },
+    });
+    expect(run.outcomes[0]).not.toHaveProperty('warnings');
   });
 
   it('runs named bundles in request order', async () => {
@@ -69,11 +80,9 @@ describe('generateBundles', () => {
       },
       { cwd: cwd() },
     );
-    expect(result.outcomes[0]?.result?.typeOutcome.status).toBe('failed');
-    expect(result.outcomes[0]?.result?.warnings.find((warning) => warning.origin === 'type')?.message).toContain(
-      "Type generation failed for 'first':",
-    );
-    expect(result.outcomes[0]?.result?.warnings.filter((warning) => warning.origin === 'generation')).toEqual([]);
+    expect(result.outcomes[0]?.result?.findings.types.status).toBe('failed');
+    expect(result.outcomes[0]?.result?.findings.byOrigin.type[0]).toContain("Type generation failed for 'first':");
+    expect(result.outcomes[0]?.result?.findings.byOrigin.generation).toEqual([]);
     expect(result.outcomes[0]?.outcome).toBe('failed');
     expect(result.outcome).toBe('failed');
   });
@@ -98,9 +107,7 @@ describe('generateBundles', () => {
     );
 
     expect(result.outcomes[0]?.error).toBeUndefined();
-    expect(result.outcomes[0]?.result?.warnings).toEqual([
-      { origin: 'generation', message: "Collection 'deleted' not found in config" },
-    ]);
+    expect(result.outcomes[0]?.result?.findings.messages).toEqual(["Collection 'deleted' not found in config"]);
     expect(result.outcomes[0]?.result?.writtenFiles).toEqual(['out/first-en.json']);
     expect(result.totals).toEqual({ bundlesProcessed: 1, filesGenerated: 1 });
     expect(existsSync(join(cwd(), 'out/first-en.json'))).toBe(true);
@@ -156,9 +163,9 @@ describe('generateBundles', () => {
     );
 
     expect(events).toEqual(['start', 'result']);
-    expect(result.outcomes[0]?.result?.warnings).toHaveLength(1);
-    expect(result.outcomes[0]?.result?.warnings.filter((warning) => warning.origin === 'generation')).toEqual([]);
-    expect(result.outcomes[0]?.result?.warnings.find((warning) => warning.origin === 'config')?.message).toContain(
+    expect(result.outcomes[0]?.result?.findings.messages).toHaveLength(1);
+    expect(result.outcomes[0]?.result?.findings.byOrigin.generation).toEqual([]);
+    expect(result.outcomes[0]?.result?.findings.byOrigin.config[0]).toContain(
       "Bundle 'first': 'typeDist' is deprecated",
     );
   });
@@ -188,17 +195,12 @@ describe('generateBundles', () => {
     expect(events.map((event) => event.kind)).toEqual(['start', 'result']);
     const reported = events[1]?.outcome;
     const failed = result.outcomes[0];
-    expect(reported && 'warnings' in reported ? reported.warnings : undefined).toEqual([
-      { origin: 'config', message: expect.stringContaining("Bundle 'first': 'typeDist' is deprecated") },
+    expect(reported?.findings.byOrigin.config).toEqual([
+      expect.stringContaining("Bundle 'first': 'typeDist' is deprecated"),
     ]);
-    expect(
-      events.filter(
-        (event) => event.outcome && 'warnings' in event.outcome && (event.outcome.warnings?.length ?? 0) > 0,
-      ),
-    ).toHaveLength(1);
-    expect(failed && 'warnings' in failed ? failed.warnings : undefined).toBe(
-      reported && 'warnings' in reported ? reported.warnings : undefined,
-    );
+    expect(reported?.findings.types).toEqual({ status: 'none' });
+    expect(events.filter((event) => (event.outcome?.findings.messages.length ?? 0) > 0)).toHaveLength(1);
+    expect(failed?.findings).toBe(reported?.findings);
   });
 
   it('forwards overrides and allows a constant name for one named bundle', async () => {

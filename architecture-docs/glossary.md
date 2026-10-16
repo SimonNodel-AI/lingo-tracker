@@ -60,9 +60,7 @@ During bundle generation, ICU simple placeholder syntax (`{varName}`) is convert
 
 Core generates a saved bundle by its name for the API. For a CLI run, `generateBundles(config, { names?, locales?, overrides, cwd })` selects all or named bundles, prepares each request once, continues after an individual failure, and returns one outcome per bundle plus totals. [Bundle Run Preparation](#bundle-run-preparation) supplies the shared settings for generation and planning. Type generation has one outcome: written, skipped, failed, or not configured. A skipped outcome carries the `empty-bundle` reason code.
 
-Core returns one `warnings: BundleWarning[]` list and structured `typeOutcome`. Core formats warning text internally. [Bundle Result Warnings](#bundle-result-warnings) carries generation warnings, config deprecation, then type-outcome warning for both the API DTO and CLI Bundle Presentation. The CLI retains successful and skipped type-file tree lines as progress.
-
-The CLI renders its own tree lines from `typeOutcome` and prints the prepared config warning carried by the per-bundle outcome. Config and type warnings stay outside its generation warning summary.
+Core returns [Bundle Findings](#bundle-findings) for both adapters. The CLI owns tree lines and warning framing; config and type diagnostics stay outside its generation warning summary.
 
 If generation throws, the prepared warning still reaches the CLI event or API log.
 
@@ -90,6 +88,14 @@ Explained in context: [`core-library.md`](core-library.md#bundle-definition), [`
 
 ---
 
+### Bundle Findings
+
+The classified diagnostics carried as `findings` on `GenerateBundleResult` and every `BundleRunOutcome`. Core assembles them once when generation finishes, or from prepared config advisories when a run throws. A returned result and its run outcome share the same findings object. The internal assembly module is `libs/core/src/lib/bundle/bundle-findings.ts`; adapters do not call it. `messages` preserves generation, config, then type warning order, including repeated messages. `byOrigin` groups messages as `generation`, `config`, and `type`. `types` is a discriminated union: `written` with path and key count, `failed` with reason, `skipped` with a worded reason, or `none`. An unconfigured type file or a run that throws has `none`. Raw warnings and type outcomes stay inside core. The CLI formats config advisories, generation warning counts and type progress from these findings. Its type switch is exhaustive. The API copies every message and written type metadata into the unchanged DTO, including config advisories on successful jobs.
+
+Explained in context: [`bundle-generation.md`](bundle-generation.md)
+
+---
+
 ### Bundle Form
 
 The Tracker bundle dialog's form model, `BundleForm`, in `apps/tracker/src/app/collections/bundle-form-dialog/bundle-form.ts`. It owns the typed Angular form, population and validation, section state and errors, definition building, and the form-to-signal bridge. An injected dry-run function supplies its debounced preview, including stale results and error recovery. `submitResult()` prepares an attempted submit: it validates and builds the result once. `submit({ dialog, write })` is the form's submit entry point. It delegates the attempt to a [Form Submit Attempt](#form-submit-attempt) (which composes [Dialog Config Submit](#dialog-config-submit)), supplying a single preparation callback and refusal rendering: a taken name opens the Output section, any other refusal lands in `submitErrors`. It exposes the module's `saving` signal. Its `destroyRef` cancels an in-flight write and releases form subscriptions (`destroy()` also releases form subscriptions). The dialog keeps DOM handling; `injectBundleFormSubmit()` supplies the submit environment and store write wiring.
@@ -108,7 +114,7 @@ Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
 ### Bundle Presentation
 
-The CLI's event-driven renderer in `apps/cli/src/commands/bundle-report.ts`. `printBundleEvent(event, { quiet?, verbose?, localeFilter? })` prints progress and diagnostics. `printBundleSummary(run, options)` derives the existing generation-only warning totals. Bundle keeps this presentation because its streams are pinned byte-for-byte and differ from [Run Report](#run-report)'s grouped lists. It uses the complete [Bundle Result Warnings](#bundle-result-warnings) list, retains each finding's source, and preserves separate config advisory, type tree/failure, and generation warning output. Only verbose mode shows generation warning details. Quiet mode retains diagnostics and warning totals. Neither function changes exit status; the command uses the completed run outcome.
+The CLI's event-driven renderer in `apps/cli/src/commands/bundle-report.ts`. `printBundleEvent(event, { quiet?, verbose?, localeFilter? })` prints progress and diagnostics. `printBundleSummary(run, options)` derives the existing generation-only warning totals. Bundle keeps this presentation because its streams are pinned byte-for-byte and differ from [Run Report](#run-report)'s grouped lists. It formats [Bundle Findings](#bundle-findings) as separate config advisory, type tree/failure, and generation warning output. Only verbose mode shows generation warning details. Quiet mode retains diagnostics and warning totals. Neither function changes exit status; the command uses the completed run outcome.
 
 Explained in context: [`cli.md`](cli.md)
 
@@ -116,9 +122,7 @@ Explained in context: [`cli.md`](cli.md)
 
 ### Bundle Result Warnings
 
-The one ordered `warnings` list on `GenerateBundleResult` in `libs/core/src/lib/bundle/generate-bundle.ts`. Each [Bundle Warning](#bundle-warning) carries its origin and message. Generation assembles the list in generation, config, then type order, copying the already worded config advisories from Bundle Run Preparation and preserving text and repeated findings. The API mapper copies messages into the unchanged string-list DTO; CLI Bundle Presentation selects warnings by origin, without inferring origins from positions. A thrown run carries the prepared advisory list on the failed `BundleRunOutcome.warnings` list.
-
-Successful API jobs include config deprecations in the existing `warnings` field, even when type generation succeeds. The DTO retains warning messages without origins. The job service iterates the prepared `warnings` list and logs each message only when generation throws before it returns a result.
+The warnings assembled internally by generation from [Bundle Warning](#bundle-warning) objects. The returned interface is [Bundle Findings](#bundle-findings). If generation throws before returning a result, the API job service logs each prepared config advisory once.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
@@ -134,7 +138,7 @@ Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
 ### Bundle Run Preparation
 
-The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, warnings, tokenConstantNameOverride, content }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `content({ onLocale?, onBase? })` selects all requested locales and each collection’s base values once, on first use. It caches trees, base keys, conflicts, and warnings. `planPreparedBundle(prepared)` describes this content; generation writes it. Empty locales have zero counts and warnings but no planned file. Base-selection warnings appear once unless separate locale selections also report them. Selected locale conflicts stop generation before all writes. Base conflicts stop runs only when types or debug keys consume the base tree. Progress fires before each locale selection. The run holds all selections in memory until output completes. Preparation is the single producer of config advisories: `warnings: readonly BundleWarning[]` contains already worded messages with the `config` origin, or is empty. Generation copies this list after generation findings and before type warnings; failed run outcomes carry it directly. Config advisories remain separate from the CLI’s generation warning count. If generation throws before returning a result, the API logs each prepared warning once.
+The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, warnings, tokenConstantNameOverride, content }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `content({ onLocale?, onBase? })` selects all requested locales and each collection’s base values once, on first use. It caches trees, base keys, conflicts, and warnings. `planPreparedBundle(prepared)` describes this content; generation writes it. Empty locales have zero counts and warnings but no planned file. Base-selection warnings appear once unless separate locale selections also report them. Selected locale conflicts stop generation before all writes. Base conflicts stop runs only when types or debug keys consume the base tree. Progress fires before each locale selection. The run holds all selections in memory until output completes. Preparation is the single producer of config advisories: `warnings: readonly BundleWarning[]` contains already worded messages with the `config` origin, or is empty. Generation and failed run outcomes classify these advisories into [Bundle Findings](#bundle-findings). If generation throws before returning a result, the API logs each prepared warning once.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle-generation-lives), [`api.md`](api.md#bundles)
 
@@ -156,7 +160,7 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#hierarchy-bu
 
 The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. Core bundle warnings travel through one [Bundle Result Warnings](#bundle-result-warnings) list with explicit origins. The prepared config advisory list travels on a failed `BundleRunOutcome.warnings` list when generation throws. The CLI Bundle Presentation preserves event ordering and its existing presentation: config deprecation before progress or a thrown error, type failures after progress, and generation warning details only in verbose mode. The CLI selects generation warnings for its warning list; deprecation and type diagnostics retain their separate framing. The API maps warning messages in generation, config, then type order. The job result DTO is unchanged. Core totals carry only processed bundles and generated JSON file counts; the CLI derives generation warning totals from the list. There is no separate warning event. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. The API formats core's [Bundle Findings](#bundle-findings) into the job result DTO. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -172,9 +176,7 @@ Explained in context: [`core-library.md`](core-library.md#bundle-selection), [`b
 
 ### Bundle Type Outcome
 
-The discriminated `BundleTypeOutcome` union in `libs/core/src/lib/bundle/generate-bundle.ts`: `written` with a project-relative path and key count, `skipped` with the `empty-bundle` reason, `failed` with a reason message, or `not-configured`. `generateBundleTypes` in `type-generation/generate-types.ts` returns it directly. Hierarchical conflicts still throw before writes; generation records them as failed outcomes. The bundle result carries this outcome as `typeOutcome` and formats skipped or failed outcomes into [Bundle Result Warnings](#bundle-result-warnings).
-
-Both adapters read this outcome directly. The CLI prints the type status, path, and key count. The API includes type metadata only for `written` outcomes. Core includes the written type path in `writtenFiles`, alongside JSON paths. A `written` outcome can still accompany a config deprecation warning from the prepared advisory list.
+The internal `BundleTypeOutcome` union in `libs/core/src/lib/bundle/generate-bundle.ts`: `written` with a project-relative path and key count, `skipped` with the `empty-bundle` reason, `failed` with a reason message, or `not-configured`. `generateBundleTypes` in `type-generation/generate-types.ts` returns it directly. Hierarchical conflicts still throw before writes; generation records them as failed outcomes. Generation adds the written type path to `writtenFiles` and converts the outcome to [Bundle Findings](#bundle-findings) before returning.
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
@@ -182,7 +184,7 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
 ### Bundle Warning
 
-One warning in the prepared config advisory list or [Bundle Result Warnings](#bundle-result-warnings), declared as `BundleWarning` in `libs/core/src/lib/bundle/generate-bundle.ts`. Its `origin` is `generation`, `config` (the legacy type-setting deprecation), or `type` (failed or skipped type generation); `message` is the existing core-formatted warning text. Bundle Run Preparation creates config warnings once; generation and both adapters consume these objects without deriving messages from a raw field. Explicit origins keep provenance at the adapter seam without extra result fields or positional rules.
+One internal warning in the prepared config advisory list or [Bundle Result Warnings](#bundle-result-warnings), declared as `BundleWarning` in `libs/core/src/lib/bundle/generate-bundle.ts`. Its `origin` is `generation`, `config` (the legacy type-setting deprecation), or `type` (failed or skipped type generation); `message` is the existing core-formatted warning text. Bundle Run Preparation creates config warnings once; generation consumes these objects without deriving messages from a raw field. Adapters consume [Bundle Findings](#bundle-findings).
 
 Explained in context: [`bundle-generation.md`](bundle-generation.md)
 

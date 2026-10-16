@@ -8,8 +8,6 @@ export {
 } from './bundle-definition-operations';
 export {
   type BundleProgressEvent,
-  type BundleTypeOutcome,
-  type BundleWarning,
   type GenerateBundleParams,
   type GenerateBundleResult,
   generatePreparedBundle,

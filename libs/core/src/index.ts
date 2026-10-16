@@ -31,8 +31,6 @@ export type {
   BundlePlanFile,
   BundleProgressEvent,
   BundleRunOutcome,
-  BundleTypeOutcome,
-  BundleWarning,
   GenerateBundleParams,
   GenerateBundleResult,
   GenerateBundlesOptions,
