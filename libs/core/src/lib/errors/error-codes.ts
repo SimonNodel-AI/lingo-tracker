@@ -26,3 +26,30 @@ export type ProviderErrorCode = KnownProviderErrorCode | (string & {});
 
 /** Valid keys for adapter override tables. */
 export type ErrorCode = DomainErrorCode | KnownProviderErrorCode;
+
+/** Optional facts also support runtime subclasses that reuse a catalogue code. */
+type Facts<Error> = Partial<Readonly<Omit<Error, Exclude<keyof definitions.LingoTrackerError, 'details'>>>>;
+type ErrorFactsByCode = {
+  readonly [Name in keyof Catalogue as Catalogue[Name]['code']]: Facts<InstanceType<Catalogue[Name]>>;
+} & { readonly [Code in KnownProviderErrorCode]: Facts<definitions.TranslationError> };
+
+export type ErrorView<Code extends string> = Pick<definitions.LingoTrackerError, 'kind' | 'message'> & {
+  readonly code: Code;
+  readonly facts: Pick<definitions.LingoTrackerError, 'details'> &
+    (Code extends keyof ErrorFactsByCode ? ErrorFactsByCode[Code] : object);
+};
+
+/** `Result` must not be a function type. */
+export type ErrorRules<Result, Context = void, ExtraCode extends string = never> = {
+  readonly [Code in ErrorCode | ExtraCode]?: Result | ((error: ErrorView<Code>, context: Context) => Result);
+};
+
+/** The own-property lookup is the boundary between open runtime codes and typed rules. */
+export function mapTypedError<Result, Context = void, ExtraCode extends string = never>(
+  error: definitions.LingoTrackerError,
+  rules: ErrorRules<Result, Context, ExtraCode>,
+  context: Context,
+): Result | undefined {
+  const rule: unknown = Object.getOwnPropertyDescriptor(rules, error.code)?.value;
+  return (typeof rule === 'function' ? rule(error, context) : rule) as Result | undefined;
+}

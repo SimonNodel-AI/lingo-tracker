@@ -50,29 +50,6 @@ export type PreferredTerminologyEditProblem =
   | 'preferred-orphan-flags'
   | 'preferred-incomplete-flags';
 
-const protectedTermsProblems: Record<ProtectedTermsEditProblem, true> = {
-  'protected-conflict': true,
-  'protected-missing': true,
-  'protected-file-path': true,
-  'protected-replacement-conflict': true,
-};
-const preferredTerminologyProblems: Record<PreferredTerminologyEditProblem, true> = {
-  'preferred-missing': true,
-  'preferred-conflict': true,
-  'preferred-remove-shape': true,
-  'preferred-replacement-shape': true,
-  'preferred-upsert-shape': true,
-  'preferred-orphan-flags': true,
-  'preferred-incomplete-flags': true,
-};
-
-export function isProtectedTermsEditProblem(problem: unknown): problem is ProtectedTermsEditProblem {
-  return typeof problem === 'string' && Object.keys(protectedTermsProblems).includes(problem);
-}
-export function isPreferredTerminologyEditProblem(problem: unknown): problem is PreferredTerminologyEditProblem {
-  return typeof problem === 'string' && Object.keys(preferredTerminologyProblems).includes(problem);
-}
-
 export type CollectionTagEditProblem = 'tag-conflict' | 'tag-missing';
 
 /** An address names a folder outside the collection policy, or one that cannot be accessed. */

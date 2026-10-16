@@ -1,10 +1,5 @@
-import {
-  CollectionNotFoundError,
-  executeMove,
-  type LingoTrackerConfig,
-  loadConfig,
-  ReadOnlyCollectionError,
-} from '@simoncodes-ca/core';
+import { internalErrors } from '@simoncodes-ca/core/testing';
+import { executeMove, type LingoTrackerConfig, loadConfig } from '@simoncodes-ca/core';
 import prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { isInteractiveTerminal } from '../runner/terminal';
@@ -72,7 +67,7 @@ describe('moveResourceCommand', () => {
 
   it('exits 1 for an unknown destination collection', async () => {
     vi.mocked(executeMove).mockImplementation(() => {
-      throw new CollectionNotFoundError('missing', 'destination');
+      throw new internalErrors.CollectionNotFoundError('missing', 'destination');
     });
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'missing' });
 
@@ -83,7 +78,7 @@ describe('moveResourceCommand', () => {
 
   it('exits 1 for a read-only destination collection', async () => {
     vi.mocked(executeMove).mockImplementation(() => {
-      throw new ReadOnlyCollectionError('vendor');
+      throw new internalErrors.ReadOnlyCollectionError('vendor');
     });
     await moveResourceCommand({ collection: 'main', source: 'a.ok', dest: 'b.ok', destCollection: 'vendor' });
 
