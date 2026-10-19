@@ -183,9 +183,11 @@
             />
             <ul class="format-hints">
               <li [class.format-hint--on]="model.draft().format === 'xliff'">
+                <mat-icon aria-hidden="true">description</mat-icon>
                 <span><b>{{ TOKENS.EXPORT.DIALOG.FORMAT.XLIFF | transloco }}</b> {{ TOKENS.EXPORT.DIALOG.FORMAT.XLIFFHINT | transloco }}</span>
               </li>
               <li [class.format-hint--on]="model.draft().format === 'json'">
+                <mat-icon aria-hidden="true">data_object</mat-icon>
                 <span><b>{{ TOKENS.EXPORT.DIALOG.FORMAT.JSON | transloco }}</b> {{ TOKENS.EXPORT.DIALOG.FORMAT.JSONHINT | transloco }}</span>
               </li>
             </ul>

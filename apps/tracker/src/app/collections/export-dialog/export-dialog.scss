@@ -88,12 +88,32 @@
   line-height: var(--line-height-normal);
   color: var(--color-text-secondary);
 
+  li {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--spacing-2);
+  }
+
+  mat-icon {
+    flex: none;
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    margin-top: 2px;
+    color: var(--color-text-tertiary);
+  }
+
   b {
+    font-family: var(--font-family-mono);
     font-weight: var(--font-weight-semibold);
   }
 
   .format-hint--on {
     color: var(--color-text-primary);
+
+    mat-icon {
+      color: var(--color-primary);
+    }
   }
 }
 
@@ -146,6 +166,8 @@
 .check-row-lock {
   margin-left: auto;
   font-size: 16px;
+  width: 16px;
+  height: 16px;
   color: var(--color-warning-text, var(--color-warning));
 }
 
@@ -170,6 +192,10 @@
 
   &--button {
     cursor: pointer;
+    transition:
+      background var(--transition-fast),
+      border-color var(--transition-fast),
+      color var(--transition-fast);
 
     &:hover {
       color: var(--color-text-primary);
@@ -191,6 +217,12 @@
     border-style: dashed;
     border-color: var(--color-border-strong);
     background: transparent;
+
+    mat-icon {
+      font-size: 14px;
+      width: 14px;
+      height: 14px;
+    }
   }
 }
 
@@ -202,6 +234,8 @@
 
 .pill-tag {
   font-size: 0.625rem;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
@@ -227,6 +261,14 @@
   font-weight: var(--font-weight-semibold);
   line-height: 1;
   cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+
+  &:hover {
+    background-color: var(--color-background-muted);
+  }
 
   &:focus-visible {
     outline: 2px solid var(--focus-ring-color);
@@ -273,6 +315,7 @@
   justify-content: space-between;
   gap: var(--spacing-3);
   font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
 
   &--off {
     color: var(--color-text-tertiary);
@@ -282,6 +325,7 @@
 // Preview additions.
 .tree-count {
   margin-left: auto;
+  color: var(--color-text-secondary);
 }
 
 .tree-file--skipped {
@@ -289,6 +333,7 @@
 
   em {
     margin-left: auto;
+    font-family: var(--font-family-body);
     font-style: normal;
   }
 }
@@ -301,6 +346,8 @@
   background: var(--dialog-well);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-primary);
   overflow-x: auto;
   white-space: pre;
 }
@@ -313,6 +360,7 @@
   padding: 0;
   list-style: none;
   font-size: var(--font-size-xs);
+  line-height: var(--line-height-normal);
   color: var(--color-text-secondary);
 
   li {
@@ -329,6 +377,13 @@
   flex: none;
 }
 
+// Full-screen below 640px, like the translation editor (panel box is in styles.scss).
+@media (max-width: 639px) {
+  .dialog-wrapper {
+    height: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .disclosure-panel,
   .rail-fade {
@@ -338,7 +393,9 @@
   .disclosure-chevron,
   .preview,
   .rail-item,
-  .switch-row {
+  .switch-row,
+  .status-toggle,
+  .pill--button {
     transition: none;
   }
 }
