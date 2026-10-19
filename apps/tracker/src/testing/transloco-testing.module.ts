@@ -208,6 +208,9 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'export.run.skippedLocales': 'Skipped locales',
         'export.run.warningsHeading': 'Warnings',
         'export.run.errorsHeading': 'Errors',
+        'export.dialog.preview.skippedLocalesX':
+          '{ count, plural, =1 {1 locale skipped} other {{count} locales skipped} }',
+        'export.dialog.sections.richShort': 'rich',
         'bundles.toast.created': 'Bundle created successfully',
         'bundles.toast.updated': 'Bundle updated successfully',
         'bundles.toast.deleted': 'Bundle deleted successfully',

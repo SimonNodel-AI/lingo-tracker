@@ -98,5 +98,15 @@
     "ru": "{ count, plural, one {{count} тег} few {{count} тега} many {{count} тегов} other {{count} тега} }",
     "ja": "{ count, plural, other {{count} 個のタグ} }",
     "de": "{ count, plural, =1 {1 Tag} other {{count} Tags} }"
+  },
+  "richShort": {
+    "source": "rich",
+    "comment": "Rail sub-line for the JSON options section, after the structure, e.g. \"hierarchical · rich\". Lowercase, short.",
+    "tags": ["export"],
+    "es": "enriquecido",
+    "fr-ca": "enrichi",
+    "ru": "расширенный",
+    "ja": "リッチ",
+    "de": "erweitert"
   }
 }

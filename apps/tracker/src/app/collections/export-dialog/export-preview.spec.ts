@@ -158,9 +158,9 @@ describe('entryShape', () => {
     draft.format = 'json';
     const nested = entryShape(draft);
     expect(nested.language).toBe('json');
-    expect(JSON.parse(nested.lines.join('\n'))).toEqual({ buttons: { save: 'Enregistrer les modifications' } });
+    expect(JSON.parse(nested.lines.join('\n'))).toEqual({ buttons: { save: '…' } });
     draft.json.structure = 'flat';
-    expect(JSON.parse(entryShape(draft).lines.join('\n'))).toEqual({ 'buttons.save': 'Enregistrer les modifications' });
+    expect(JSON.parse(entryShape(draft).lines.join('\n'))).toEqual({ 'buttons.save': '…' });
   });
 
   it('adds rich properties only while enabled and uses the chosen base property', () => {
@@ -177,7 +177,7 @@ describe('entryShape', () => {
     });
     const leaf = JSON.parse(entryShape(draft).lines.join('\n'))['buttons.save'];
     expect(leaf).toEqual({
-      value: 'Enregistrer les modifications',
+      value: '…',
       source: 'Save changes',
       status: 'stale',
       comment: 'Primary action',
@@ -187,7 +187,7 @@ describe('entryShape', () => {
     Object.assign(draft.json, { includeBase: false, includeStatus: false, includeComment: false, includeTags: false });
     draft.protectedTermNotes = false;
     expect(JSON.parse(entryShape(draft).lines.join('\n'))['buttons.save']).toEqual({
-      value: 'Enregistrer les modifications',
+      value: '…',
     });
   });
 });

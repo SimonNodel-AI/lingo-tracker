@@ -389,4 +389,72 @@ describe('ExportDialog', () => {
     expect(query<HTMLButtonElement>(harness, 'submit')?.disabled).toBe(true);
     expect(text(harness, 'preview-notes')).toContain('Collection x is unreadable');
   });
+
+  it('lists collections in page order with their folder and a lock for read-only ones', () => {
+    const harness = build({
+      config: {
+        ...config,
+        collections: {
+          zeta: { translationsFolder: 'libs/zeta' },
+          Alpha: { translationsFolder: 'apps/alpha/i18n', readOnly: true },
+          beta: { translationsFolder: 'beta' },
+        },
+      },
+    });
+    harness.component.model.form.controls.allCollections.setValue(false);
+    harness.component.activate('collections');
+    harness.fixture.detectChanges();
+    const rows = Array.from(harness.root.querySelectorAll('.check-row'));
+    expect(rows.map((row) => row.querySelector('mat-checkbox')?.textContent?.trim())).toEqual([
+      'Alpha',
+      'beta',
+      'zeta',
+    ]);
+    expect(rows[0]?.querySelector('.check-row-path')?.textContent?.replace(/\s+/g, '')).toBe('apps/alpha/i18n');
+    expect(rows[0]?.querySelector('.check-row-lock')).not.toBeNull();
+    expect(rows[1]?.querySelector('.check-row-lock')).toBeNull();
+  });
+
+  it('collapses skipped locales into one placeholder line with the codes in the title', () => {
+    const harness = build({
+      plan: plan({
+        skippedLocales: [
+          { locale: 'ar', reason: 'no-matching-entries' },
+          { locale: 'is', reason: 'no-matching-entries' },
+        ],
+      }),
+    });
+    settle(harness);
+    expect(text(harness, 'skipped')).toContain('2 locales skipped · no matching entries');
+    expect(query(harness, 'skipped')?.getAttribute('title')).toBe('ar, is');
+    expect(harness.root.querySelectorAll('[data-testid="preview-files"] .tree-file--skipped').length).toBe(1);
+  });
+
+  it('keeps the Filters sub-line with an empty-style placeholder when no status is selected', () => {
+    const harness = build();
+    harness.component.model.form.controls.statuses.setValue([]);
+    harness.fixture.detectChanges();
+    const sub = query(harness, 'rail-filters')?.querySelector('.rail-sub');
+    expect(sub?.textContent?.trim()).toBe('No statuses');
+    expect(sub?.classList.contains('rail-sub--empty')).toBe(true);
+  });
+
+  it('writes status sub-lines in lowercase and marks the active rail item for initial focus', () => {
+    const harness = build();
+    expect(query(harness, 'rail-filters')?.querySelector('.rail-sub')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'new, stale',
+    );
+    expect(query(harness, 'rail-format')?.hasAttribute('cdkFocusInitial')).toBe(true);
+    expect(query(harness, 'rail-filters')?.hasAttribute('cdkFocusInitial')).toBe(false);
+  });
+
+  it('titles the narrow-width disclosure Preview and keeps every block reachable inside it', () => {
+    const harness = build();
+    settle(harness);
+    expect(text(harness, 'preview-toggle')).toContain('Preview');
+    click(harness, 'preview-toggle');
+    const panel = harness.root.querySelector('#export-preview-panel');
+    expect(panel?.querySelector('[data-testid="summary"]')).not.toBeNull();
+    expect(panel?.querySelector('[data-testid="entry-shape"]')).not.toBeNull();
+  });
 });

@@ -284,10 +284,12 @@
   justify-content: space-between;
   gap: var(--spacing-3);
   font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
 
   &--off {
-    color: var(--color-text-tertiary);
+    font-weight: var(--font-weight-medium);
+    color: var(--color-text-secondary);
   }
 }
 
@@ -298,13 +300,9 @@
 }
 
 .tree-file--skipped {
-  color: var(--color-text-tertiary);
+  // Placeholder ink, not tertiary: this is text to read (Text-Weight Rule).
+  color: var(--color-text-placeholder);
 
-  em {
-    margin-left: auto;
-    font-family: var(--font-family-body);
-    font-style: normal;
-  }
 }
 
 .shape {
@@ -317,8 +315,8 @@
   font-size: var(--font-size-xs);
   line-height: var(--line-height-normal);
   color: var(--color-text-primary);
-  overflow-x: auto;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .notes {
@@ -373,4 +371,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.kv dd {
+  text-align: right;
+}
+
+.kv dd.warn {
+  color: var(--color-warning-text);
+}
+
+.link--quiet {
+  color: var(--color-text-secondary);
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.field > app-segmented-control {
+  width: fit-content;
+}
+
+.check-row-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
 }

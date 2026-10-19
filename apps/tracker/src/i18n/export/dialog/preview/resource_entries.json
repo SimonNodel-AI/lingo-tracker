@@ -128,5 +128,15 @@
     "ru": "Не удалось загрузить предварительный просмотр.",
     "ja": "プレビューを読み込めませんでした。",
     "de": "Die Vorschau konnte nicht geladen werden."
+  },
+  "skippedLocalesX": {
+    "source": "{ count, plural, =1 {1 locale skipped} other {{count} locales skipped} }",
+    "comment": "Preview Files block: one line summarising the target locales with no matching entries. Followed by a separator and \"no matching entries\".",
+    "tags": ["export"],
+    "es": "{ count, plural, =1 {1 idioma omitido} other {{count} idiomas omitidos} }",
+    "fr-ca": "{ count, plural, =1 {1 langue ignorée} other {{count} langues ignorées} }",
+    "ru": "{ count, plural, one {Пропущена # локаль} few {Пропущено # локали} many {Пропущено # локалей} other {Пропущено # локали} }",
+    "ja": "{ count, plural, other {{count} 件のロケールをスキップ} }",
+    "de": "{ count, plural, =1 {1 Sprache übersprungen} other {{count} Sprachen übersprungen} }"
   }
 }
