@@ -174,7 +174,7 @@ If you run `lingo-tracker export` without the `--format` flag **in a TTY termina
 
 The Tracker UI exports with the same options as the CLI. A live preview shows what the export will write before you run it.
 
-<!-- screenshot: export dialog -->
+![The Export dialog on the Format pane, with the live preview listing the files to write](../images/export-dialog.png)
 
 ### Open the dialog
 
