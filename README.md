@@ -69,6 +69,8 @@ The `validate` command acts as a quality gate for your release pipeline — it e
 ### Flexibility
 Import and export your resource data in JSON and XLIFF 1.2 formats. Use tags to segment resources, filter exports by status or locale, and configure multiple bundles with pattern matching and collection merging strategies. Define **collection-level tags** in your collection configuration to have every resource in a collection automatically inherit those tags — making cross-collection export filtering effortless. LingoTracker gives you complete control over how you manage and bundle resources for your application.
 
+You can also export from the Tracker UI. Choose **Export…** on the Collections page or in a collection's menu, set the format, locales and filters, and check a live preview before LingoTracker writes the files. The dialog remembers your settings for the next export. [Learn more](docs/features/export.md#export-from-the-tracker-ui).
+
 ## Get Started
 
 ### Installation

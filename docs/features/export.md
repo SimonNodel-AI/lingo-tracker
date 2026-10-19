@@ -30,7 +30,7 @@ lingo-tracker export --format <format> [options]
 | `-o, --output <path>` | Output directory. Defaults to `exportFolder` from config if set. | `dist/lingo-export` |
 | `--filename <pattern>` | Custom filename pattern. The extension (`.xliff` or `.json`) is appended automatically if omitted. | `<locale>.xliff` or `<locale>.json` |
 | `--no-protect-notes` | Leave protected-term annotations off exported entries. | Annotations on |
-| `--dry-run` | Preview export without writing files. | `false` |
+| `--dry-run` | Preview export without writing files or creating the output folder. | `false` |
 | `--verbose` | Show detailed progress. | `false` |
 
 ### JSON Specific Options
@@ -162,8 +162,54 @@ Every export generates a timestamped `lingo-tracker-export-summary-<timestamp>.m
 - **Warnings**: e.g., files that were overwritten.
 - **Errors**: broken down into general errors, malformed files, resources omitted due to missing metadata, and hierarchical key conflicts (JSON only — when a key like `a.b.c` conflicts with a parent key `a.b`).
 
-In a dry run, the summary is printed to the console instead of written to disk. Note: even in dry-run mode, the output directory is created on disk if it does not already exist.
+In a dry run, the summary is printed to the console instead of written to disk.
+
+> **Note:** `--dry-run` does not create the output folder. It reports the files it would write and leaves the disk unchanged, even when the output directory does not exist yet.
 
 ## Interactive Mode
 
 If you run `lingo-tracker export` without the `--format` flag **in a TTY terminal**, an interactive wizard guides you through all options. In non-interactive environments (CI, pipes), `--format` is required and omitting it is an error. All other unspecified options fall back silently to their documented defaults — pass all relevant flags explicitly in scripts rather than relying on interactive prompts.
+
+## Export from the Tracker UI
+
+The Tracker UI exports with the same options as the CLI. A live preview shows what the export will write before you run it.
+
+<!-- screenshot: export dialog -->
+
+### Open the dialog
+
+- Select **Export…** in the head of the Collections section to export with all collections selected.
+- Select **Export…** in the ⋮ menu of a collection card to export with only that collection selected.
+
+Read-only collections can be exported.
+
+### Settings
+
+| Section | Controls | CLI flag |
+|---------|----------|----------|
+| Format | XLIFF or JSON. | `--format` |
+| Collections | The collections to export. All collections must share one base locale. | `--collection` |
+| Locales | The target locales. The base locale is never listed. | `--locale` |
+| Filters | Resource statuses and tags. | `--status`, `--tags` |
+| Output | Output folder and file name pattern. The pattern accepts the [placeholders](#filename-placeholders) above. | `--output`, `--filename` |
+| JSON options | Structure (hierarchical or flat), rich objects, and the base value, status, comment and tags fields. JSON only. | `--structure`, `--rich`, `--include-*` |
+
+### Preview and overwrite
+
+The preview runs a dry run each time you change a setting. It lists the files and the number of resources in each file, and it shows the same warnings and errors as the CLI. Files that already exist in the output folder are marked as overwritten. The preview does not create the output folder or write any file.
+
+Select **Export** to write the files. The files go to the output folder on the server, which is the `exportFolder` from your config, or `dist/lingo-export` when it is not set. The browser does not download them.
+
+### Result strip
+
+When the export finishes, a result strip appears on the Collections page:
+
+- **Details** shows the files that were written, with any warnings and errors.
+- **Dismiss** removes the strip.
+- **Retry** runs the export again with the same settings. It appears when the export failed.
+
+The export runs as a background job. The API behind it is described in the [API reference](../api.md).
+
+### Remembered settings
+
+The dialog remembers its settings for each project: format, filters, output folder, file name pattern and JSON options. The selection of collections and locales is not remembered, so each export starts from the collection you opened it from.
