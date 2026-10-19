@@ -212,15 +212,20 @@
               }
             </ul>
           }
-          @if (strip.skipped.length > 0) {
+          @if (strip.skippedPlain.length + strip.skippedWithReason.length > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.SKIPPEDLOCALES | transloco }}</h4>
-            <ul class="details-list">
-              @for (item of strip.skipped; track item.locale) {
+            <ul class="details-list details-list--skipped">
+              @if (strip.skippedPlain.length > 0) {
+                <li class="skipped-run">
+                  <span>
+                    <code class="mono">@for (locale of strip.skippedPlain; track locale) {<span>{{ locale }}</span>@if (!$last) { · }<wbr />}</code>&ngsp;<span class="skipped-reason">{{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPED | transloco }}</span>
+                  </span>
+                </li>
+              }
+              @for (item of strip.skippedWithReason; track item.locale) {
                 <li>
                   <code class="mono">{{ item.locale }}</code>
-                  @if (item.error) {
-                    <span>{{ item.error }}</span>
-                  }
+                  <span class="skipped-reason">{{ item.error }}</span>
                 </li>
               }
             </ul>

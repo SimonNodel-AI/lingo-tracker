@@ -146,12 +146,15 @@ export class CollectionsManager {
     if (!run) return null;
     const result = run.result;
     const errors = result?.errors.length ?? 0;
+    const skipped = result?.localeResults.filter((item) => item.outcome === 'skipped') ?? [];
     return {
       run,
       result,
       warnings: result?.warnings.length ?? 0,
       errors,
-      skipped: result?.localeResults.filter((item) => item.outcome === 'skipped') ?? [],
+      // Skipped locales with no distinct error read as one run followed by the shared reason.
+      skippedPlain: skipped.filter((item) => !item.error).map((item) => item.locale),
+      skippedWithReason: skipped.filter((item) => item.error),
       files: exportedFiles(result),
       // A failed run only offers details when there is a per-locale error to read.
       hasDetails: run.status === 'completed' || errors > 0,

@@ -260,6 +260,16 @@ app-run-result-strip {
     flex: none;
   }
 
+  .skipped-reason {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+  }
+
+  // Skipped locales wrap as one inline run; the reason follows in secondary ink.
+  .skipped-run .mono {
+    margin-right: var(--spacing-2);
+  }
+
   // Warnings and errors are prose paragraphs: show three lines, full text on hover.
   &--warnings li,
   &--errors li {

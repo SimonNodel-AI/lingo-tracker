@@ -491,6 +491,8 @@ describe('CollectionsManager', () => {
         { locale: 'fr', outcome: 'exported', entriesExported: 400, file: 'dist/lingo-export/fr.xlf' },
         { locale: 'de', outcome: 'exported', entriesExported: 23, file: 'dist/lingo-export/de.xlf' },
         { locale: 'ja', outcome: 'skipped', entriesExported: 0, error: 'Nothing to export' },
+        { locale: 'ar', outcome: 'skipped', entriesExported: 0 },
+        { locale: 'fr-fr', outcome: 'skipped', entriesExported: 0 },
       ],
       warnings: ['Check the notes'],
       errors: [],
@@ -684,6 +686,9 @@ describe('CollectionsManager', () => {
     });
 
     it('lists files, skipped locales and warnings in the details panel', () => {
+      spectator
+        .inject(TranslocoService)
+        .setTranslation({ 'export.dialog.preview.skipped': 'no matching entries' }, 'en', { merge: true });
       startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });
 
       strip()?.querySelector<HTMLButtonElement>('.details-toggle')?.click();
@@ -695,6 +700,10 @@ describe('CollectionsManager', () => {
       expect(details).toContain('400 entries');
       expect(details).toContain('Skipped locales');
       expect(details).toContain('Nothing to export');
+      // Locales without a distinct error share one inline run and one reason.
+      const runs = strip()?.querySelectorAll('.skipped-run');
+      expect(runs?.length).toBe(1);
+      expect(runs?.[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe('ar · fr-fr no matching entries');
       expect(details).toContain('Check the notes');
       expect(strip()?.querySelector('.details-list--warnings li span')?.getAttribute('title')).toBe('Check the notes');
     });
