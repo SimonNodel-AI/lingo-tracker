@@ -29,6 +29,7 @@
         data-testid="rail-format"
         [class.rail-item--on]="model.activeSection() === 'format'"
         [attr.aria-current]="model.activeSection() === 'format' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'format' ? '' : null"
         (click)="activate('format')"
       >
         <mat-icon aria-hidden="true">description</mat-icon>
@@ -47,6 +48,7 @@
         data-testid="rail-collections"
         [class.rail-item--on]="model.activeSection() === 'collections'"
         [attr.aria-current]="model.activeSection() === 'collections' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'collections' ? '' : null"
         (click)="activate('collections')"
       >
         <mat-icon aria-hidden="true">folder_copy</mat-icon>
@@ -69,6 +71,7 @@
         data-testid="rail-locales"
         [class.rail-item--on]="model.activeSection() === 'locales'"
         [attr.aria-current]="model.activeSection() === 'locales' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'locales' ? '' : null"
         (click)="activate('locales')"
       >
         <mat-icon aria-hidden="true">translate</mat-icon>
@@ -91,17 +94,24 @@
         data-testid="rail-filters"
         [class.rail-item--on]="model.activeSection() === 'filters'"
         [attr.aria-current]="model.activeSection() === 'filters' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'filters' ? '' : null"
         (click)="activate('filters')"
       >
         <mat-icon aria-hidden="true">filter_list</mat-icon>
         <span class="rail-stack">
           <span class="rail-label">{{ TOKENS.EXPORT.DIALOG.SECTIONS.FILTERS | transloco }}</span>
-          <span class="rail-sub" [class.rail-sub--prose]="allStatuses()">
+          <span
+            class="rail-sub"
+            [class.rail-sub--prose]="allStatuses()"
+            [class.rail-sub--empty]="statusSummary().length === 0"
+          >
             @if (allStatuses()) {
               {{ TOKENS.EXPORT.DIALOG.SECTIONS.ALLSTATUSES | transloco }}
+            } @else if (statusSummary().length === 0) {
+              {{ TOKENS.BROWSER.TRANSLATIONITEM.NOSTATUSES | transloco }}
             } @else {
               @for (status of statusSummary(); track status; let last = $last) {
-                {{ statusLabel(status) | transloco }}{{ last ? '' : ',' }}
+                {{ statusLabel(status) | transloco | lowercase }}{{ last ? '' : ',' }}
               }
             }
             @if (model.draft().tags.length > 0) {
@@ -120,6 +130,7 @@
         data-testid="rail-output"
         [class.rail-item--on]="model.activeSection() === 'output'"
         [attr.aria-current]="model.activeSection() === 'output' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'output' ? '' : null"
         (click)="activate('output')"
       >
         <mat-icon aria-hidden="true">output</mat-icon>
@@ -140,6 +151,7 @@
           data-testid="rail-json"
           [class.rail-item--on]="model.activeSection() === 'json'"
           [attr.aria-current]="model.activeSection() === 'json' ? 'true' : null"
+        [attr.cdkFocusInitial]="model.activeSection() === 'json' ? '' : null"
           (click)="activate('json')"
         >
           <mat-icon aria-hidden="true">data_object</mat-icon>
@@ -153,7 +165,7 @@
                 ) | transloco | lowercase
               }}
               @if (model.draft().json.rich) {
-                · {{ TOKENS.EXPORT.DIALOG.JSON.RICHLABEL | transloco | lowercase }}
+                · {{ TOKENS.EXPORT.DIALOG.SECTIONS.RICHSHORT | transloco }}
               }
             </span>
           </span>
@@ -224,15 +236,20 @@
           </div>
           @if (!model.draft().allCollections) {
             <ul class="check-list" role="group" [attr.aria-label]="TOKENS.EXPORT.DIALOG.SECTIONS.COLLECTIONS | transloco" data-testid="collection-list">
-              @for (name of model.collectionNames(); track name) {
+              @for (row of collectionRows(); track row.name) {
                 <li class="check-row">
                   <mat-checkbox
                     color="primary"
-                    [checked]="model.draft().collections.includes(name)"
-                    (change)="toggleCollection(name, $event.checked)"
-                    >{{ name }}</mat-checkbox
+                    [checked]="model.draft().collections.includes(row.name)"
+                    (change)="toggleCollection(row.name, $event.checked)"
+                    >{{ row.name }}</mat-checkbox
                   >
-                  @if (readOnlyCollections().has(name)) {
+                  <span class="check-row-path">
+                    @for (part of row.folderParts; track $index) {
+                      <span>{{ part }}</span><wbr />
+                    }
+                  </span>
+                  @if (row.readOnly) {
                     <mat-icon
                       class="check-row-lock"
                       [matTooltip]="TOKENS.EXPORT.DIALOG.COLLECTIONS.READONLYTOOLTIP | transloco"
@@ -531,7 +548,7 @@
           aria-controls="export-preview-panel"
         >
           <mat-icon class="disclosure-icon" aria-hidden="true">visibility</mat-icon>
-          <span class="disclosure-title">{{ TOKENS.EXPORT.DIALOG.PREVIEW.SUMMARY | transloco }}</span>
+          <span class="disclosure-title">{{ TOKENS.BUNDLES.DIALOG.PREVIEW.DISCLOSURETITLE | transloco }}</span>
           <span class="disclosure-summary num">
             {{ TOKENS.EXPORT.DIALOG.FOOTER.FILESX | transloco: { count: plan()?.files?.length ?? 0 } }}
             · {{ TOKENS.EXPORT.DIALOG.FOOTER.ENTRIESX | transloco: { count: plan()?.entriesTotal ?? 0 } }}
@@ -616,7 +633,7 @@
         }
         @default {
           <mat-icon aria-hidden="true" class="footer-meta-icon--idle">radio_button_unchecked</mat-icon>
-          <button type="button" class="link" data-testid="fix-sections" (click)="fixSections()">
+          <button type="button" class="link link--quiet" data-testid="fix-sections" (click)="fixSections()">
             {{ TOKENS.EXPORT.DIALOG.FOOTER.FIXSECTIONS | transloco }}
           </button>
         }
@@ -664,15 +681,13 @@
               <span class="tree-count num">{{ file.entriesCount }}</span>
             </li>
           }
-          @for (entry of skipped(); track entry.locale) {
-            <li class="tree-file tree-file--skipped" [attr.data-testid]="'skipped-' + entry.locale">
+          @if (skipped().length > 0) {
+            <li class="tree-file tree-file--skipped" data-testid="skipped" [attr.title]="skippedCodes()">
               <mat-icon aria-hidden="true">description</mat-icon>
-              <span class="tree-file-name">
-                @for (part of entry.parts; track $index) {
-                  <span>{{ part }}</span><wbr />
-                }
+              <span>
+                {{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPEDLOCALESX | transloco: { count: skipped().length } }}
+                · {{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPED | transloco }}
               </span>
-              <em>{{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPED | transloco }}</em>
             </li>
           }
         </ul>

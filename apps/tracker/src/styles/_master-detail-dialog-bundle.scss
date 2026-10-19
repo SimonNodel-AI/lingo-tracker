@@ -35,13 +35,6 @@
   }
 }
 
-.rail-sub {
-  // Placeholder text: present so the row height never changes, but clearly not a value yet.
-  &--empty {
-    color: var(--color-text-tertiary);
-  }
-}
-
 .pane-head-action {
   flex: none;
   height: 32px;

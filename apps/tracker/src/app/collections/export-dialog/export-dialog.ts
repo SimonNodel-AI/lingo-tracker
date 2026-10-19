@@ -1,11 +1,9 @@
 import { LowerCasePipe, NgTemplateOutlet } from '@angular/common';
 import {
-  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
-  ElementRef,
   effect,
   inject,
   signal,
@@ -110,13 +108,21 @@ export class ExportDialog {
     const names = this.model.collectionNames();
     return draft.allCollections ? names.length : draft.collections.filter((name) => names.includes(name)).length;
   });
-  readonly readOnlyCollections = computed(
-    () =>
-      new Set(
-        Object.entries(this.store.config()?.collections ?? {})
-          .filter(([, collection]) => collection.readOnly)
-          .map(([name]) => name),
-      ),
+  /** Checklist rows in the Collections page's grid order (case-insensitive by name). */
+  readonly collectionRows = computed(() => {
+    const collections = this.store.config()?.collections ?? {};
+    return [...this.model.collectionNames()]
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+      .map((name) => ({
+        name,
+        folderParts: splitAfterSeparators(collections[name]?.translationsFolder ?? ''),
+        readOnly: collections[name]?.readOnly === true,
+      }));
+  });
+  readonly skippedCodes = computed(() =>
+    this.skipped()
+      .map((entry) => entry.locale)
+      .join(', '),
   );
   /** Field-level error flags: shown only once the section's errors are revealed. */
   readonly patternInvalid = computed(
@@ -139,13 +145,7 @@ export class ExportDialog {
       parts: splitAfterSeparators(file.path.slice(file.path.lastIndexOf('/') + 1)),
     })),
   );
-  readonly skipped = computed(() => {
-    const pattern = this.model.draft().filenamePattern.trim();
-    return (this.plan()?.skippedLocales ?? []).map((entry) => ({
-      locale: entry.locale,
-      parts: splitAfterSeparators(pattern ? entry.locale : `${entry.locale}${this.fileSuffix()}`),
-    }));
-  });
+  readonly skipped = computed(() => this.plan()?.skippedLocales ?? []);
   readonly notes = computed(() => {
     const plan = this.plan();
     return plan ? [...plan.errors, ...plan.hierarchicalConflicts, ...plan.warnings] : [];
@@ -174,12 +174,10 @@ export class ExportDialog {
   });
 
   constructor() {
-    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
     // The config can arrive after the dialog opens; reseed and reconcile once it does.
     effect(() => {
       if (this.store.config()) untracked(() => this.model.configLoaded());
     });
-    afterNextRender(() => host.querySelector<HTMLElement>('.rail-item[aria-current="true"]')?.focus());
     this.#destroyRef.onDestroy(() => this.model.destroy());
   }
 

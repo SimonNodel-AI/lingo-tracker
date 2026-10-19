@@ -93,7 +93,8 @@ export function entryShape(
 ): { language: 'xml' | 'json'; lines: string[] } {
   const key = example?.key ?? 'buttons.save';
   const baseValue = example?.baseValue ?? 'Save changes';
-  const target = 'Enregistrer les modifications';
+  // Neutral on purpose: a real key beside an invented translation would read as a wrong one.
+  const target = '…';
   const note = 'Do not translate: LingoTracker';
   if (draft.format === 'xliff') {
     return {

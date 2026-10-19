@@ -223,6 +223,11 @@ code {
     font-family: inherit;
   }
 
+  // Placeholder text: present so the row height never changes, but clearly not a value yet.
+  &--empty {
+    color: var(--color-text-tertiary);
+  }
+
 }
 
 .rail-count {
@@ -764,6 +769,8 @@ code {
 
 .preview-disclosure {
   display: none;
+  // A flex item of the pane: without this it shrinks and its overflow:hidden clips the blocks.
+  flex: none;
   margin-top: auto;
 }
 

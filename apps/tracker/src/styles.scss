@@ -226,7 +226,8 @@ mark.search-highlight {
 
 .cdk-overlay-pane.export-dialog-panel {
   width: 1160px;
-  max-width: calc(100vw - 3rem);
+  // Material's dialog config sets an inline `max-width: 80vw`; only !important outranks it.
+  max-width: calc(100vw - 3rem) !important;
   max-height: min(90vh, calc(100dvh - 2 * var(--spacing-8)));
 
   .mat-mdc-dialog-container,
