@@ -1,0 +1,67 @@
+@switch (status()) {
+  @case ('running') {
+    <div class="result result--run" role="status" aria-live="polite">
+      <span class="spinner" aria-hidden="true"></span>
+      <span class="result-text">
+        <span class="fig"><b>{{ headline() }}</b></span>
+        @if (currentItem(); as item) {
+          <span class="fig">{{ currentItemLabel() }} <code class="mono">{{ item }}</code></span>
+        }
+        @if (progressLabel(); as label) {
+          <span class="fig num">{{ label }}</span>
+        }
+      </span>
+      <span class="bar" aria-hidden="true"><i [style.width.%]="progressPercent()"></i></span>
+    </div>
+  }
+  @case ('completed') {
+    <div class="result result--ok" [class.result--warn]="hasWarnings()" role="status" [class.result--open]="detailsOpen()">
+      <div class="result-line">
+        <mat-icon aria-hidden="true">{{ hasWarnings() ? 'warning' : 'check_circle' }}</mat-icon>
+        <span class="result-text">
+          <span class="fig"><b>{{ headline() }}</b></span>
+          @for (clause of clauses(); track $index) {
+            <span class="fig num">{{ clause }}</span>
+          }
+        </span>
+
+        <!-- Details and dismiss travel together, pinned to the strip's top-right, so they
+             stay one cluster instead of two controls drifting apart when the copy wraps. -->
+        <div class="result-controls">
+          <button
+            type="button"
+            class="details-toggle"
+            (click)="detailsToggle.emit()"
+            [attr.aria-expanded]="detailsOpen()"
+            [attr.aria-controls]="detailsId()"
+            [attr.aria-label]="detailsAriaLabel()"
+          >
+            {{ detailsLabel() }}
+            <mat-icon class="chevron" aria-hidden="true">expand_more</mat-icon>
+          </button>
+          <button type="button" class="dismiss" (click)="dismiss.emit()" [attr.aria-label]="dismissAriaLabel()">
+            <mat-icon aria-hidden="true">close</mat-icon>
+          </button>
+        </div>
+      </div>
+
+      @if (detailsOpen()) {
+        <div class="result-details" [attr.id]="detailsId()">
+          <ng-content />
+        </div>
+      }
+    </div>
+  }
+  @case ('failed') {
+    <div class="result result--failed" role="alert">
+      <mat-icon aria-hidden="true">error</mat-icon>
+      <span class="result-text">
+        <span class="fig"><b>{{ headline() }}</b></span>
+        @if (error(); as message) {
+          <span class="fig fig--prose">{{ message }}</span>
+        }
+      </span>
+      <button type="button" class="btn btn--outline btn--sm" (click)="retry.emit()">{{ retryLabel() }}</button>
+    </div>
+  }
+}

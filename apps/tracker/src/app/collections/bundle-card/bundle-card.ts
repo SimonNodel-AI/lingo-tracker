@@ -4,6 +4,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe } from '@jsverse/transloco';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { RunResultStrip } from '../../shared/components/run-result-strip/run-result-strip';
 import type { BundleRunState } from '../store/bundle-runs';
 import type { BundleEntry } from '../store/features/with-bundles.feature';
 
@@ -33,7 +34,7 @@ export interface OutputPathView {
 @Component({
   selector: 'app-bundle-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [MatIconModule, MatMenuModule, MatTooltipModule, TranslocoPipe],
+  imports: [MatIconModule, MatMenuModule, MatTooltipModule, RunResultStrip, TranslocoPipe],
   templateUrl: './bundle-card.html',
   styleUrl: './bundle-card.scss',
   host: {
@@ -104,11 +105,6 @@ export class BundleCard {
   readonly isFailed = computed(() => this.status() === 'failed');
 
   readonly progress = computed(() => this.run()?.progress);
-  readonly progressPercent = computed(() => {
-    const progress = this.progress();
-    if (!progress || progress.total <= 0) return 0;
-    return Math.min(100, Math.round((progress.current / progress.total) * 100));
-  });
   readonly currentFileName = computed(() => {
     const file = this.progress()?.currentFile;
     return file ? (file.split('/').pop() ?? file) : undefined;
