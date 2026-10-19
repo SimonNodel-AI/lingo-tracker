@@ -595,6 +595,21 @@
           <mat-spinner diameter="14" aria-hidden="true"></mat-spinner>
           <span>{{ TOKENS.EXPORT.DIALOG.FOOTER.CHECKING | transloco }}</span>
         }
+        @case ('previewFailed') {
+          <mat-icon aria-hidden="true" class="footer-meta-icon--idle">radio_button_unchecked</mat-icon>
+          <span>
+            {{ TOKENS.EXPORT.DIALOG.PREVIEW.FAILED | transloco }}
+            ·
+            <button type="button" class="link" data-testid="retry-preview" (click)="retryPreview()">
+              {{ TOKENS.COMMON.ACTIONS.RETRY | transloco }}
+            </button>
+          </span>
+        }
+        @case ('planErrors') {
+          <mat-icon aria-hidden="true" class="footer-meta-icon--idle">radio_button_unchecked</mat-icon>
+          <!-- Server text, shown whole in the Notes block of the preview. -->
+          <span class="footer-reason" data-testid="plan-errors" [attr.title]="notes().join(' ')">{{ plan()?.errors?.[0] }}</span>
+        }
         @case ('noLocales') {
           <mat-icon aria-hidden="true" class="footer-meta-icon--idle">radio_button_unchecked</mat-icon>
           <span>{{ TOKENS.EXPORT.DIALOG.PREVIEW.NOLOCALES | transloco }}</span>

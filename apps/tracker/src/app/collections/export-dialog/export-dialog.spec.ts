@@ -364,4 +364,29 @@ describe('ExportDialog', () => {
     expect(input?.getAttribute('aria-invalid')).toBe('false');
     expect(input?.getAttribute('aria-describedby')).toBeNull();
   });
+
+  it('shows the preview failure with a retry that re-runs the dry run, not the fix-sections link', () => {
+    const harness = build();
+    harness.store.dryRunExport.mockReturnValue(throwError(() => new Error('down')));
+    settle(harness);
+    expect(text(harness, 'footer-meta')).toContain('The preview could not be loaded.');
+    expect(query(harness, 'fix-sections')).toBeNull();
+    expect(query<HTMLButtonElement>(harness, 'submit')?.disabled).toBe(true);
+    harness.store.dryRunExport.mockReturnValue(of(plan()));
+    const calls = harness.store.dryRunExport.mock.calls.length;
+    click(harness, 'retry-preview');
+    settle(harness);
+    expect(harness.store.dryRunExport.mock.calls.length).toBe(calls + 1);
+    expect(text(harness, 'submit')).toBe('Export 3 files');
+    expect(query(harness, 'retry-preview')).toBeNull();
+  });
+
+  it('explains plan errors in the footer, lists them in Notes and keeps submit disabled', () => {
+    const harness = build({ plan: plan({ errors: ['Collection x is unreadable'] }) });
+    settle(harness);
+    expect(text(harness, 'plan-errors')).toBe('Collection x is unreadable');
+    expect(query(harness, 'fix-sections')).toBeNull();
+    expect(query<HTMLButtonElement>(harness, 'submit')?.disabled).toBe(true);
+    expect(text(harness, 'preview-notes')).toContain('Collection x is unreadable');
+  });
 });
