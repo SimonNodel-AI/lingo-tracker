@@ -6,6 +6,9 @@ import type {
   BundleGenerateJobDto,
   CreateBundleDto,
   CreateCollectionDto,
+  ExportRequestDto,
+  ExportPlanDto,
+  ExportJobDto,
   GenerateBundleRequestDto,
   LingoTrackerConfigDto,
   UpdateBundleDto,
@@ -110,5 +113,17 @@ export class CollectionsApiService {
    */
   getBundleJob(jobId: string): Observable<BundleGenerateJobDto> {
     return this.http.get<BundleGenerateJobDto>(apiPath('GET /api/bundles/jobs/:jobId', { jobId }));
+  }
+
+  dryRunExport(body: ExportRequestDto): Observable<ExportPlanDto> {
+    return this.http.post<ExportPlanDto>(apiPath('POST /api/exports/dry-run'), body);
+  }
+
+  startExport(body: ExportRequestDto): Observable<ExportJobDto> {
+    return this.http.post<ExportJobDto>(apiPath('POST /api/exports'), body);
+  }
+
+  getExportJob(jobId: string): Observable<ExportJobDto> {
+    return this.http.get<ExportJobDto>(apiPath('GET /api/exports/jobs/:jobId', { jobId }));
   }
 }

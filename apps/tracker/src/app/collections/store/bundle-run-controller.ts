@@ -1,7 +1,8 @@
 import type { BundleGenerateJobDto } from '@simoncodes-ca/data-transfer';
-import { BehaviorSubject, catchError, defer, type Observable, of, Subscription, switchMap, takeWhile, tap } from 'rxjs';
+import { BehaviorSubject, catchError, defer, type Observable, of, Subscription, tap } from 'rxjs';
 import type { KeyedStorage } from '../../shared/storage/keyed-storage';
 import { type BundleRunState, isJobFinished, mapJobToRun, toBundleErrorMessage } from './bundle-runs';
+import { followJob } from './job-polling';
 
 export const BUNDLE_JOB_POLL_INTERVAL_MS = 500;
 export const BUNDLE_RUNS_STORAGE_KEY = 'lingo-tracker.bundleRuns';
@@ -77,18 +78,15 @@ export class BundleRunController {
     const update = (job: BundleGenerateJobDto): void =>
       this.setRun(name, mapJobToRun(job, this.state.value.bundleRuns[name], this.time.now()));
     subscription.add(
-      initial
+      followJob(initial, {
+        getJob: (id) => this.jobs.getJob(id),
+        jobId: (job) => job.jobId,
+        isFinished: isJobFinished,
+        poll: (ms) => this.time.poll(ms),
+        intervalMs: BUNDLE_JOB_POLL_INTERVAL_MS,
+      })
         .pipe(
           tap(update),
-          switchMap((job) =>
-            isJobFinished(job)
-              ? of(job)
-              : this.time.poll(BUNDLE_JOB_POLL_INTERVAL_MS).pipe(
-                  switchMap(() => this.jobs.getJob(job.jobId)),
-                  tap(update),
-                  takeWhile((snapshot) => !isJobFinished(snapshot), true),
-                ),
-          ),
           catchError((error: unknown) => {
             if (resumed) this.clear(name);
             else
