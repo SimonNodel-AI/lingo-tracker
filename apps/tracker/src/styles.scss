@@ -201,6 +201,7 @@ mark.search-highlight {
 
 .cdk-overlay-pane.bundle-form-dialog-panel {
   width: 1160px;
+  // The open config passes the matching `maxWidth`; Material's inline 80vw default would otherwise win.
   max-width: calc(100vw - 3rem);
   max-height: min(90vh, calc(100dvh - 2 * var(--spacing-8)));
 
@@ -226,8 +227,8 @@ mark.search-highlight {
 
 .cdk-overlay-pane.export-dialog-panel {
   width: 1160px;
-  // Material's dialog config sets an inline `max-width: 80vw`; only !important outranks it.
-  max-width: calc(100vw - 3rem) !important;
+  // The open config passes the matching `maxWidth`; Material's inline 80vw default would otherwise win.
+  max-width: calc(100vw - 3rem);
   max-height: min(90vh, calc(100dvh - 2 * var(--spacing-8)));
 
   .mat-mdc-dialog-container,

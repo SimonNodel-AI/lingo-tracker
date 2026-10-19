@@ -39,6 +39,9 @@ import { CollectionsStore } from './store/collections.store';
 /** Below this many collections the name filter is more clutter than help. */
 const FILTER_THRESHOLD = 6;
 
+/** Material caps dialogs at an inline 80vw; the wide panels' CSS width needs this to apply. */
+const WIDE_DIALOG_MAX_WIDTH = 'calc(100vw - 3rem)';
+
 const loadBundleDialog = () =>
   import('./bundle-form-dialog/bundle-form-dialog').then((module) => module.BundleFormDialog);
 const loadCollectionDialog = () =>
@@ -241,7 +244,13 @@ export class CollectionsManager {
 
   openCreateBundleDialog(): void {
     const data: BundleFormDialogData = { mode: 'create' };
-    this.#openSavedDialog(loadBundleDialog, data, 'bundle-form-dialog-panel', TRACKER_TOKENS.BUNDLES.TOAST.CREATED);
+    this.#openSavedDialog(
+      loadBundleDialog,
+      data,
+      'bundle-form-dialog-panel',
+      TRACKER_TOKENS.BUNDLES.TOAST.CREATED,
+      WIDE_DIALOG_MAX_WIDTH,
+    );
   }
 
   openEditBundleDialog(name: string): void {
@@ -252,7 +261,13 @@ export class CollectionsManager {
     }
 
     const data: BundleFormDialogData = { mode: 'edit', name, bundle };
-    this.#openSavedDialog(loadBundleDialog, data, 'bundle-form-dialog-panel', TRACKER_TOKENS.BUNDLES.TOAST.UPDATED);
+    this.#openSavedDialog(
+      loadBundleDialog,
+      data,
+      'bundle-form-dialog-panel',
+      TRACKER_TOKENS.BUNDLES.TOAST.UPDATED,
+      WIDE_DIALOG_MAX_WIDTH,
+    );
   }
 
   openDeleteBundleDialog(name: string): void {
@@ -320,7 +335,12 @@ export class CollectionsManager {
     const trigger = returnTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
     // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
     void loadExportDialog().then((component) => {
-      const ref = this.#dialog.open(component, { data, panelClass: 'export-dialog-panel', restoreFocus: false });
+      const ref = this.#dialog.open(component, {
+        data,
+        panelClass: 'export-dialog-panel',
+        maxWidth: WIDE_DIALOG_MAX_WIDTH,
+        restoreFocus: false,
+      });
       ref.afterClosed().subscribe(() => this.#restoreExportFocus(trigger));
     });
   }
@@ -383,6 +403,7 @@ export class CollectionsManager {
     data: D,
     panelClass: string,
     successToken: string,
+    maxWidth?: string,
   ): void {
     load()
       .then(
@@ -391,6 +412,7 @@ export class CollectionsManager {
             const ref = this.#dialog.open<T, D, unknown>(component, {
               data,
               panelClass,
+              ...(maxWidth ? { maxWidth } : {}),
               // Land on the first field, not the close button.
               autoFocus: 'input',
             });
