@@ -118,7 +118,19 @@ export class ExportDialog {
           .map(([name]) => name),
       ),
   );
-  readonly noTargetLocales = computed(() => this.store.config() !== null && this.model.availableLocales().length === 0);
+  /** Field-level error flags: shown only once the section's errors are revealed. */
+  readonly patternInvalid = computed(
+    () =>
+      this.model.sectionErrors().has('output') && this.model.form.controls.filenamePattern.hasError('patternLocale'),
+  );
+  readonly basePropertyInvalid = computed(
+    () =>
+      this.model.sectionErrors().has('json') &&
+      this.model.form.controls.json.controls.basePropertyName.hasError('basePropertyReserved'),
+  );
+  readonly noTargetLocales = computed(
+    () => this.store.config() !== null && this.collectionCount() > 0 && this.model.availableLocales().length === 0,
+  );
   readonly dirParts = computed(() => splitAfterSeparators(this.plan()?.outputDirectory ?? ''));
   readonly resolvedPathMarkup = computed(() => this.dirParts().map(codeMarkup).join('<wbr>'));
   readonly files = computed(() =>
@@ -174,6 +186,11 @@ export class ExportDialog {
 
   activate(section: ExportSection): void {
     this.model.activeSection.set(section);
+  }
+
+  /** The footer's invalid state is actionable: show the errors and jump to the first marked section. */
+  fixSections(): void {
+    if (!this.model.revealErrors() && this.plan()?.outputProblem) this.activate('output');
   }
 
   togglePreview(): void {
