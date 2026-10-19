@@ -29,36 +29,6 @@
       "status": "translated"
     }
   },
-  "writingX": {
-    "en": {
-      "checksum": "3b63d091c190888b3b0db5da48705c1e"
-    },
-    "es": {
-      "checksum": "60f145763b378f37f6111117a4511243",
-      "baseChecksum": "3b63d091c190888b3b0db5da48705c1e",
-      "status": "translated"
-    },
-    "fr-ca": {
-      "checksum": "0b42d6d5369dd402df314ccf2165d43f",
-      "baseChecksum": "3b63d091c190888b3b0db5da48705c1e",
-      "status": "translated"
-    },
-    "ru": {
-      "checksum": "5f30b815dceb28ff54af7f391d8ca97a",
-      "baseChecksum": "3b63d091c190888b3b0db5da48705c1e",
-      "status": "translated"
-    },
-    "ja": {
-      "checksum": "02e1f1431002e55d066276be1e3bc0ff",
-      "baseChecksum": "3b63d091c190888b3b0db5da48705c1e",
-      "status": "translated"
-    },
-    "de": {
-      "checksum": "4376d0a26a9f54fce7d96c0dc9622c92",
-      "baseChecksum": "3b63d091c190888b3b0db5da48705c1e",
-      "status": "translated"
-    }
-  },
   "localesProgressX": {
     "en": {
       "checksum": "eb9ca491cce4fa0a308c300a235371c2"

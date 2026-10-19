@@ -195,7 +195,6 @@ export function getTranslocoTestingModule(options: TranslocoTestingOptions = {})
         'export.card.menuItem': 'Export…',
         'export.run.exporting': 'Exporting…',
         'export.run.writing': 'Writing',
-        'export.run.writingX': 'Writing {{ file }}',
         'export.run.localesProgressX': '{{ current }} of {{ total }} locales',
         'export.run.exported': 'Exported',
         'export.run.filesX': '{ count, plural, =1 {1 file} other {{count} files} }',

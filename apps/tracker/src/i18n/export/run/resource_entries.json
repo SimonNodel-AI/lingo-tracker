@@ -9,16 +9,6 @@
     "ja": "エクスポート中…",
     "de": "Wird exportiert…"
   },
-  "writingX": {
-    "source": "Writing {file}",
-    "comment": "Export dialog text",
-    "tags": ["export"],
-    "es": "Escribiendo {file}",
-    "fr-ca": "Écriture de {file}",
-    "ru": "Запись {file}",
-    "ja": "{file} を書き込み中",
-    "de": "Schreibe {file}"
-  },
   "localesProgressX": {
     "source": "{current} of {total} locales",
     "comment": "Export dialog text",
