@@ -587,6 +587,19 @@ describe('CollectionsManager', () => {
         expect(document.activeElement).toBe(strip());
       });
 
+      it('falls through to the strip when Retry was clicked without taking focus (body is active)', async () => {
+        startWith({ status: 'failed', error: 'Disk is full' });
+        const retry = Array.from(strip()?.querySelectorAll<HTMLButtonElement>('button') ?? []).find((button) =>
+          button.textContent?.includes('Retry'),
+        );
+        (document.activeElement as HTMLElement | null)?.blur();
+        expect(document.activeElement).toBe(document.body);
+
+        await openAndClose(() => retry?.click());
+
+        expect(document.activeElement).toBe(strip());
+      });
+
       it('falls back to the section heading when neither the trigger nor a strip remains', async () => {
         await openAndClose(
           () => exportButton()?.click(),

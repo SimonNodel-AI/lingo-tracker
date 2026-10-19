@@ -314,7 +314,7 @@ export class CollectionsManager {
   #openExportDialog(data: ExportDialogData, returnTo?: HTMLElement): void {
     // Captured before the lazy load: the trigger may be a menu item or a button that is gone by then.
     const active = document.activeElement;
-    const trigger = returnTo ?? (active instanceof HTMLElement ? active : null);
+    const trigger = returnTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
     // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
     void loadExportDialog().then((component) => {
       const ref = this.#dialog.open(component, { data, panelClass: 'export-dialog-panel', restoreFocus: false });
@@ -331,6 +331,9 @@ export class CollectionsManager {
     const usable = (element: HTMLElement | null): element is HTMLElement =>
       !!element &&
       element.isConnected &&
+      // Safari does not focus a clicked button, so the "active" element can be the body.
+      element !== document.body &&
+      element.tabIndex >= -1 &&
       !(element instanceof HTMLButtonElement && element.disabled) &&
       element.getAttribute('aria-disabled') !== 'true';
     const target = [
