@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
-import { CoreOperationError, InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidExportBasePropertyNameError,
+  InvalidTranslationStatusError,
+} from '../errors/lingo-tracker-error';
 // Standalone fixtures and readback retain unreported saves.
 import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
@@ -82,7 +86,7 @@ describe('runExport', () => {
   it('rejects an invalid base property name before exporting', async () => {
     await expect(
       runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: 'value' }),
-    ).rejects.toThrow(CoreOperationError);
+    ).rejects.toThrow(InvalidExportBasePropertyNameError);
     await expect(
       runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: '' }),
     ).rejects.toThrow('basePropertyName cannot be empty');

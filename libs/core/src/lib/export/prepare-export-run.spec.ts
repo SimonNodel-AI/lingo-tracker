@@ -5,6 +5,7 @@ import { seedResources, testCollection, useTempDir } from '../../testing/temp-di
 import {
   CollectionBaseLocaleMismatchError,
   CoreOperationError,
+  InvalidExportBasePropertyNameError,
   InvalidTranslationStatusError,
 } from '../errors/lingo-tracker-error';
 import * as jsonExporter from './export-to-json';
@@ -200,7 +201,7 @@ describe('prepareExportRun', () => {
   it('validates base property names, then statuses, then reads with the existing typed errors', () => {
     const source = collection();
     expect(() => prepareExportRun([source], { ...options(), basePropertyName: 'value', status: [] })).toThrow(
-      CoreOperationError,
+      InvalidExportBasePropertyNameError,
     );
     expect(() => prepareExportRun([source], { ...options(), status: [] })).toThrow(InvalidTranslationStatusError);
     const other = testCollection(join(root(), 'other'), { name: 'other', baseLocale: 'de' });

@@ -25,6 +25,8 @@ import { ResourcesController } from '../collections/resources/resources.controll
 import { RouteCollectionPipe } from '../collections/route-collection';
 import { ConfigController } from '../config/config.controller';
 import { ConfigService } from '../config/config.service';
+import { ExportJobService } from '../exports/export-job.service';
+import { ExportsController } from '../exports/exports.controller';
 import { TranslationJobService } from '../translation-job/translation-job.service';
 import * as schemas from './dto-schemas';
 import { exactMessage } from './exact-message.test-support';
@@ -181,6 +183,36 @@ const endpoints: EndpointCase[] = [
     message: 'locales must be an array',
   },
   {
+    name: 'export',
+    schema: schemas.exportRequestBody,
+    accepted: [
+      { format: 'xliff' },
+      { format: 'json', collections: [], locales: [], statuses: [], tags: [], json: {} },
+      { format: 'unknown', json: { structure: 'unknown' }, statuses: ['unknown'] },
+      {
+        format: 'json',
+        collections: ['app'],
+        locales: ['fr'],
+        statuses: ['new'],
+        tags: ['button'],
+        outputDirectory: '',
+        filenamePattern: '{locale}',
+        protectedTermNotes: false,
+        json: {
+          structure: 'flat',
+          rich: true,
+          includeBase: true,
+          basePropertyName: '',
+          includeStatus: false,
+          includeComment: true,
+          includeTags: true,
+        },
+      },
+    ],
+    invalid: { format: 5 },
+    message: 'format must be a string',
+  },
+  {
     name: 'add locale',
     schema: schemas.addLocaleBody,
     accepted: [{ locale: 'fr-ca' }, { locale: '' }],
@@ -320,6 +352,28 @@ const rejected = endpoints.flatMap(({ name, schema, invalid, message, optionalBo
 });
 
 const additionalRejected: Array<{ name: string; schema: Schema<unknown>; payload: unknown; message: string }> = [
+  ...[
+    [{}, 'format must be a string'],
+    [{ format: 'json', collections: [5] }, 'collections[0] must be a string'],
+    [{ format: 'json', locales: 'fr' }, 'locales must be an array'],
+    [{ format: 'json', statuses: [5] }, 'statuses[0] must be a string'],
+    [{ format: 'json', tags: [false] }, 'tags[0] must be a string'],
+    [{ format: 'json', outputDirectory: 5 }, 'outputDirectory must be a string'],
+    [{ format: 'json', filenamePattern: false }, 'filenamePattern must be a string'],
+    [{ format: 'json', protectedTermNotes: 'no' }, 'protectedTermNotes must be a boolean'],
+    [{ format: 'json', json: [] }, 'json must be an object'],
+    [{ format: 'json', json: null }, 'json must not be null'],
+    [{ format: 'json', json: { structure: 5 } }, 'json.structure must be a string'],
+    [{ format: 'json', json: { basePropertyName: false } }, 'json.basePropertyName must be a string'],
+    ...['rich', 'includeBase', 'includeStatus', 'includeComment', 'includeTags'].map(
+      (field) => [{ format: 'json', json: { [field]: 'yes' } }, `json.${field} must be a boolean`] as const,
+    ),
+  ].map(([payload, message]) => ({
+    name: 'export shape',
+    schema: schemas.exportRequestBody,
+    payload,
+    message: String(message),
+  })),
   {
     name: 'collection name type',
     schema: schemas.createCollectionBody,
@@ -516,6 +570,8 @@ const wiring = [
   [BundlesController, 'createBundle', RouteParamtypes.BODY, schemas.createBundleBody],
   [BundlesController, 'updateBundle', RouteParamtypes.BODY, schemas.updateBundleBody],
   [BundlesController, 'generateBundle', RouteParamtypes.BODY, schemas.generateBundleBody],
+  [ExportsController, 'dryRun', RouteParamtypes.BODY, schemas.exportRequestBody],
+  [ExportsController, 'start', RouteParamtypes.BODY, schemas.exportRequestBody],
   [LocalesController, 'addLocale', RouteParamtypes.BODY, schemas.addLocaleBody],
   [FoldersController, 'create', RouteParamtypes.BODY, schemas.createFolderBody],
   [FoldersController, 'delete', RouteParamtypes.BODY, schemas.deleteFolderBody],
@@ -542,6 +598,7 @@ describe('HTTP schema wiring', () => {
         { provide: CollectionIndex, useValue: {} },
         { provide: TranslationJobService, useValue: {} },
         { provide: BundleJobService, useValue: {} },
+        { provide: ExportJobService, useValue: {} },
       ],
     }).compile();
     for (const controller of controllers) expect(module.get(controller)).toBeDefined();

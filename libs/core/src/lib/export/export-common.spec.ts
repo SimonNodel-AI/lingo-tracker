@@ -2,6 +2,7 @@ import { chmodSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
+import { InvalidExportBasePropertyNameError } from '../errors/lingo-tracker-error';
 import {
   type ExportResource,
   filterResources,
@@ -153,6 +154,26 @@ describe('export-common', () => {
   });
 
   describe('validateBasePropertyName', () => {
+    it('exposes empty and reserved property names as typed invalid errors with unchanged messages', () => {
+      for (const name of ['', 'value', 'comment', 'status', 'tags']) {
+        const message =
+          name === ''
+            ? 'basePropertyName cannot be empty'
+            : `basePropertyName "${name}" is a reserved key. Reserved: value, comment, status, tags`;
+        expect(() => validateBasePropertyName(name)).toThrow(InvalidExportBasePropertyNameError);
+        try {
+          validateBasePropertyName(name);
+        } catch (error) {
+          expect(error).toMatchObject({
+            code: 'INVALID_EXPORT_BASE_PROPERTY_NAME',
+            kind: 'invalid',
+            exposeMessage: true,
+            message,
+          });
+        }
+      }
+    });
+
     it('should accept valid custom names', () => {
       expect(() => validateBasePropertyName('original')).not.toThrow();
       expect(() => validateBasePropertyName('source')).not.toThrow();

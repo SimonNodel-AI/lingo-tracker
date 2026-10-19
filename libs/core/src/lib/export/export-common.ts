@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
 import { type CollectionSetResource, collectionResourceStatus } from '../collection-set/collection-set';
-import { CoreOperationError } from '../errors/lingo-tracker-error';
+import { CoreOperationError, InvalidExportBasePropertyNameError } from '../errors/lingo-tracker-error';
 import type { FilteredResource } from './types';
 
 /** Project Terms are attached only for export filtering and notes. */
@@ -15,10 +15,10 @@ const RESERVED_RICH_KEYS = ['value', 'comment', 'status', 'tags'] as const;
 
 export function validateBasePropertyName(name: string): void {
   if (name.length === 0) {
-    throw new CoreOperationError('basePropertyName cannot be empty');
+    throw new InvalidExportBasePropertyNameError('basePropertyName cannot be empty');
   }
   if ((RESERVED_RICH_KEYS as readonly string[]).includes(name)) {
-    throw new CoreOperationError(
+    throw new InvalidExportBasePropertyNameError(
       `basePropertyName "${name}" is a reserved key. Reserved: ${RESERVED_RICH_KEYS.join(', ')}`,
     );
   }
