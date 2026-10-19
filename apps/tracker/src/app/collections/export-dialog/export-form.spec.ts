@@ -173,7 +173,7 @@ describe('ExportForm', () => {
       expect(json.basePropertyName.errors).toEqual({ basePropertyReserved: true });
     }
     json.basePropertyName.markAsTouched();
-    expect(model.sectionErrors()).toEqual(new Set(['output', 'json']));
+    expect(model.sectionErrors()).toEqual(new Set(['json']));
     c.format.setValue('xliff');
     expect(model.form.valid).toBe(true);
     c.format.setValue('json');
@@ -277,5 +277,56 @@ describe('ExportForm', () => {
     expect(model.valid()).toBe(true);
     model.form.controls.statuses.setValue([]);
     expect(model.valid()).toBe(false);
+  });
+
+  it('keeps Retry locales while the config is missing and prunes only unavailable ones once it loads', () => {
+    const current = signal<LingoTrackerConfigDto | null>(null);
+    const model = build({
+      config: () => current(),
+      data: { request: { format: 'xliff', locales: ['fr', 'zz'] } },
+    });
+    expect(model.form.controls.locales.value).toEqual(['fr', 'zz']);
+    model.refreshSelections();
+    expect(model.form.controls.locales.value).toEqual(['fr', 'zz']);
+    current.set(config);
+    model.configLoaded();
+    expect(model.form.controls.locales.value).toEqual(['fr']);
+  });
+
+  it.each([
+    ['an unchanged folder', undefined],
+    ['a custom folder', 'mine'],
+  ])('re-runs the dry run when the config loads after the first debounce with %s', (_name, folder) => {
+    vi.useFakeTimers();
+    const current = signal<LingoTrackerConfigDto | null>(null);
+    const dryRun = vi.fn(() => EMPTY);
+    const model = build({
+      config: () => current(),
+      dryRun,
+      data: { request: { format: 'xliff', ...(folder ? { outputDirectory: folder } : {}) } },
+    });
+    vi.advanceTimersByTime(300);
+    // Without collections the form is invalid, so the first pass has nothing to ask the server.
+    expect(dryRun).not.toHaveBeenCalled();
+    expect(model.preview.status()).toBe('waiting');
+    current.set({ ...config, exportFolder: '' });
+    model.configLoaded();
+    vi.advanceTimersByTime(300);
+    expect(dryRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('reveals every error and jumps to the first marked section on demand', () => {
+    const model = build();
+    const c = model.form.controls;
+    c.statuses.setValue([]);
+    c.filenamePattern.setValue('handoff');
+    expect(model.valid()).toBe(false);
+    expect([...model.sectionErrors()]).toEqual([]);
+    expect(model.revealErrors()).toBe(true);
+    expect([...model.sectionErrors()]).toEqual(['filters', 'output']);
+    expect(model.activeSection()).toBe('filters');
+    c.statuses.setValue(['new']);
+    c.filenamePattern.setValue('');
+    expect(model.revealErrors()).toBe(false);
   });
 });

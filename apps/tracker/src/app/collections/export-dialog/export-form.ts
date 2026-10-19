@@ -109,8 +109,7 @@ export class ExportForm {
     if (flag(c.collections)) errors.add('collections');
     if (flag(c.locales)) errors.add('locales');
     if (flag(c.statuses)) errors.add('filters');
-    if (flag(c.outputDirectory) || flag(c.filenamePattern) || flag(c.json.controls.basePropertyName))
-      errors.add('output');
+    if (flag(c.outputDirectory) || flag(c.filenamePattern)) errors.add('output');
     if (flag(c.json)) errors.add('json');
     return errors;
   });
@@ -205,14 +204,19 @@ export class ExportForm {
     if (!folder.dirty && folder.value === this.#seededFolder && next !== folder.value) folder.setValue(next);
     this.#seededFolder = next;
     this.refreshSelections();
+    // Refreshing is silent, so emit once: the preview must re-run against the real config.
+    this.form.updateValueAndValidity();
   }
 
   /** Reconcile after collection choices (or the caller's project config) change. */
   refreshSelections(): void {
     this.#formTick.set(Symbol());
     const c = this.form.controls;
-    const locales = c.locales.value.filter((locale) => this.availableLocales().includes(locale));
-    if (locales.length !== c.locales.value.length) c.locales.setValue(locales, { emitEvent: false });
+    // Without a config every locale looks unavailable; keep the choices until it arrives.
+    if (this.options.config()) {
+      const locales = c.locales.value.filter((locale) => this.availableLocales().includes(locale));
+      if (locales.length !== c.locales.value.length) c.locales.setValue(locales, { emitEvent: false });
+    }
     if (c.format.value !== 'json' && this.activeSection() === 'json') this.activeSection.set('format');
     const json = c.json.controls;
     for (const field of [json.includeBase, json.includeStatus, json.includeComment, json.includeTags]) {
@@ -233,16 +237,19 @@ export class ExportForm {
     });
   }
 
-  submitResult(): ExportRequestDto | undefined {
+  /** Show every error and move to the first section that has one. Returns whether the form is invalid. */
+  revealErrors(): boolean {
     this.submitAttempted.set(true);
     this.refreshSelections();
-    if (this.form.invalid) {
-      this.form.markAllAsTouched();
-      const first = this.sections().find((section) => this.sectionErrors().has(section));
-      if (first) this.activeSection.set(first);
-      return undefined;
-    }
-    return this.buildRequest();
+    if (!this.form.invalid) return false;
+    this.form.markAllAsTouched();
+    const first = this.sections().find((section) => this.sectionErrors().has(section));
+    if (first) this.activeSection.set(first);
+    return true;
+  }
+
+  submitResult(): ExportRequestDto | undefined {
+    return this.revealErrors() ? undefined : this.buildRequest();
   }
 
   submit(start: (request: ExportRequestDto) => Observable<ExportJobDto>): Observable<ExportJobDto> {

@@ -288,4 +288,80 @@ describe('ExportDialog', () => {
     expect(column?.querySelectorAll('[aria-live]').length).toBe(1);
     expect(column?.querySelector('[aria-live] [data-testid="summary"]')).not.toBeNull();
   });
+
+  it('runs a fresh dry run when the config arrives after the first debounce', () => {
+    const harness = build({ config: null });
+    settle(harness);
+    expect(harness.store.dryRunExport).not.toHaveBeenCalled();
+    harness.store.config.set({ ...config, exportFolder: '' });
+    harness.fixture.detectChanges();
+    settle(harness);
+    expect(harness.store.dryRunExport).toHaveBeenCalledTimes(1);
+    expect(text(harness, 'submit')).toBe('Export 3 files');
+  });
+
+  it('keeps Retry locales when the config loads late', () => {
+    const harness = build({ config: null, data: { request: { format: 'xliff', locales: ['fr', 'de'] } } });
+    harness.store.config.set(config);
+    harness.fixture.detectChanges();
+    expect(harness.component.model.form.controls.locales.value).toEqual(['fr', 'de']);
+  });
+
+  it('marks the invalid sections from the footer link and jumps to the first one', () => {
+    const harness = build();
+    harness.component.model.form.controls.allCollections.setValue(false);
+    harness.fixture.detectChanges();
+    expect(query(harness, 'rail-collections')?.querySelector('.rail-dot')).toBeNull();
+    expect(text(harness, 'footer-meta')).toContain('Fix the marked sections');
+    click(harness, 'fix-sections');
+    expect(query(harness, 'rail-collections')?.querySelector('.rail-dot')).not.toBeNull();
+    expect(query(harness, 'rail-collections')?.getAttribute('aria-current')).toBe('true');
+    expect(harness.root.textContent).toContain('Choose at least one collection.');
+  });
+
+  it('starts only one export when submit is triggered twice', () => {
+    const harness = build();
+    settle(harness);
+    harness.store.startExport.mockReturnValue(new Subject<ExportJobDto>());
+    harness.component.onSubmit();
+    harness.component.onSubmit();
+    expect(harness.store.startExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('links the file name pattern error and hint to the input and flags it invalid', () => {
+    const harness = build();
+    harness.component.activate('output');
+    harness.fixture.detectChanges();
+    const input = harness.root.querySelector<HTMLInputElement>('#export-pattern');
+    expect(input?.getAttribute('aria-invalid')).toBe('false');
+    expect(input?.getAttribute('aria-describedby')).toBe('export-pattern-hint');
+    harness.component.model.form.controls.filenamePattern.setValue('handoff');
+    harness.component.model.revealErrors();
+    harness.fixture.detectChanges();
+    expect(input?.getAttribute('aria-invalid')).toBe('true');
+    expect(input?.getAttribute('aria-describedby')).toBe('export-pattern-error export-pattern-hint');
+    expect(harness.root.querySelector('#export-pattern-error')).not.toBeNull();
+    expect(harness.root.querySelector('#export-pattern-hint')).not.toBeNull();
+  });
+
+  it('links the reserved base property error to its input and keeps it out of Output', () => {
+    const harness = build();
+    const json = harness.component.model.form.controls.json.controls;
+    harness.component.model.form.controls.format.setValue('json');
+    json.rich.setValue(true);
+    json.includeBase.setValue(true);
+    json.basePropertyName.setValue('status');
+    harness.component.model.revealErrors();
+    harness.fixture.detectChanges();
+    expect(harness.component.model.sectionErrors().has('output')).toBe(false);
+    expect(harness.component.model.activeSection()).toBe('json');
+    const input = harness.root.querySelector<HTMLInputElement>('#export-base-property');
+    expect(input?.getAttribute('aria-invalid')).toBe('true');
+    expect(input?.getAttribute('aria-describedby')).toBe('export-base-property-error');
+    expect(harness.root.querySelector('#export-base-property-error')?.textContent).toContain('Reserved');
+    json.basePropertyName.setValue('baseValue');
+    harness.fixture.detectChanges();
+    expect(input?.getAttribute('aria-invalid')).toBe('false');
+    expect(input?.getAttribute('aria-describedby')).toBeNull();
+  });
 });

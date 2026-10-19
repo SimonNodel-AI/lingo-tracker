@@ -183,11 +183,9 @@
             />
             <ul class="format-hints">
               <li [class.format-hint--on]="model.draft().format === 'xliff'">
-                <mat-icon aria-hidden="true">description</mat-icon>
                 <span><b>{{ TOKENS.EXPORT.DIALOG.FORMAT.XLIFF | transloco }}</b> {{ TOKENS.EXPORT.DIALOG.FORMAT.XLIFFHINT | transloco }}</span>
               </li>
               <li [class.format-hint--on]="model.draft().format === 'json'">
-                <mat-icon aria-hidden="true">data_object</mat-icon>
                 <span><b>{{ TOKENS.EXPORT.DIALOG.FORMAT.JSON | transloco }}</b> {{ TOKENS.EXPORT.DIALOG.FORMAT.JSONHINT | transloco }}</span>
               </li>
             </ul>
@@ -313,7 +311,7 @@
           <div class="field">
             <span class="field-label" id="export-status-label">
               {{ TOKENS.EXPORT.DIALOG.FILTERS.STATUSLABEL | transloco }}
-              <button type="button" class="action" data-testid="select-all-statuses" (click)="selectAllStatuses()">
+              <button type="button" class="link" data-testid="select-all-statuses" (click)="selectAllStatuses()">
                 {{ TOKENS.EXPORT.DIALOG.FILTERS.SELECTALL | transloco }}
               </button>
             </span>
@@ -392,7 +390,7 @@
                 formControlName="outputDirectory"
                 autocomplete="off"
                 spellcheck="false"
-                [attr.aria-invalid]="plan()?.outputProblem ? 'true' : null"
+                [attr.aria-invalid]="!!plan()?.outputProblem"
                 [attr.aria-describedby]="plan()?.outputProblem ? 'export-folder-error' : 'export-folder-hint'"
               />
             </div>
@@ -411,7 +409,7 @@
 
           <div class="field">
             <label class="field-label" for="export-pattern">{{ TOKENS.EXPORT.DIALOG.OUTPUT.PATTERNLABEL | transloco }}</label>
-            <div class="text-input text-input--mono" [class.text-input--invalid]="model.sectionErrors().has('output') && model.form.controls.filenamePattern.invalid">
+            <div class="text-input text-input--mono" [class.text-input--invalid]="patternInvalid()">
               <input
                 id="export-pattern"
                 type="text"
@@ -419,13 +417,13 @@
                 autocomplete="off"
                 spellcheck="false"
                 [placeholder]="localePlaceholder"
-                [attr.aria-invalid]="model.form.controls.filenamePattern.invalid && model.sectionErrors().has('output') ? 'true' : null"
-                aria-describedby="export-pattern-hint"
+                [attr.aria-invalid]="patternInvalid()"
+                [attr.aria-describedby]="patternInvalid() ? 'export-pattern-error export-pattern-hint' : 'export-pattern-hint'"
               />
               <span class="text-input-trail" aria-hidden="true">{{ fileSuffix() }}</span>
             </div>
-            @if (model.form.controls.filenamePattern.hasError('patternLocale') && model.sectionErrors().has('output')) {
-              <p class="field-error" role="alert">{{ TOKENS.EXPORT.DIALOG.VALIDATION.PATTERNLOCALE | transloco }}</p>
+            @if (patternInvalid()) {
+              <p id="export-pattern-error" class="field-error" role="alert">{{ TOKENS.EXPORT.DIALOG.VALIDATION.PATTERNLOCALE | transloco }}</p>
             }
             <p id="export-pattern-hint" class="field-hint">{{ TOKENS.EXPORT.DIALOG.OUTPUT.PATTERNHINT | transloco }}</p>
           </div>
@@ -486,7 +484,7 @@
                   <label class="field-label" for="export-base-property">{{ TOKENS.EXPORT.DIALOG.JSON.BASEPROPERTYLABEL | transloco }}</label>
                   <div
                     class="text-input text-input--mono text-input--narrow"
-                    [class.text-input--invalid]="model.form.controls.json.controls.basePropertyName.hasError('basePropertyReserved') && model.sectionErrors().has('json')"
+                    [class.text-input--invalid]="basePropertyInvalid()"
                   >
                     <input
                       id="export-base-property"
@@ -494,10 +492,12 @@
                       formControlName="basePropertyName"
                       autocomplete="off"
                       spellcheck="false"
+                      [attr.aria-invalid]="basePropertyInvalid()"
+                      [attr.aria-describedby]="basePropertyInvalid() ? 'export-base-property-error' : null"
                     />
                   </div>
-                  @if (model.form.controls.json.controls.basePropertyName.hasError('basePropertyReserved') && model.sectionErrors().has('json')) {
-                    <p class="field-error" role="alert">{{ TOKENS.EXPORT.DIALOG.VALIDATION.BASEPROPERTYRESERVED | transloco }}</p>
+                  @if (basePropertyInvalid()) {
+                    <p id="export-base-property-error" class="field-error" role="alert">{{ TOKENS.EXPORT.DIALOG.VALIDATION.BASEPROPERTYRESERVED | transloco }}</p>
                   }
                 </div>
               }
@@ -599,7 +599,9 @@
         }
         @default {
           <mat-icon aria-hidden="true" class="footer-meta-icon--idle">radio_button_unchecked</mat-icon>
-          <span>{{ TOKENS.EXPORT.DIALOG.FOOTER.FIXSECTIONS | transloco }}</span>
+          <button type="button" class="link" data-testid="fix-sections" (click)="fixSections()">
+            {{ TOKENS.EXPORT.DIALOG.FOOTER.FIXSECTIONS | transloco }}
+          </button>
         }
       }
     </div>
