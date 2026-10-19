@@ -39,7 +39,7 @@ import { entryShape } from './export-preview';
 /** The CLI prompt order. */
 const STATUS_ORDER: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 
-type FooterState = 'ready' | 'checking' | 'nothing' | 'invalid' | 'noLocales';
+type FooterState = 'ready' | 'checking' | 'nothing' | 'invalid' | 'noLocales' | 'previewFailed' | 'planErrors';
 
 @Component({
   selector: 'app-export-dialog',
@@ -158,7 +158,10 @@ export class ExportDialog {
     const preview = this.model.preview;
     if (preview.stale() || preview.status() === 'loading' || preview.status() === 'waiting') return 'checking';
     const plan = this.plan();
-    if (preview.status() === 'error' || !plan || plan.errors.length > 0 || plan.outputProblem) return 'invalid';
+    if (preview.status() === 'error') return 'previewFailed';
+    if (!plan) return 'checking';
+    if (plan.outputProblem) return 'invalid';
+    if (plan.errors.length > 0) return 'planErrors';
     return plan.files.length === 0 || plan.entriesTotal === 0 ? 'nothing' : 'ready';
   });
   readonly canSubmit = computed(() => this.footerState() === 'ready' && !this.saving() && !this.store.isExporting());
@@ -186,6 +189,10 @@ export class ExportDialog {
 
   activate(section: ExportSection): void {
     this.model.activeSection.set(section);
+  }
+
+  retryPreview(): void {
+    this.model.retryPreview();
   }
 
   /** The footer's invalid state is actionable: show the errors and jump to the first marked section. */

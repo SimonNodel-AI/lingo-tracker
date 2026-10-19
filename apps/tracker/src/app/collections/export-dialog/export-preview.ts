@@ -1,6 +1,18 @@
 import { signal } from '@angular/core';
 import type { ExportPlanDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
-import { catchError, debounceTime, map, type Observable, of, startWith, type Subscription, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  debounceTime,
+  map,
+  merge,
+  type Observable,
+  of,
+  Subject,
+  type Subscription,
+  startWith,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { apiErrorMessage } from '../../shared/api-error/api-error';
 import type { ExportDraft } from './export-draft';
 
@@ -17,11 +29,18 @@ export class ExportPreview {
   readonly error = signal<string | undefined>(undefined);
   readonly status = signal<'waiting' | 'loading' | 'ready' | 'error'>('waiting');
 
+  readonly #refresh = new Subject<void>();
+
   constructor(private readonly options: ExportPreviewOptions) {}
+
+  /** Run the dry run again for the current form, e.g. after a failed one. */
+  refresh(): void {
+    this.#refresh.next();
+  }
 
   connect(changes: Observable<unknown>): Subscription {
     let revision = 0;
-    return changes
+    return merge(changes, this.#refresh)
       .pipe(
         startWith(null),
         tap(() => {

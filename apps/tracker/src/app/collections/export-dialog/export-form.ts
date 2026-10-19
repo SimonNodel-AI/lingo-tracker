@@ -237,6 +237,10 @@ export class ExportForm {
     });
   }
 
+  retryPreview(): void {
+    this.preview.refresh();
+  }
+
   /** Show every error and move to the first section that has one. Returns whether the form is invalid. */
   revealErrors(): boolean {
     this.submitAttempted.set(true);
