@@ -163,12 +163,82 @@ describe('RunResultStrip', () => {
       expect(retry).toHaveBeenCalledTimes(1);
     });
 
-    it('omits the prose clause when there is no error and has no details controls', () => {
+    it('omits the prose clause when there is no error', () => {
       spectator.setInput({ error: undefined });
 
       expect(spectator.query('.fig--prose')).toBeNull();
+    });
+
+    it('is Retry-only unless Details and Dismiss are named', () => {
       expect(spectator.query('.details-toggle')).toBeNull();
       expect(spectator.query('.dismiss')).toBeNull();
+      expect(spectator.queryAll('button').length).toBe(1);
+    });
+
+    it('opts in to Dismiss and Details with their labels and emits both outputs', () => {
+      const dismiss = vi.fn();
+      const detailsToggle = vi.fn();
+      spectator.output('dismiss').subscribe(dismiss);
+      spectator.output('detailsToggle').subscribe(detailsToggle);
+      spectator.setInput({ detailsLabel: 'Details', detailsId: 'fail-details', dismissAriaLabel: 'Dismiss' });
+
+      expect(spectator.query('.details-toggle')?.getAttribute('aria-controls')).toBe('fail-details');
+      click('.details-toggle');
+      click('.dismiss');
+
+      expect(detailsToggle).toHaveBeenCalledTimes(1);
+      expect(dismiss).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows the projected panel on failure only when details are open', () => {
+      spectator.setInput({ detailsLabel: 'Details', detailsId: 'fail-details', detailsOpen: true });
+
+      expect(spectator.query('.result-details')?.getAttribute('id')).toBe('fail-details');
+      expect(strip()?.getAttribute('role')).toBe('alert');
+    });
+  });
+
+  describe('typed clauses', () => {
+    beforeEach(() => {
+      spectator.setInput({
+        status: 'completed',
+        headline: 'Exported',
+        clauses: ['3 files', { text: 'XLIFF', kind: 'text' }, { text: 'dist/lingo-export_v2.1', kind: 'mono' }],
+      });
+      spectator.detectChanges();
+    });
+
+    it('renders plain strings and figures as numerals and text kind without them', () => {
+      const figs = spectator.queryAll('.fig');
+
+      expect(figs[1].classList.contains('num')).toBe(true);
+      expect(figs[2].textContent?.trim()).toBe('XLIFF');
+      expect(figs[2].classList.contains('num')).toBe(false);
+    });
+
+    it('splits a mono clause after separators with a wbr between the parts', () => {
+      const mono = spectator.query('.fig--mono code.mono');
+
+      expect(mono?.textContent).toBe('dist/lingo-export_v2.1');
+      expect(Array.from(mono?.querySelectorAll('span') ?? []).map((el) => el.textContent)).toEqual([
+        'dist/',
+        'lingo-',
+        'export_',
+        'v2.',
+        '1',
+      ]);
+      expect(mono?.querySelectorAll('wbr').length).toBe(5);
+    });
+  });
+
+  describe('minimal configuration', () => {
+    it('renders no unnamed buttons for any status', () => {
+      for (const status of ['running', 'completed', 'failed'] as const) {
+        spectator.setInput({ status, headline: 'Working' });
+
+        expect(spectator.queryAll('button').length).toBe(0);
+        expect(spectator.query('.result-controls')).toBeNull();
+      }
     });
   });
 });
@@ -179,7 +249,7 @@ describe('RunResultStrip details projection', () => {
   const createHost = createHostFactory({ component: RunResultStrip });
 
   const template = (open: boolean): string => `
-    <app-run-result-strip status="completed" headline="Exported" detailsId="d" [detailsOpen]="${open}">
+    <app-run-result-strip status="completed" headline="Exported" detailsLabel="Details" detailsId="d" [detailsOpen]="${open}">
       <p class="projected">Files written</p>
     </app-run-result-strip>`;
 
