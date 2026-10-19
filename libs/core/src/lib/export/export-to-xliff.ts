@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { jsToXliff12, type XliffData, type XliffResource } from 'xliff';
+import { exportFileName } from './export-file-name';
 import type { ExportOptions, ExportResult, FilteredResource } from './types';
 
 /**
@@ -16,7 +17,9 @@ export async function exportToXliff(
   resources: FilteredResource[],
   options: ExportOptions,
   baseLocale: string,
+  prepared?: { fileName: string },
 ): Promise<ExportResult> {
+  const date = new Date();
   const result: ExportResult = {
     format: 'xliff',
     filesCreated: [],
@@ -46,7 +49,7 @@ export async function exportToXliff(
         options.onProgress(`Processing ${locale} (${localeResources.length} resources)`);
       }
 
-      const filename = getFilename(locale, options, baseLocale);
+      const filename = prepared?.fileName ?? exportFileName('xliff', locale, baseLocale, options.filenamePattern, date);
       const filePath = path.join(options.outputDirectory, filename);
 
       // Prepare data for xliff library
@@ -106,20 +109,4 @@ export async function exportToXliff(
   }
 
   return result;
-}
-
-function getFilename(locale: string, options: ExportOptions, baseLocale: string): string {
-  if (options.filenamePattern) {
-    let name = options.filenamePattern
-      .replace('{target}', locale)
-      .replace('{locale}', locale)
-      .replace('{source}', baseLocale)
-      .replace('{date}', new Date().toISOString().split('T')[0]);
-
-    if (!name.endsWith('.xliff')) {
-      name += '.xliff';
-    }
-    return name;
-  }
-  return `${locale}.xliff`;
 }

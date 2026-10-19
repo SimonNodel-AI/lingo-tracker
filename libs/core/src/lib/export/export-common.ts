@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { findProtectedTerms, type TranslationStatus } from '@simoncodes-ca/domain';
 import { type CollectionSetResource, collectionResourceStatus } from '../collection-set/collection-set';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
@@ -20,6 +21,31 @@ export function validateBasePropertyName(name: string): void {
     throw new CoreOperationError(
       `basePropertyName "${name}" is a reserved key. Reserved: ${RESERVED_RICH_KEYS.join(', ')}`,
     );
+  }
+}
+
+/** Inspects the destination or its nearest existing ancestor without creating directories. */
+export function inspectOutputDirectory(directory: string): { ok: true } | { ok: false; problem: string } {
+  let ancestor = resolve(directory);
+  try {
+    while (!fs.existsSync(ancestor)) {
+      const parent = dirname(ancestor);
+      if (parent === ancestor) return { ok: false, problem: `Output directory '${directory}' is not writable.` };
+      ancestor = parent;
+    }
+    if (!fs.statSync(ancestor).isDirectory()) {
+      return {
+        ok: false,
+        problem:
+          ancestor === resolve(directory)
+            ? `Output directory '${directory}' is not a directory.`
+            : `Could not create output directory '${directory}': ENOTDIR: not a directory, mkdir '${directory}'`,
+      };
+    }
+    fs.accessSync(ancestor, fs.constants.W_OK);
+    return { ok: true };
+  } catch {
+    return { ok: false, problem: `Output directory '${directory}' is not writable.` };
   }
 }
 
