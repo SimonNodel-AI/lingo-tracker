@@ -148,5 +148,15 @@
     "ru": "Ошибки",
     "ja": "エラー",
     "de": "Fehler"
+  },
+  "writing": {
+    "source": "Writing",
+    "comment": "Verb label shown before the mono name of the file being written in the export result strip",
+    "tags": ["export"],
+    "es": "Escribiendo",
+    "fr-ca": "Écriture de",
+    "ru": "Запись",
+    "ja": "書き込み中:",
+    "de": "Schreibe"
   }
 }

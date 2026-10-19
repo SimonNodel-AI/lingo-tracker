@@ -84,7 +84,7 @@
     <section class="collections-col" aria-labelledby="collections-heading">
       <div class="section-head">
         <div class="section-title">
-          <h2 id="collections-heading">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h2>
+          <h2 id="collections-heading" tabindex="-1">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h2>
           <span class="section-count num">{{ store.collectionEntries().length }}</span>
         </div>
 
@@ -123,7 +123,8 @@
             [class.btn--busy]="store.isExporting()"
             [disabled]="store.isExporting()"
             [attr.aria-disabled]="store.isExporting() ? 'true' : null"
-            (click)="openExportDialog()"
+            #exportButton
+            (click)="openExportDialog(undefined, exportButton)"
           >
             @if (store.isExporting()) {
               <span class="spinner" aria-hidden="true"></span>
@@ -147,8 +148,13 @@
       </div>
 
       @if (exportStrip(); as strip) {
+        @let result = strip.result;
+        @let filesClause = TOKENS.EXPORT.RUN.FILESX | transloco: { count: result?.filesWritten?.length ?? 0 };
+        @let entriesClause = TOKENS.EXPORT.RUN.ENTRIESX | transloco: { count: result?.entriesExported ?? 0 };
+        @let warningsClause = TOKENS.EXPORT.RUN.WARNINGSX | transloco: { count: strip.warnings };
         <app-run-result-strip
           data-testid="export-strip"
+          tabindex="-1"
           [status]="strip.run.status"
           [headline]="
             (strip.run.status === 'running'
@@ -157,7 +163,7 @@
                 ? TOKENS.EXPORT.RUN.EXPORTED
                 : TOKENS.EXPORT.RUN.FAILED) | transloco
           "
-          [currentItemLabel]="writingLabel()"
+          [currentItemLabel]="TOKENS.EXPORT.RUN.WRITING | transloco"
           [currentItem]="strip.run.progress?.currentFile"
           [progress]="strip.run.progress"
           [progressLabel]="
@@ -166,7 +172,17 @@
                 | transloco: { current: strip.run.progress.current, total: strip.run.progress.total })
               : undefined
           "
-          [clauses]="exportClauses()"
+          [clauses]="
+            result
+              ? [
+                  filesClause,
+                  entriesClause,
+                  { text: result.format.toUpperCase(), kind: 'text' },
+                  { text: result.outputDirectory, kind: 'mono' },
+                  ...(strip.warnings > 0 ? [warningsClause] : []),
+                ]
+              : []
+          "
           [warningsCount]="strip.warnings"
           [error]="strip.run.error"
           [retryLabel]="strip.run.status === 'failed' ? (TOKENS.COMMON.ACTIONS.RETRY | transloco) : undefined"
@@ -212,7 +228,7 @@
           @if (strip.warnings > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.WARNINGSHEADING | transloco }}</h4>
             <ul class="details-list details-list--warnings">
-              @for (warning of strip.result?.warnings; track $index) {
+              @for (warning of result?.warnings; track $index) {
                 <li><span [title]="warning">{{ warning }}</span></li>
               }
             </ul>
@@ -220,7 +236,7 @@
           @if (strip.errors > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.ERRORSHEADING | transloco }}</h4>
             <ul class="details-list details-list--errors">
-              @for (error of strip.result?.errors; track $index) {
+              @for (error of result?.errors; track $index) {
                 <li><span [title]="error">{{ error }}</span></li>
               }
             </ul>
@@ -286,7 +302,11 @@
                       <mat-icon>edit</mat-icon>
                       <span>{{ TOKENS.COMMON.ACTIONS.EDIT | transloco }}</span>
                     </button>
-                    <button mat-menu-item data-testid="card-export" (click)="openExportDialog(card.name)">
+                    <button
+                      mat-menu-item
+                      data-testid="card-export"
+                      (click)="openCardExport(card.name)"
+                    >
                       <mat-icon>output</mat-icon>
                       <span>{{ TOKENS.EXPORT.CARD.MENUITEM | transloco }}</span>
                     </button>

@@ -23,7 +23,7 @@ import { catchError, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import type { Feedback } from '../browser/feedback';
 import { apiErrorMessage } from '../shared/api-error/api-error';
-import { type RunResultClause, RunResultStrip } from '../shared/components/run-result-strip/run-result-strip';
+import { RunResultStrip } from '../shared/components/run-result-strip/run-result-strip';
 import { injectConfirmedWrite } from '../shared/confirmed-write';
 import { NotificationService } from '../shared/notification';
 import { splitAfterSeparators } from '../shared/utils/split-after-separators';
@@ -158,26 +158,6 @@ export class CollectionsManager {
     };
   });
 
-  /** The verb of "Writing {file}": the strip shows the file itself as a mono identifier. */
-  readonly writingLabel = computed(() =>
-    this.#transloco.translate(TRACKER_TOKENS.EXPORT.RUN.WRITINGX, { file: '' }).trim(),
-  );
-
-  /** Completed-strip clauses: counts, format and the output folder as a mono identifier. */
-  readonly exportClauses = computed<readonly (string | RunResultClause)[]>(() => {
-    const strip = this.exportStrip();
-    const result = strip?.result;
-    if (!strip || !result) return [];
-    const count = (token: string, value: number) => this.#transloco.translate(token, { count: value });
-    return [
-      count(TRACKER_TOKENS.EXPORT.RUN.FILESX, result.filesWritten.length),
-      count(TRACKER_TOKENS.EXPORT.RUN.ENTRIESX, result.entriesExported),
-      { text: result.format.toUpperCase(), kind: 'text' },
-      { text: result.outputDirectory, kind: 'mono' },
-      ...(strip.warnings > 0 ? [count(TRACKER_TOKENS.EXPORT.RUN.WARNINGSX, strip.warnings)] : []),
-    ];
-  });
-
   readonly splitMono = splitAfterSeparators;
 
   readonly isGeneratingAll = this.store.isBatchRunning;
@@ -304,9 +284,20 @@ export class CollectionsManager {
   // Export
   // ---------------------------------------------------------------------------
 
-  /** Opens the export dialog, optionally preselected to one collection. Focus returns to the trigger. */
-  openExportDialog(preselected?: string): void {
-    this.#openExportDialog(preselected ? { preselectedCollection: preselected } : {});
+  /**
+   * Opens the export dialog, optionally preselected to one collection. Focus returns to
+   * `returnTo` (the control that opened it), else the focused element, when the dialog closes.
+   */
+  openExportDialog(preselected?: string, returnTo?: HTMLElement): void {
+    this.#openExportDialog(preselected ? { preselectedCollection: preselected } : {}, returnTo);
+  }
+
+  /** Opens the dialog from a card's menu; focus returns to that card's ⋮ trigger, not the closed menu item. */
+  openCardExport(name: string): void {
+    const trigger = Array.from(this.#host.nativeElement.querySelectorAll<HTMLElement>('[data-collection]'))
+      .find((card) => card.dataset['collection'] === name)
+      ?.querySelector<HTMLElement>('.card-actions button');
+    this.openExportDialog(name, trigger ?? undefined);
   }
 
   /** Reopens the dialog with the last request so the cause of a failure can be fixed. */
@@ -320,11 +311,34 @@ export class CollectionsManager {
     this.store.clearExportRun();
   }
 
-  #openExportDialog(data: ExportDialogData): void {
+  #openExportDialog(data: ExportDialogData, returnTo?: HTMLElement): void {
+    // Captured before the lazy load: the trigger may be a menu item or a button that is gone by then.
+    const active = document.activeElement;
+    const trigger = returnTo ?? (active instanceof HTMLElement ? active : null);
     // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
-    void loadExportDialog().then((component) =>
-      this.#dialog.open(component, { data, panelClass: 'export-dialog-panel', restoreFocus: true }),
-    );
+    void loadExportDialog().then((component) => {
+      const ref = this.#dialog.open(component, { data, panelClass: 'export-dialog-panel', restoreFocus: false });
+      ref.afterClosed().subscribe(() => this.#restoreExportFocus(trigger));
+    });
+  }
+
+  /**
+   * The trigger can be busy-disabled or gone once the export starts (the Export button, the
+   * Retry button), so fall back to the strip, then to the section heading.
+   */
+  #restoreExportFocus(trigger: HTMLElement | null): void {
+    const host = this.#host.nativeElement;
+    const usable = (element: HTMLElement | null): element is HTMLElement =>
+      !!element &&
+      element.isConnected &&
+      !(element instanceof HTMLButtonElement && element.disabled) &&
+      element.getAttribute('aria-disabled') !== 'true';
+    const target = [
+      trigger,
+      host.querySelector<HTMLElement>('[data-testid="export-strip"]'),
+      host.querySelector<HTMLElement>('#collections-heading'),
+    ].find(usable);
+    target?.focus();
   }
 
   /** Opens the create form and toasts only when it closes with a saved result. */

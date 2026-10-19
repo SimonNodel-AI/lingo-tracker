@@ -3,6 +3,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
+import { TranslocoService } from '@jsverse/transloco';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type {
@@ -12,7 +13,7 @@ import type {
   ExportRequestDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { toApiError } from '../shared/api-error/api-error';
@@ -77,7 +78,12 @@ describe('CollectionsManager', () => {
 
   const createComponent = createComponentFactory({
     component: CollectionsManager,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [
+      NoopAnimationsModule,
+      getTranslocoTestingModule({
+        translocoConfig: { availableLangs: ['en', 'fr'], defaultLang: 'en', reRenderOnLangChange: true },
+      }),
+    ],
     providers: [
       provideTranslocoMessageformat(),
       CollectionsStore,
@@ -473,6 +479,11 @@ describe('CollectionsManager', () => {
     const strip = () => host().querySelector('[data-testid="export-strip"]');
     const exportButton = () => host().querySelector<HTMLButtonElement>('[data-testid="export-button"]');
 
+    beforeEach(() => {
+      // A dialog that never closes, unless a test closes it itself.
+      dialog.open.mockReturnValue({ afterClosed: () => new Subject() });
+    });
+
     const result: ExportJobResultDto = {
       filesWritten: ['dist/lingo-export/fr.xlf', 'dist/lingo-export/de.xlf'],
       entriesExported: 423,
@@ -522,13 +533,105 @@ describe('CollectionsManager', () => {
     });
 
     it('opens the dialog from the button with the lazily loaded export panel', async () => {
+      dialog.open.mockReturnValue({ afterClosed: () => new Subject() });
       exportButton()?.click();
 
       await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
       const options = dialog.open.mock.calls[0][1];
       expect(options.panelClass).toBe('export-dialog-panel');
-      expect(options.restoreFocus).toBe(true);
       expect(options.data).toEqual({});
+    });
+
+    describe('focus return', () => {
+      /** Opens through `open`, then closes the dialog after `beforeClose` ran. */
+      const openAndClose = async (open: () => void, beforeClose: () => void = () => undefined): Promise<void> => {
+        const closed = new Subject<void>();
+        dialog.open.mockReturnValue({ afterClosed: () => closed });
+        open();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+        beforeClose();
+        fixture.detectChanges();
+        closed.next();
+        closed.complete();
+      };
+
+      it('returns to the Export button when the dialog is cancelled', async () => {
+        await openAndClose(() => exportButton()?.click());
+
+        expect(document.activeElement).toBe(exportButton());
+      });
+
+      it('returns to the strip when the started export disabled the Export button', async () => {
+        await openAndClose(
+          () => exportButton()?.click(),
+          () => startWith({ status: 'running', progress: { current: 0, total: 2 } }),
+        );
+
+        expect(exportButton()?.disabled).toBe(true);
+        expect(document.activeElement).toBe(strip());
+      });
+
+      it('returns to the strip after Retry removed the Retry button', async () => {
+        startWith({ status: 'failed', error: 'Disk is full' });
+        const retry = Array.from(strip()?.querySelectorAll<HTMLButtonElement>('button') ?? []).find((button) =>
+          button.textContent?.includes('Retry'),
+        );
+        retry?.focus();
+
+        await openAndClose(
+          () => retry?.click(),
+          () => startWith({ status: 'running', progress: { current: 0, total: 2 } }),
+        );
+
+        expect(retry?.isConnected).toBe(false);
+        expect(document.activeElement).toBe(strip());
+      });
+
+      it('falls back to the section heading when neither the trigger nor a strip remains', async () => {
+        await openAndClose(
+          () => exportButton()?.click(),
+          () => exportButton()?.remove(),
+        );
+
+        expect(document.activeElement?.id).toBe('collections-heading');
+      });
+
+      it('returns to the card menu trigger after the menu item opened the dialog', async () => {
+        const trigger = host().querySelector<HTMLButtonElement>('[data-collection="alpha"] button[mat-icon-button]');
+        trigger?.click();
+        fixture.detectChanges();
+        const item = document.querySelector<HTMLButtonElement>('[data-testid="card-export"]');
+
+        await openAndClose(() => item?.click());
+
+        expect(document.activeElement).toBe(trigger);
+      });
+    });
+
+    it('re-translates the strip when the language changes', async () => {
+      const transloco = spectator.inject(TranslocoService);
+      startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });
+      expect(strip()?.textContent).toContain('2 files');
+
+      transloco.setActiveLang('fr');
+      await fixture.whenStable();
+      transloco.setTranslation(
+        {
+          'export.run.filesX': '{ count, plural, =1 {1 fichier} other {{count} fichiers} }',
+          'export.run.entriesX': '{ count, plural, =1 {1 entrée} other {{count} entrées} }',
+          'export.run.exported': 'Exporté',
+          'export.run.warningsX': '{ count, plural, =1 {1 avertissement} other {{count} avertissements} }',
+        },
+        'fr',
+      );
+      await fixture.whenStable();
+      spectator.detectComponentChanges();
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('2 fichiers');
+      expect(content).toContain('423 entrées');
+      expect(content).toContain('1 avertissement');
+      expect(content).not.toContain('2 files');
     });
 
     it('is busy and disabled with "Exporting…" while a job runs', () => {
