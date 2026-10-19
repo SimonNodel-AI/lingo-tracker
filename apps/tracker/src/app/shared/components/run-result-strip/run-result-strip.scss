@@ -50,6 +50,13 @@
     white-space: normal;
   }
 
+  // An identifier clause may wrap at its <wbr /> break points rather than clip.
+  .fig--mono {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   b {
     font-weight: var(--font-weight-bold);
   }
@@ -68,8 +75,7 @@
 }
 
 .result-line,
-.result--run,
-.result--failed {
+.result--run {
   align-items: flex-start;
   display: flex;
   gap: var(--spacing-2);
@@ -80,7 +86,6 @@
 // grows downwards. Centring them instead leaves both drifting whenever a locale wraps.
 .result-line > mat-icon,
 .result--run > mat-icon,
-.result--failed > mat-icon,
 .result-controls {
   margin-top: 1px;
 }
