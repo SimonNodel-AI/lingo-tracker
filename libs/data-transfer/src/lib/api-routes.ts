@@ -34,6 +34,9 @@ export const API_ROUTES = [
   { method: 'POST', path: '/api/bundles/dry-run' },
   { method: 'POST', path: '/api/bundles/:name/generate' },
   { method: 'GET', path: '/api/bundles/jobs/:jobId' },
+  { method: 'POST', path: '/api/exports/dry-run' },
+  { method: 'POST', path: '/api/exports' },
+  { method: 'GET', path: '/api/exports/jobs/:jobId' },
 ] as const satisfies readonly ApiRoute[];
 
 type ManifestRoute = (typeof API_ROUTES)[number];
