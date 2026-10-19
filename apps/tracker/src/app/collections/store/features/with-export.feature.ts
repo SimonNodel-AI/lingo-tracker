@@ -3,6 +3,7 @@ import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import type { ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { timer } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';
 import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
 import { CollectionsApiService } from '../../services/collections-api.service';
@@ -26,8 +27,8 @@ export function withExportFeature() {
         {
           start: (request) => api.startExport(request),
           getJob: (id) => api.getExportJob(id),
-          // TODO(i18n phase): use TRACKER_TOKENS
-          failureMessage: () => transloco.translate('export.toast.startFailed'),
+          // Used only after a job was accepted; a start failure stays with the dialog.
+          failureMessage: () => transloco.translate(TRACKER_TOKENS.EXPORT.RUN.FAILED),
         },
         new KeyedStorage(inject(SESSION_STORAGE), EXPORT_RUN_STORAGE_KEY, json(readPersistedExportRun)),
         { now: () => new Date().toISOString(), poll: (ms) => timer(ms, ms) },

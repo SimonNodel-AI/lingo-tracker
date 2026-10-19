@@ -4,6 +4,7 @@ import { createServiceFactory } from '@ngneat/spectator/vitest';
 import type { ExportJobDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { ApiError } from '../../../shared/api-error/api-error';
 import { CollectionsApiService } from '../../services/collections-api.service';
@@ -194,16 +195,14 @@ describe('withExportFeature', () => {
 
   it('translates the fallback for a polling failure without a server message', () => {
     const spectator = createStore();
-    const translate = vi
-      .spyOn(spectator.inject(TranslocoService), 'translate')
-      .mockReturnValue('Export could not be started');
+    const translate = vi.spyOn(spectator.inject(TranslocoService), 'translate').mockReturnValue('Export failed');
     try {
       api.startExport.mockReturnValue(of(running));
       api.getExportJob.mockReturnValue(throwError(() => new ApiError({ kind: 'other', status: 500 })));
       spectator.service.startExport(request).subscribe();
       vi.advanceTimersByTime(500);
-      expect(translate).toHaveBeenCalledWith('export.toast.startFailed');
-      expect(spectator.service.exportRun()?.error).toBe('Export could not be started');
+      expect(translate).toHaveBeenCalledWith(TRACKER_TOKENS.EXPORT.RUN.FAILED);
+      expect(spectator.service.exportRun()?.error).toBe('Export failed');
     } finally {
       translate.mockRestore();
     }

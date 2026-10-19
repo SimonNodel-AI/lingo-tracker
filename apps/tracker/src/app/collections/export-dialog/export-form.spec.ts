@@ -2,6 +2,7 @@ import { signal } from '@angular/core';
 import type { ExportJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { EMPTY, of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ApiError } from '../../shared/api-error/api-error';
 import { MemoryStorageAdapter } from '../../shared/storage/keyed-storage';
 import { defaultDraft, persistDraft } from './export-draft';
@@ -234,14 +235,47 @@ describe('ExportForm', () => {
   });
   it('resolves preview and submit fallback keys through the translation port', () => {
     vi.useFakeTimers();
-    const translate = vi.fn((key: string) => (key === 'export.preview.failed' ? 'Preview failed' : 'Start failed'));
+    const translate = vi.fn((key: string) =>
+      key === TRACKER_TOKENS.EXPORT.DIALOG.PREVIEW.FAILED ? 'Preview failed' : 'Start failed',
+    );
     const error = new ApiError({ kind: 'other', status: 500 });
     const model = build({ translate, dryRun: () => throwError(() => error) });
     vi.advanceTimersByTime(300);
-    expect(translate).toHaveBeenCalledWith('export.preview.failed');
+    expect(translate).toHaveBeenCalledWith(TRACKER_TOKENS.EXPORT.DIALOG.PREVIEW.FAILED);
     expect(model.preview.error()).toBe('Preview failed');
     model.submit(() => throwError(() => error)).subscribe({ error: () => undefined });
-    expect(translate).toHaveBeenCalledWith('export.toast.startFailed');
+    expect(translate).toHaveBeenCalledWith(TRACKER_TOKENS.EXPORT.TOAST.STARTFAILED);
     expect(model.submitErrors()).toEqual(['Start failed']);
+  });
+
+  it('does not remember a draft opened from a Retry request', () => {
+    const adapter = new MemoryStorageAdapter();
+    const model = build({ storage: () => adapter, data: { request: { format: 'json' } } });
+    model.form.controls.filenamePattern.setValue('{locale}');
+    expect(adapter.getItem('lingo-tracker.exportDraft')).toBeNull();
+  });
+
+  it('reseeds an untouched output folder and reconciles selections when the config loads late', () => {
+    const current = signal<LingoTrackerConfigDto | null>(null);
+    const model = build({ config: () => current() });
+    expect(model.form.controls.outputDirectory.value).toBe('dist/lingo-export');
+    expect(model.availableLocales()).toEqual([]);
+    current.set(config);
+    model.configLoaded();
+    expect(model.form.controls.outputDirectory.value).toBe('handoff');
+    expect(model.availableLocales()).toEqual(['fr', 'ja', 'de']);
+    const edited = build({ config: () => current() });
+    edited.form.controls.outputDirectory.setValue('mine');
+    edited.form.controls.outputDirectory.markAsDirty();
+    edited.configLoaded();
+    expect(edited.form.controls.outputDirectory.value).toBe('mine');
+  });
+
+  it('exposes the base locales of the chosen collections and a validity signal', () => {
+    const model = build();
+    expect(model.baseLocales()).toEqual(['en']);
+    expect(model.valid()).toBe(true);
+    model.form.controls.statuses.setValue([]);
+    expect(model.valid()).toBe(false);
   });
 });

@@ -7,6 +7,7 @@ import type {
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
 import { catchError, defer, EMPTY, finalize, type Observable, Subscription, throwError } from 'rxjs';
+import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import type { StorageAdapter } from '../../shared/storage/keyed-storage';
 import { resolveCollectionSettings } from '../store/collection-settings';
@@ -47,6 +48,11 @@ export class ExportForm {
     this.#formTick();
     return this.form.getRawValue();
   });
+  /** Form validity as a signal, so templates and computeds follow it. */
+  readonly valid = computed(() => {
+    this.#formTick();
+    return this.form.valid;
+  });
   readonly activeSection = signal<ExportSection>('format');
   readonly saving = signal(false);
   readonly submitAttempted = signal(false);
@@ -76,6 +82,20 @@ export class ExportForm {
       ),
     ];
   });
+  /** Base locales of the chosen collections: shown locked, never exported. */
+  readonly baseLocales = computed(() => {
+    const config = this.options.config();
+    if (!config) return [];
+    const draft = this.draft();
+    const names = draft.allCollections ? this.collectionNames() : draft.collections;
+    return [
+      ...new Set(
+        names
+          .filter((name) => this.collectionNames().includes(name))
+          .map((name) => resolveCollectionSettings(config, name).baseLocale),
+      ),
+    ];
+  });
   readonly selectedLocales = computed(() =>
     this.draft().allLocales
       ? this.availableLocales()
@@ -96,8 +116,12 @@ export class ExportForm {
   });
   readonly preview: ExportPreview;
 
+  /** The folder the form was seeded with while the config may not have been loaded yet. */
+  #seededFolder: string;
+
   constructor(private readonly options: ExportFormOptions) {
     const config = options.config() ?? {};
+    this.#seededFolder = defaultDraft(config).outputDirectory;
     const draft = options.data.request
       ? fromExportRequest(options.data.request, config)
       : ((options.storage ? readPersistedDraft(options.storage, config) : undefined) ?? defaultDraft(config));
@@ -157,7 +181,8 @@ export class ExportForm {
       this.form.valueChanges.subscribe(() => {
         this.refreshSelections();
         this.submitErrors.set([]);
-        if (options.storage) persistDraft(this.form.getRawValue(), options.storage);
+        // A Retry request is a one-off; it must not become the remembered draft.
+        if (options.storage && !options.data.request) persistDraft(this.form.getRawValue(), options.storage);
       }),
     );
     this.#changes.add(this.form.events.subscribe(() => this.#formTick.set(Symbol())));
@@ -165,10 +190,21 @@ export class ExportForm {
     this.preview = new ExportPreview({
       request: () => (this.form.valid ? this.buildRequest() : undefined),
       dryRun: options.dryRun,
-      // TODO(i18n phase): use TRACKER_TOKENS
-      failureMessage: () => options.translate('export.preview.failed'),
+      failureMessage: () => options.translate(TRACKER_TOKENS.EXPORT.DIALOG.PREVIEW.FAILED),
     });
     this.#changes.add(this.preview.connect(this.form.valueChanges));
+  }
+
+  /**
+   * The project config arrived after the form was built: reseed the output folder when the
+   * user has not touched it, then reconcile selections against the real collections.
+   */
+  configLoaded(): void {
+    const folder = this.form.controls.outputDirectory;
+    const next = defaultDraft(this.options.config() ?? {}).outputDirectory;
+    if (!folder.dirty && folder.value === this.#seededFolder && next !== folder.value) folder.setValue(next);
+    this.#seededFolder = next;
+    this.refreshSelections();
   }
 
   /** Reconcile after collection choices (or the caller's project config) change. */
@@ -220,9 +256,10 @@ export class ExportForm {
         catchError((error: unknown) => {
           const details =
             error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
-          // TODO(i18n phase): use TRACKER_TOKENS
           this.submitErrors.set(
-            details.length ? details : [apiErrorMessage(error, this.options.translate('export.toast.startFailed'))],
+            details.length
+              ? details
+              : [apiErrorMessage(error, this.options.translate(TRACKER_TOKENS.EXPORT.TOAST.STARTFAILED))],
           );
           return throwError(() => error);
         }),
