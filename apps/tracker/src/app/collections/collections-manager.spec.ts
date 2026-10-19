@@ -5,7 +5,13 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
-import type { BundleGenerateJobDto, LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
+import type {
+  BundleGenerateJobDto,
+  ExportJobDto,
+  ExportJobResultDto,
+  ExportRequestDto,
+  LingoTrackerConfigDto,
+} from '@simoncodes-ca/data-transfer';
 import { of, throwError } from 'rxjs';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
@@ -50,6 +56,8 @@ const api = {
   deleteBundle: vi.fn(),
   generateBundle: vi.fn(),
   getBundleJob: vi.fn(),
+  startExport: vi.fn(),
+  getExportJob: vi.fn(),
 };
 
 const notifications = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
@@ -457,5 +465,182 @@ describe('CollectionsManager', () => {
     expect(button).toBeTruthy();
     expect(button?.disabled).toBe(false);
     expect(button?.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  describe('export', () => {
+    const request: ExportRequestDto = { format: 'xliff', collections: ['alpha'] };
+    const host = () => fixture.nativeElement as HTMLElement;
+    const strip = () => host().querySelector('[data-testid="export-strip"]');
+    const exportButton = () => host().querySelector<HTMLButtonElement>('[data-testid="export-button"]');
+
+    const result: ExportJobResultDto = {
+      filesWritten: ['dist/lingo-export/fr.xlf', 'dist/lingo-export/de.xlf'],
+      entriesExported: 423,
+      localeResults: [
+        { locale: 'fr', outcome: 'exported', entriesExported: 400, file: 'dist/lingo-export/fr.xlf' },
+        { locale: 'de', outcome: 'exported', entriesExported: 23, file: 'dist/lingo-export/de.xlf' },
+        { locale: 'ja', outcome: 'skipped', entriesExported: 0, error: 'Nothing to export' },
+      ],
+      warnings: ['Check the notes'],
+      errors: [],
+      outcome: 'succeeded',
+      outputDirectory: 'dist/lingo-export',
+      format: 'xliff',
+    };
+
+    /** Starts an export whose job the API reports as `job`. */
+    const startWith = (job: Partial<ExportJobDto>): void => {
+      const full: ExportJobDto = {
+        jobId: 'job-1',
+        status: 'running',
+        progress: { current: 0, total: 0 },
+        request,
+        ...job,
+      };
+      api.startExport.mockReturnValue(of(full));
+      api.getExportJob.mockReturnValue(of(full));
+      store.startExport(request).subscribe();
+      fixture.detectChanges();
+    };
+
+    it('shows an outline Export button with the output icon, enabled when idle', () => {
+      const button = exportButton();
+
+      expect(button?.classList.contains('btn--outline')).toBe(true);
+      expect(button?.textContent).toContain('Export…');
+      expect(button?.querySelector('mat-icon')?.textContent).toBe('output');
+      expect(button?.disabled).toBe(false);
+      expect(strip()).toBeNull();
+    });
+
+    it('hides the Export button when there are no collections', () => {
+      api.getConfig.mockReturnValue(of({ ...config, collections: {} }));
+      store.loadCollections();
+      fixture.detectChanges();
+
+      expect(exportButton()).toBeNull();
+    });
+
+    it('opens the dialog from the button with the lazily loaded export panel', async () => {
+      exportButton()?.click();
+
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      const options = dialog.open.mock.calls[0][1];
+      expect(options.panelClass).toBe('export-dialog-panel');
+      expect(options.restoreFocus).toBe(true);
+      expect(options.data).toEqual({});
+    });
+
+    it('is busy and disabled with "Exporting…" while a job runs', () => {
+      startWith({ status: 'running', progress: { current: 1, total: 4, currentFile: 'fr.xlf' } });
+
+      const button = exportButton();
+      expect(button?.disabled).toBe(true);
+      expect(button?.getAttribute('aria-disabled')).toBe('true');
+      expect(button?.classList.contains('btn--busy')).toBe(true);
+      expect(button?.textContent).toContain('Exporting…');
+    });
+
+    it('renders the running strip with the file and locale progress, without Dismiss', () => {
+      startWith({ status: 'running', progress: { current: 1, total: 4, currentFile: 'fr.xlf' } });
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('Exporting…');
+      expect(content).toContain('Writing');
+      expect(content).toContain('fr.xlf');
+      expect(content).toContain('1 of 4 locales');
+      expect(strip()?.querySelector('.dismiss')).toBeNull();
+    });
+
+    it('renders the completed strip with counts, format, folder and warnings', () => {
+      startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('Exported');
+      expect(content).toContain('2 files');
+      expect(content).toContain('423 entries');
+      expect(content).toContain('XLIFF');
+      expect(content).toContain('dist/lingo-export');
+      expect(content).toContain('1 warning');
+      expect(strip()?.querySelector('.fig--mono')).not.toBeNull();
+      expect(strip()?.querySelector('.details-toggle')).not.toBeNull();
+      expect(strip()?.querySelector('.dismiss')).not.toBeNull();
+    });
+
+    it('lists files, skipped locales and warnings in the details panel', () => {
+      startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });
+
+      strip()?.querySelector<HTMLButtonElement>('.details-toggle')?.click();
+      fixture.detectChanges();
+
+      const details = strip()?.querySelector('.result-details')?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(details).toContain('Files written');
+      expect(details).toContain('dist/lingo-export/fr.xlf');
+      expect(details).toContain('400 entries');
+      expect(details).toContain('Skipped locales');
+      expect(details).toContain('Nothing to export');
+      expect(details).toContain('Check the notes');
+      expect(strip()?.querySelector('.details-list--warnings li span')?.getAttribute('title')).toBe('Check the notes');
+    });
+
+    it('renders the failed strip with the error and Retry, and offers Details only for per-locale errors', () => {
+      startWith({ status: 'failed', error: 'Disk is full' });
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('Export failed');
+      expect(content).toContain('Disk is full');
+      expect(content).toContain('Retry');
+      expect(strip()?.querySelector('.details-toggle')).toBeNull();
+      expect(strip()?.querySelector('.dismiss')).not.toBeNull();
+    });
+
+    it('offers Details on a failed run that has per-locale errors', () => {
+      startWith({
+        status: 'failed',
+        error: 'Export failed',
+        result: { ...result, outcome: 'failed', warnings: [], errors: ['fr: cannot write'] },
+      });
+
+      strip()?.querySelector<HTMLButtonElement>('.details-toggle')?.click();
+      fixture.detectChanges();
+
+      expect(strip()?.querySelector('.details-list--errors li span')?.getAttribute('title')).toBe('fr: cannot write');
+    });
+
+    it('dismisses the strip and clears the run', () => {
+      startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });
+
+      strip()?.querySelector<HTMLButtonElement>('.dismiss')?.click();
+      fixture.detectChanges();
+
+      expect(store.exportRun()).toBeNull();
+      expect(strip()).toBeNull();
+    });
+
+    it('reopens the dialog with the last request on Retry', async () => {
+      startWith({ status: 'failed', error: 'Disk is full' });
+
+      Array.from(strip()?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+        .find((button) => button.textContent?.includes('Retry'))
+        ?.click();
+
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      expect(dialog.open.mock.calls[0][1].data).toEqual({ request });
+      expect(dialog.open.mock.calls[0][1].panelClass).toBe('export-dialog-panel');
+    });
+
+    it('opens the dialog preselected from a card menu, including a read-only collection', async () => {
+      const trigger = host().querySelector<HTMLButtonElement>('[data-collection="Bravo"] button[mat-icon-button]');
+      trigger?.click();
+      fixture.detectChanges();
+
+      const item = document.querySelector<HTMLButtonElement>('[data-testid="card-export"]');
+      expect(item?.textContent).toContain('Export…');
+      expect(item?.disabled).toBe(false);
+      item?.click();
+
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      expect(dialog.open.mock.calls[0][1].data).toEqual({ preselectedCollection: 'Bravo' });
+    });
   });
 });

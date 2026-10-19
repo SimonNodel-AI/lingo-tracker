@@ -18,18 +18,22 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
+import type { ExportJobResultDto } from '@simoncodes-ca/data-transfer';
 import { catchError, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import type { Feedback } from '../browser/feedback';
 import { apiErrorMessage } from '../shared/api-error/api-error';
+import { type RunResultClause, RunResultStrip } from '../shared/components/run-result-strip/run-result-strip';
 import { injectConfirmedWrite } from '../shared/confirmed-write';
 import { NotificationService } from '../shared/notification';
+import { splitAfterSeparators } from '../shared/utils/split-after-separators';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
 import { bundleCards, collectionCards } from './collection-cards';
 import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
 import type { BundleLink, BundlePort } from './collection-links';
 import { measureCollectionLinks } from './collection-links-measurement';
+import { type ExportDialogData, loadExportDialog } from './export-dialog/export-dialog-data';
 import { CollectionsStore } from './store/collections.store';
 
 /** Below this many collections the name filter is more clutter than help. */
@@ -76,6 +80,7 @@ const toast = (tone: 'success' | 'error', token: string, detail?: string): Feedb
     MatTooltipModule,
     TranslocoModule,
     BundleCard,
+    RunResultStrip,
   ],
   templateUrl: './collections-manager.html',
   styleUrl: './collections-manager.scss',
@@ -131,6 +136,49 @@ export class CollectionsManager {
 
   /** Convergence point of the current connector lines; null when none are drawn. */
   readonly bundlePort = signal<BundlePort | null>(null);
+
+  /** Whether the export strip's details panel is open. */
+  readonly exportDetailsOpen = signal(false);
+
+  /** The export strip's counts and lists, or null when no export has run. */
+  readonly exportStrip = computed(() => {
+    const run = this.store.exportRun();
+    if (!run) return null;
+    const result = run.result;
+    const errors = result?.errors.length ?? 0;
+    return {
+      run,
+      result,
+      warnings: result?.warnings.length ?? 0,
+      errors,
+      skipped: result?.localeResults.filter((item) => item.outcome === 'skipped') ?? [],
+      files: exportedFiles(result),
+      // A failed run only offers details when there is a per-locale error to read.
+      hasDetails: run.status === 'completed' || errors > 0,
+    };
+  });
+
+  /** The verb of "Writing {file}": the strip shows the file itself as a mono identifier. */
+  readonly writingLabel = computed(() =>
+    this.#transloco.translate(TRACKER_TOKENS.EXPORT.RUN.WRITINGX, { file: '' }).trim(),
+  );
+
+  /** Completed-strip clauses: counts, format and the output folder as a mono identifier. */
+  readonly exportClauses = computed<readonly (string | RunResultClause)[]>(() => {
+    const strip = this.exportStrip();
+    const result = strip?.result;
+    if (!strip || !result) return [];
+    const count = (token: string, value: number) => this.#transloco.translate(token, { count: value });
+    return [
+      count(TRACKER_TOKENS.EXPORT.RUN.FILESX, result.filesWritten.length),
+      count(TRACKER_TOKENS.EXPORT.RUN.ENTRIESX, result.entriesExported),
+      { text: result.format.toUpperCase(), kind: 'text' },
+      { text: result.outputDirectory, kind: 'mono' },
+      ...(strip.warnings > 0 ? [count(TRACKER_TOKENS.EXPORT.RUN.WARNINGSX, strip.warnings)] : []),
+    ];
+  });
+
+  readonly splitMono = splitAfterSeparators;
 
   readonly isGeneratingAll = this.store.isBatchRunning;
   readonly generateAllPosition = this.store.batchPosition;
@@ -252,6 +300,33 @@ export class CollectionsManager {
     this.store.generateAllBundles();
   }
 
+  // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+
+  /** Opens the export dialog, optionally preselected to one collection. Focus returns to the trigger. */
+  openExportDialog(preselected?: string): void {
+    this.#openExportDialog(preselected ? { preselectedCollection: preselected } : {});
+  }
+
+  /** Reopens the dialog with the last request so the cause of a failure can be fixed. */
+  retryExport(): void {
+    const request = this.store.exportRun()?.request;
+    this.#openExportDialog(request ? { request } : {});
+  }
+
+  dismissExport(): void {
+    this.exportDetailsOpen.set(false);
+    this.store.clearExportRun();
+  }
+
+  #openExportDialog(data: ExportDialogData): void {
+    // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
+    void loadExportDialog().then((component) =>
+      this.#dialog.open(component, { data, panelClass: 'export-dialog-panel', restoreFocus: true }),
+    );
+  }
+
   /** Opens the create form and toasts only when it closes with a saved result. */
   openCreateDialog(): void {
     const data: CollectionFormDialogData = { mode: 'create' };
@@ -350,4 +425,13 @@ export class CollectionsManager {
   navigateToBrowser(collectionName: string): void {
     this.#router.navigate(['/browser', collectionName]);
   }
+}
+
+/** Files written with their entry counts, matched from the per-locale results. */
+function exportedFiles(result: ExportJobResultDto | undefined): readonly { file: string; entries?: number }[] {
+  if (!result) return [];
+  return result.filesWritten.map((file) => ({
+    file,
+    entries: result.localeResults.find((item) => item.file === file)?.entriesExported,
+  }));
 }
