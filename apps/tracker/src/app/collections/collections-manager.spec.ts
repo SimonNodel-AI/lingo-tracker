@@ -11,16 +11,21 @@ import type {
   ExportJobDto,
   ExportJobResultDto,
   ExportRequestDto,
+  ImportJobDto,
+  ImportJobResultDto,
+  ImportRequestDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
+import { JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../testing/transloco-testing.module';
 import { toApiError } from '../shared/api-error/api-error';
 import { NotificationService } from '../shared/notification';
 import { CollectionsManager } from './collections-manager';
 import { CollectionsApiService } from './services/collections-api.service';
 import { CollectionsStore } from './store/collections.store';
+import { IMPORT_RUN_STORAGE_KEY } from './store/import-run-controller';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'dist/export',
@@ -59,6 +64,9 @@ const api = {
   getBundleJob: vi.fn(),
   startExport: vi.fn(),
   getExportJob: vi.fn(),
+  startImport: vi.fn(),
+  getImportJob: vi.fn(),
+  importSummaryUrl: vi.fn(),
 };
 
 const notifications = { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() };
@@ -766,6 +774,604 @@ describe('CollectionsManager', () => {
 
       await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
       expect(dialog.open.mock.calls[0][1].data).toEqual({ preselectedCollection: 'Bravo' });
+    });
+  });
+
+  describe('import', () => {
+    const request: ImportRequestDto = {
+      collection: 'alpha',
+      files: [
+        { path: 'dist/lingo-import/de.xliff', locale: 'de' },
+        { path: 'dist/lingo-import/es.xliff', locale: 'es' },
+      ],
+    };
+    const host = () => fixture.nativeElement as HTMLElement;
+    const strip = () => host().querySelector<HTMLElement>('[data-testid="import-strip"]');
+    const exportStrip = () => host().querySelector('[data-testid="export-strip"]');
+    const importButton = () => host().querySelector<HTMLButtonElement>('[data-testid="import-button"]');
+    const stripText = () => strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+    const detailsText = () => strip()?.querySelector('.result-details')?.textContent?.replace(/\s+/g, ' ') ?? '';
+    const openDetails = () => {
+      strip()?.querySelector<HTMLButtonElement>('.details-toggle')?.click();
+      fixture.detectChanges();
+    };
+
+    const totals = { entries: 700, imported: 683, created: 10, updated: 600, skipped: 0, failed: 0, changed: 4 };
+    const file = (path: string, locale: string, extra: object = {}) => ({
+      path,
+      locale,
+      format: 'xliff' as const,
+      entries: 300,
+      imported: 290,
+      created: 0,
+      updated: 290,
+      skipped: 0,
+      failed: 0,
+      changed: 2,
+      statusTransitions: [],
+      warnings: [],
+      errors: [],
+      outcome: 'imported' as const,
+      filesModified: [],
+      ...extra,
+    });
+    const result: ImportJobResultDto = {
+      collection: 'alpha',
+      strategy: 'translation-service',
+      files: [file('dist/lingo-import/de.xliff', 'de'), file('dist/lingo-import/es.xliff', 'es', { imported: 393 })],
+      totals,
+      statusTransitions: [
+        { from: 'new', to: 'translated', count: 490 },
+        { to: 'verified', count: 3 },
+      ],
+      icuAutoFixes: [
+        { locale: 'es', key: 'browser.greetingX', originalValue: '{nombre}', fixedValue: '{name}', description: '' },
+      ],
+      issues: [
+        { locale: 'es', key: 'a.skipped', type: 'skipped', reason: 'Not in this collection' },
+        { locale: 'es', key: 'b.failed', type: 'failed', reason: 'Protected term altered' },
+      ],
+      warnings: [],
+      errors: [],
+      filesModified: ['sample/alpha/ok/resource_entries.json'],
+      outcome: 'succeeded',
+      truncated: { issues: 7, icuAutoFixes: 0, warnings: 0, errors: 0 },
+    };
+
+    beforeEach(() => {
+      // The shared testing module carries no import copy, so this block brings its own.
+      spectator.inject(TranslocoService).setTranslation(
+        {
+          'import.button': 'Import…',
+          'import.buttonBusy': 'Importing…',
+          'import.card.menuItem': 'Import…',
+          'import.card.readOnlyTooltip': 'Read-only collection. Nothing can be imported into it.',
+          'import.run.importing': 'Importing…',
+          'import.run.reading': 'Reading',
+          'import.run.filesProgressX': '{{ current }} of {{ total }} files',
+          'import.run.imported': 'Imported',
+          'import.run.failed': 'Import failed',
+          'import.run.entriesX': '{ count, plural, =1 {1 entry} other {{count} entries} }',
+          'import.run.filesX': '{ count, plural, =1 {1 file} other {{count} files} }',
+          'import.run.filesFailedX': '{ count, plural, =1 {1 file failed} other {{count} files failed} }',
+          'import.run.failedX': '{ count, plural, =1 {1 failed} other {{count} failed} }',
+          'import.run.skippedX': '{ count, plural, =1 {1 skipped} other {{count} skipped} }',
+          'import.run.warningsX': '{ count, plural, =1 {1 warning} other {{count} warnings} }',
+          'import.run.importedX': '{ count, plural, =1 {1 imported} other {{count} imported} }',
+          'import.run.createdX': '{ count, plural, =1 {1 created} other {{count} created} }',
+          'import.run.updatedX': '{ count, plural, =1 {1 updated} other {{count} updated} }',
+          'import.run.details': 'Details',
+          'import.run.detailsAriaLabel': 'Import details',
+          'import.run.dismissAriaLabel': 'Dismiss import result',
+          'import.run.filesHeading': 'Files',
+          'import.run.statusHeading': 'Status changes',
+          'import.run.autoFixesHeading': 'Auto-fixes',
+          'import.run.issuesHeading': 'Issues',
+          'import.run.warningsHeading': 'Warnings',
+          'import.run.errorsHeading': 'Errors',
+          'import.run.filesChanged': 'Files changed',
+          'import.run.moreInSummaryX': 'and {{ count }} more in the summary',
+          'import.run.downloadSummary': 'Download summary (.md)',
+        },
+        'en',
+        { merge: true },
+      );
+      fixture.detectChanges();
+      dialog.open.mockReturnValue({ afterClosed: () => new Subject() });
+      api.importSummaryUrl.mockImplementation((jobId: string) => `/api/imports/jobs/${jobId}/summary`);
+    });
+
+    /** Starts an import whose job the API reports as `job`. */
+    const startWith = (job: Partial<ImportJobDto>): void => {
+      const full: ImportJobDto = {
+        jobId: 'job-1',
+        status: 'running',
+        progress: { current: 0, total: 2 },
+        request,
+        ...job,
+      };
+      api.startImport.mockReturnValue(of(full));
+      api.getImportJob.mockReturnValue(of(full));
+      store.startImport(request).subscribe();
+      fixture.detectChanges();
+    };
+    const completed = (override: Partial<ImportJobResultDto> = {}) =>
+      startWith({
+        status: 'completed',
+        progress: { current: 2, total: 2 },
+        completedAt: new Date().toISOString(),
+        result: { ...result, ...override },
+      });
+
+    it('shows an outline Import button with the input glyph after Export, enabled when idle', () => {
+      const button = importButton();
+
+      expect(button?.classList.contains('btn--outline')).toBe(true);
+      expect(button?.textContent).toContain('Import…');
+      expect(button?.querySelector('mat-icon')?.textContent).toBe('input');
+      expect(button?.disabled).toBe(false);
+      expect(button?.previousElementSibling?.getAttribute('data-testid')).toBe('export-button');
+      expect(strip()).toBeNull();
+    });
+
+    it('is busy and disabled with "Importing…" while a job runs', () => {
+      startWith({ progress: { current: 1, total: 2, currentFile: 'es.xliff' } });
+
+      const button = importButton();
+      expect(button?.disabled).toBe(true);
+      expect(button?.getAttribute('aria-disabled')).toBe('true');
+      expect(button?.classList.contains('btn--busy')).toBe(true);
+      expect(button?.textContent).toContain('Importing…');
+    });
+
+    it('opens the lazily loaded import panel without a preselection', async () => {
+      importButton()?.click();
+
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      const options = dialog.open.mock.calls[0][1];
+      expect(options.panelClass).toBe('import-dialog-panel');
+      expect(options.data).toEqual({});
+    });
+
+    describe('card menu', () => {
+      const openMenu = (name: string) => {
+        host().querySelector<HTMLButtonElement>(`[data-collection="${name}"] button[mat-icon-button]`)?.click();
+        fixture.detectChanges();
+        return document.querySelector<HTMLButtonElement>('[data-testid="card-import"]');
+      };
+
+      it('lists Import… between Export… and Delete', () => {
+        openMenu('alpha');
+
+        const labels = Array.from(document.querySelectorAll('.mat-mdc-menu-item-text')).map((item) =>
+          item.textContent?.trim(),
+        );
+        expect(labels.indexOf('Import…')).toBe(labels.indexOf('Export…') + 1);
+        expect(labels.indexOf('Delete')).toBe(labels.indexOf('Import…') + 1);
+      });
+
+      it('preselects the collection', async () => {
+        const item = openMenu('alpha');
+        expect(item?.disabled).toBe(false);
+        item?.click();
+
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+        expect(dialog.open.mock.calls[0][1].data).toEqual({ preselectedCollection: 'alpha' });
+        expect(dialog.open.mock.calls[0][1].panelClass).toBe('import-dialog-panel');
+      });
+
+      it('is disabled on a read-only collection, wrapped by its tooltip, and opens nothing', () => {
+        const item = openMenu('Bravo');
+        item?.click();
+
+        expect(item?.disabled).toBe(true);
+        expect(item?.getAttribute('aria-disabled')).toBe('true');
+        expect(item?.parentElement?.classList.contains('menu-item-tooltip')).toBe(true);
+        expect(dialog.open).not.toHaveBeenCalled();
+      });
+
+      it('explains the restriction in the card read-only note', () => {
+        spectator
+          .inject(TranslocoService)
+          .setTranslation(
+            { 'collections.card.readOnlyTooltip': "This collection is read-only. Its resources can't be modified." },
+            'en',
+            { merge: true },
+          );
+        fixture.detectChanges();
+        const note = host().querySelector('[data-collection="Bravo"] .readonly-note');
+
+        expect(note?.textContent).toContain('read-only');
+        expect(host().querySelector('[data-collection="alpha"] .readonly-note')).toBeNull();
+      });
+
+      it('is enabled on a writable collection', () => {
+        expect(openMenu('alpha')?.disabled).toBe(false);
+      });
+
+      it('returns focus to the card menu trigger after closing', async () => {
+        const trigger = host().querySelector<HTMLButtonElement>('[data-collection="alpha"] button[mat-icon-button]');
+        const item = openMenu('alpha');
+        const closed = new Subject<void>();
+        dialog.open.mockReturnValue({ afterClosed: () => closed });
+        item?.click();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+        closed.next();
+        closed.complete();
+
+        expect(document.activeElement).toBe(trigger);
+      });
+    });
+
+    describe('focus return', () => {
+      const openAndClose = async (open: () => void, beforeClose: () => void = () => undefined): Promise<void> => {
+        const closed = new Subject<void>();
+        dialog.open.mockReturnValue({ afterClosed: () => closed });
+        open();
+        await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+        beforeClose();
+        fixture.detectChanges();
+        closed.next();
+        closed.complete();
+      };
+
+      it('returns to the Import button when the dialog is cancelled', async () => {
+        await openAndClose(() => importButton()?.click());
+
+        expect(document.activeElement).toBe(importButton());
+      });
+
+      it('returns to the import strip when the started import disabled the button', async () => {
+        await openAndClose(
+          () => importButton()?.click(),
+          () => startWith({}),
+        );
+
+        expect(importButton()?.disabled).toBe(true);
+        expect(document.activeElement).toBe(strip());
+      });
+
+      it('returns to the import strip, not the export strip, after Retry', async () => {
+        startWith({ status: 'failed', error: 'Folder vanished' });
+        const retry = Array.from(strip()?.querySelectorAll<HTMLButtonElement>('button') ?? []).find((button) =>
+          button.textContent?.includes('Retry'),
+        );
+        retry?.focus();
+
+        await openAndClose(
+          () => retry?.click(),
+          () => startWith({}),
+        );
+
+        expect(document.activeElement).toBe(strip());
+      });
+    });
+
+    it('renders the running strip with the file and progress, without Dismiss', () => {
+      startWith({ progress: { current: 2, total: 3, currentFile: 'es.xliff' } });
+
+      expect(stripText()).toContain('Importing…');
+      expect(stripText()).toContain('Reading');
+      expect(stripText()).toContain('es.xliff');
+      expect(stripText()).toContain('2 of 3 files');
+      expect(strip()?.querySelector('.bar')).not.toBeNull();
+      expect(strip()?.querySelector('.dismiss')).toBeNull();
+      expect(strip()?.querySelector('[role="status"]')).not.toBeNull();
+    });
+
+    it('renders a clean completed strip without skipped, failed or warning clauses', () => {
+      completed({ issues: [], truncated: { issues: 0, icuAutoFixes: 0, warnings: 0, errors: 0 } });
+
+      expect(stripText()).toContain('Imported');
+      expect(stripText()).toContain('683 entries');
+      expect(stripText()).toContain('2 files');
+      expect(stripText()).not.toMatch(/\d (skipped|failed|warning)/);
+      expect(strip()?.querySelector('.result--ok')).not.toBeNull();
+      expect(strip()?.querySelector('.result--warn')).toBeNull();
+      expect(strip()?.querySelector('.details-toggle')).not.toBeNull();
+    });
+
+    it('renders skipped, failed and warning clauses with the warning tint', () => {
+      completed({ totals: { ...totals, skipped: 12, failed: 2 }, warnings: ['Large import file', 'Another'] });
+
+      expect(stripText()).toContain('12 skipped');
+      expect(stripText()).toContain('2 failed');
+      expect(stripText()).toContain('2 warnings');
+      expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+      expect(strip()?.querySelector('.result--failed')).toBeNull();
+    });
+
+    it('uses the warning tint for failed entries alone', () => {
+      completed({ totals: { ...totals, failed: 1 } });
+
+      expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+      expect(stripText()).not.toMatch(/\d warning/);
+    });
+
+    it('renders the failed strip as an alert with the message and Retry, using the failed tint', () => {
+      startWith({ status: 'failed', error: 'Folder vanished' });
+
+      expect(stripText()).toContain('Import failed');
+      expect(stripText()).toContain('Folder vanished');
+      expect(stripText()).toContain('Retry');
+      expect(strip()?.querySelector('.result--failed')).not.toBeNull();
+      expect(strip()?.querySelector('[role="alert"]')).not.toBeNull();
+      expect(strip()?.querySelector('.details-toggle')).toBeNull();
+    });
+
+    it('reopens the dialog with the echoed request on Retry', async () => {
+      startWith({ status: 'failed', error: 'Folder vanished' });
+
+      Array.from(strip()?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+        .find((button) => button.textContent?.includes('Retry'))
+        ?.click();
+
+      await vi.waitFor(() => expect(dialog.open).toHaveBeenCalledTimes(1));
+      expect(dialog.open.mock.calls[0][1].data).toEqual({ request });
+      expect(dialog.open.mock.calls[0][1].panelClass).toBe('import-dialog-panel');
+    });
+
+    describe('failed files', () => {
+      const failedFile = file('dist/lingo-import/ja.xliff', 'ja', {
+        outcome: 'failed',
+        imported: 0,
+        updated: 0,
+        sourceProblem: 'Not a valid XLIFF file',
+      });
+
+      it('tints a completed job whose outcome failed on a file error, with a failed-files clause', () => {
+        completed({ outcome: 'failed', files: [result.files[0], failedFile], issues: [] });
+
+        expect(stripText()).toContain('Imported');
+        expect(stripText()).toContain('1 file failed');
+        expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+        expect(strip()?.querySelector('.result--failed')).toBeNull();
+      });
+
+      it('tints on a failed outcome even with no per-file detail', () => {
+        completed({ outcome: 'failed', issues: [] });
+
+        expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+        expect(stripText()).not.toContain('file failed');
+      });
+
+      it('keeps a clean outcome green', () => {
+        completed({ issues: [] });
+
+        expect(strip()?.querySelector('.result--ok:not(.result--warn)')).not.toBeNull();
+      });
+    });
+
+    it('tints a completed run that has errors but no failed entries, files or warnings', () => {
+      sessionStorage.setItem(
+        IMPORT_RUN_STORAGE_KEY,
+        JSON.stringify({
+          jobId: 'job-1',
+          status: 'completed',
+          request,
+          result: { totals: { imported: 0 }, files: [], errors: ['Write failed'] },
+          finishedAt: new Date().toISOString(),
+        }),
+      );
+      store.restoreImportRun();
+      fixture.detectChanges();
+
+      expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+      expect(strip()?.querySelector('.result--failed')).toBeNull();
+    });
+
+    it('tints on truncated errors alone', () => {
+      completed({ issues: [], truncated: { issues: 0, icuAutoFixes: 0, warnings: 0, errors: 3 } });
+
+      expect(strip()?.querySelector('.result--warn')).not.toBeNull();
+    });
+
+    describe('partial results', () => {
+      it('renders a restored completed run that carries only totals and files', () => {
+        const partial = { totals, files: [{ path: 'dist/lingo-import/de.xliff', locale: 'de' }] };
+        sessionStorage.setItem(
+          IMPORT_RUN_STORAGE_KEY,
+          JSON.stringify({
+            jobId: 'job-1',
+            status: 'completed',
+            request,
+            result: partial,
+            finishedAt: new Date().toISOString(),
+          }),
+        );
+        store.restoreImportRun();
+        fixture.detectChanges();
+
+        expect(() => {
+          strip()?.querySelector<HTMLButtonElement>('.details-toggle')?.click();
+          fixture.detectChanges();
+        }).not.toThrow();
+        const text = stripText();
+        expect(text).toContain('683 entries');
+        expect(text).toContain('1 file');
+        expect(text).toContain('dist/lingo-import/de.xliff');
+        expect(text).not.toContain('NaN');
+        expect(strip()?.querySelector('.result--ok:not(.result--warn)')).not.toBeNull();
+      });
+    });
+
+    describe('capped messages', () => {
+      it('counts truncated warnings in the headline and notes them in Details', () => {
+        completed({
+          warnings: ['one', 'two'],
+          errors: ['bad'],
+          truncated: { issues: 0, icuAutoFixes: 0, warnings: 8, errors: 4 },
+        });
+
+        expect(stripText()).toContain('10 warnings');
+        openDetails();
+        const notes = Array.from(strip()?.querySelectorAll('.more-note') ?? []).map((note) => note.textContent?.trim());
+        expect(notes).toEqual(['and 8 more in the summary', 'and 4 more in the summary']);
+      });
+    });
+
+    describe('details', () => {
+      it('lists files, status changes, auto-fixes, issues and files changed', () => {
+        completed();
+        openDetails();
+
+        const details = detailsText();
+        expect(details).toContain('Files');
+        expect(details).toContain('dist/lingo-import/de.xliff');
+        expect(details).toContain('290 imported');
+        expect(details).toContain('393 imported');
+        expect(strip()?.querySelector('.locale-pill')?.textContent).toBe('de');
+        expect(details).toContain('Status changes');
+        expect(details).toContain('New→Translated490');
+        expect(details).toContain('—→Verified3');
+        expect(details).toContain('Auto-fixes');
+        expect(details).toContain('browser.greetingX');
+        expect(strip()?.querySelector('.clamp')?.getAttribute('title')).toBe('{nombre} → {name}');
+        expect(details).toContain('Files changed');
+        expect(details).toContain('sample/alpha/ok/resource_entries.json');
+      });
+
+      it('lists failed issues before skipped ones and notes the truncation', () => {
+        completed();
+        openDetails();
+
+        const keys = Array.from(strip()?.querySelectorAll('.details-list--issues .mono') ?? []).map(
+          (item) => item.textContent,
+        );
+        expect(keys).toEqual(['b.failed', 'a.skipped']);
+        expect(detailsText()).toContain('and 7 more in the summary');
+      });
+
+      it('lists warnings and errors with the full text on the title', () => {
+        completed({ warnings: ['Check the notes'], errors: ['es: cannot read'] });
+        openDetails();
+
+        expect(strip()?.querySelector('.details-list--warnings li span')?.getAttribute('title')).toBe(
+          'Check the notes',
+        );
+        expect(strip()?.querySelector('.details-list--errors li span')?.getAttribute('title')).toBe('es: cannot read');
+      });
+
+      it('offers Details on a failed job that has errors', () => {
+        startWith({ status: 'failed', error: 'Import failed', result: { ...result, errors: ['es: cannot read'] } });
+        openDetails();
+
+        expect(strip()?.querySelector('.details-list--errors')).not.toBeNull();
+      });
+    });
+
+    describe('summary link', () => {
+      it('downloads the summary of a fresh completed job', () => {
+        completed();
+        openDetails();
+
+        const link = strip()?.querySelector<HTMLAnchorElement>('a.summary-link');
+        expect(link?.getAttribute('href')).toBe('/api/imports/jobs/job-1/summary');
+        expect(link?.hasAttribute('download')).toBe(true);
+        expect(link?.textContent).toContain('Download summary (.md)');
+      });
+
+      describe('expiry', () => {
+        afterEach(() => vi.useRealTimers());
+
+        it('disappears at the retention deadline without the run changing', () => {
+          vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+          completed();
+          openDetails();
+          expect(strip()?.querySelector('a.summary-link')).not.toBeNull();
+
+          vi.advanceTimersByTime(JOB_RETENTION_MS - 1000);
+          fixture.detectChanges();
+          expect(strip()?.querySelector('a.summary-link')).not.toBeNull();
+
+          vi.advanceTimersByTime(2000);
+          fixture.detectChanges();
+          expect(strip()?.querySelector('a.summary-link')).toBeNull();
+          expect(strip()?.querySelector('.result-details')).not.toBeNull();
+        });
+
+        it('is already hidden for a restored run older than the retention window', () => {
+          const finishedAt = new Date(Date.now() - JOB_RETENTION_MS - 5000).toISOString();
+          sessionStorage.setItem(
+            IMPORT_RUN_STORAGE_KEY,
+            JSON.stringify({ jobId: 'job-1', status: 'completed', request, result, finishedAt }),
+          );
+          store.restoreImportRun();
+          fixture.detectChanges();
+          openDetails();
+
+          expect(strip()?.querySelector('.result-details')).not.toBeNull();
+          expect(strip()?.querySelector('a.summary-link')).toBeNull();
+        });
+      });
+    });
+
+    it('restores a persisted import run on init', () => {
+      completed();
+      const second = createComponent();
+      second.detectChanges();
+
+      expect(second.query('[data-testid="import-strip"]')?.textContent).toContain('Imported');
+    });
+
+    describe('independent strips', () => {
+      const exportRequest: ExportRequestDto = { format: 'xliff', collections: ['alpha'] };
+      const startExport = (): void => {
+        const job = {
+          jobId: 'export-1',
+          status: 'running',
+          progress: { current: 0, total: 2 },
+          request: exportRequest,
+        } as const;
+        api.startExport.mockReturnValue(of(job));
+        api.getExportJob.mockReturnValue(of(job));
+        store.startExport(exportRequest).subscribe();
+        fixture.detectChanges();
+      };
+
+      it('shows both strips, the import one beneath the export one', () => {
+        startExport();
+        startWith({});
+
+        expect(exportStrip()).not.toBeNull();
+        expect(strip()).not.toBeNull();
+        expect(exportStrip()?.compareDocumentPosition(strip() as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      });
+
+      it('dismisses the import strip without touching the export strip', () => {
+        startExport();
+        completed();
+
+        strip()?.querySelector<HTMLButtonElement>('.dismiss')?.click();
+        fixture.detectChanges();
+
+        expect(store.importRun()).toBeNull();
+        expect(strip()).toBeNull();
+        expect(store.exportRun()).not.toBeNull();
+        expect(exportStrip()).not.toBeNull();
+      });
+
+      it('dismisses the export strip without touching the import strip', () => {
+        completed();
+        const done = {
+          jobId: 'export-1',
+          status: 'failed',
+          progress: { current: 0, total: 2 },
+          request: exportRequest,
+          error: 'Disk is full',
+        } as const;
+        api.startExport.mockReturnValue(of(done));
+        api.getExportJob.mockReturnValue(of(done));
+        store.startExport(exportRequest).subscribe();
+        fixture.detectChanges();
+
+        exportStrip()?.querySelector<HTMLButtonElement>('.dismiss')?.click();
+        fixture.detectChanges();
+
+        expect(store.exportRun()).toBeNull();
+        expect(store.importRun()).not.toBeNull();
+        expect(strip()).not.toBeNull();
+      });
     });
   });
 });

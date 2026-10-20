@@ -136,6 +136,25 @@
           </button>
 
           <button
+            class="btn btn--outline btn--sm"
+            type="button"
+            data-testid="import-button"
+            [class.btn--busy]="store.isImporting()"
+            [disabled]="store.isImporting()"
+            [attr.aria-disabled]="store.isImporting() ? 'true' : null"
+            #importButton
+            (click)="openImportDialog(undefined, importButton)"
+          >
+            @if (store.isImporting()) {
+              <span class="spinner" aria-hidden="true"></span>
+              {{ TOKENS.IMPORT.BUTTONBUSY | transloco }}
+            } @else {
+              <mat-icon aria-hidden="true">input</mat-icon>
+              {{ TOKENS.IMPORT.BUTTON | transloco }}
+            }
+          </button>
+
+          <button
             class="btn btn--quiet btn--sm"
             type="button"
             (click)="openCreateDialog()"
@@ -249,6 +268,188 @@
         </app-run-result-strip>
       }
 
+      @if (importStrip(); as strip) {
+        @let result = strip.result;
+        <app-run-result-strip
+          data-testid="import-strip"
+          tabindex="-1"
+          [status]="strip.run.status"
+          [headline]="
+            (strip.run.status === 'running'
+              ? TOKENS.IMPORT.RUN.IMPORTING
+              : strip.run.status === 'completed'
+                ? TOKENS.IMPORT.RUN.IMPORTED
+                : TOKENS.IMPORT.RUN.FAILED) | transloco
+          "
+          [currentItemLabel]="TOKENS.IMPORT.RUN.READING | transloco"
+          [currentItem]="strip.run.progress?.currentFile"
+          [progress]="strip.run.progress"
+          [progressLabel]="
+            strip.run.progress && strip.run.progress.total > 0
+              ? (TOKENS.IMPORT.RUN.FILESPROGRESSX
+                | transloco: { current: strip.run.progress.current, total: strip.run.progress.total })
+              : undefined
+          "
+          [clauses]="
+            result
+              ? [
+                  TOKENS.IMPORT.RUN.ENTRIESX | transloco: { count: strip.totals.imported },
+                  TOKENS.IMPORT.RUN.FILESX | transloco: { count: strip.fileCount },
+                  ...(strip.failedFiles > 0
+                    ? [TOKENS.IMPORT.RUN.FILESFAILEDX | transloco: { count: strip.failedFiles }]
+                    : []),
+                  ...(strip.skipped > 0 ? [TOKENS.IMPORT.RUN.SKIPPEDX | transloco: { count: strip.skipped }] : []),
+                  ...(strip.failed > 0 ? [TOKENS.IMPORT.RUN.FAILEDX | transloco: { count: strip.failed }] : []),
+                  ...(strip.warnings > 0 ? [TOKENS.IMPORT.RUN.WARNINGSX | transloco: { count: strip.warnings }] : []),
+                ]
+              : []
+          "
+          [warningsCount]="strip.attention"
+          [error]="strip.run.error"
+          [retryLabel]="strip.run.status === 'failed' ? (TOKENS.COMMON.ACTIONS.RETRY | transloco) : undefined"
+          [detailsOpen]="importDetailsOpen()"
+          detailsId="import-run-details"
+          [detailsLabel]="
+            strip.run.status !== 'running' && strip.hasDetails ? (TOKENS.IMPORT.RUN.DETAILS | transloco) : undefined
+          "
+          [detailsAriaLabel]="TOKENS.IMPORT.RUN.DETAILSARIALABEL | transloco"
+          [dismissAriaLabel]="
+            strip.run.status !== 'running' ? (TOKENS.IMPORT.RUN.DISMISSARIALABEL | transloco) : undefined
+          "
+          (detailsToggle)="importDetailsOpen.set(!importDetailsOpen())"
+          (dismiss)="dismissImport()"
+          (retry)="retryImport()"
+        >
+          <div class="import-details">
+            @if (strip.files.length > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.FILESHEADING | transloco }}</h4>
+                <ul class="details-list details-list--files">
+                  @for (file of strip.files; track $index) {
+                    <li>
+                      <code class="mono">@for (part of splitMono(file.path); track $index) {<span>{{ part }}</span><wbr />}</code>
+                      <span class="locale-pill">{{ file.locale }}</span>
+                      <span class="figures num">
+                        {{ TOKENS.IMPORT.RUN.IMPORTEDX | transloco: { count: file.imported } }}
+                        @if (file.created > 0) {
+                          · {{ TOKENS.IMPORT.RUN.CREATEDX | transloco: { count: file.created } }}
+                        }
+                        @if (file.updated > 0) {
+                          · {{ TOKENS.IMPORT.RUN.UPDATEDX | transloco: { count: file.updated } }}
+                        }
+                        @if (file.skipped > 0) {
+                          · {{ TOKENS.IMPORT.RUN.SKIPPEDX | transloco: { count: file.skipped } }}
+                        }
+                        @if (file.failed > 0) {
+                          · {{ TOKENS.IMPORT.RUN.FAILEDX | transloco: { count: file.failed } }}
+                        }
+                      </span>
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+            @if (strip.transitions.length > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.STATUSHEADING | transloco }}</h4>
+                <ul class="details-list details-list--status">
+                  @for (item of strip.transitions; track $index) {
+                    <li>
+                      @if (item.fromToken; as fromToken) {
+                        <span class="status-word" [class]="'status-word--' + item.from">{{ fromToken | transloco }}</span>
+                      } @else {
+                        <span aria-hidden="true">—</span>
+                      }
+                      <span class="arrow" aria-hidden="true">→</span>
+                      <span class="status-word" [class]="'status-word--' + item.to">{{ item.toToken | transloco }}</span>
+                      <span class="count num">{{ item.count }}</span>
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+            @if (strip.autoFixes.length > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.AUTOFIXESHEADING | transloco }}</h4>
+                <ul class="details-list details-list--fixes">
+                  @for (fix of strip.autoFixes; track $index) {
+                    <li>
+                      <code class="mono">{{ fix.key }}</code>
+                      <span class="reason clamp" [title]="fix.originalValue + ' → ' + fix.fixedValue">{{ fix.originalValue }} → {{ fix.fixedValue }}</span>
+                    </li>
+                  }
+                </ul>
+                @if (strip.truncated.icuAutoFixes > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.icuAutoFixes } }}</p>
+                }
+              </section>
+            }
+            @if (strip.issues.length > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.ISSUESHEADING | transloco }}</h4>
+                <ul class="details-list details-list--issues">
+                  @for (issue of strip.issues; track $index) {
+                    <li>
+                      <code class="mono">{{ issue.key }}</code>
+                      <span class="reason" [class.reason--failed]="issue.type === 'failed'">{{ issue.reason }}</span>
+                    </li>
+                  }
+                </ul>
+                @if (strip.truncated.issues > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.issues } }}</p>
+                }
+              </section>
+            }
+            @if (strip.warnings > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.WARNINGSHEADING | transloco }}</h4>
+                <ul class="details-list details-list--warnings">
+                  @for (warning of strip.warningList; track $index) {
+                    <li><span [title]="warning">{{ warning }}</span></li>
+                  }
+                </ul>
+                @if (strip.truncated.warnings > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.warnings } }}</p>
+                }
+              </section>
+            }
+            @if (strip.errors > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.ERRORSHEADING | transloco }}</h4>
+                <ul class="details-list details-list--errors">
+                  @for (error of strip.errorList; track $index) {
+                    <li><span [title]="error">{{ error }}</span></li>
+                  }
+                </ul>
+                @if (strip.truncated.errors > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.errors } }}</p>
+                }
+              </section>
+            }
+            @if (strip.filesModified.length > 0) {
+              <section>
+                <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.FILESCHANGED | transloco }}</h4>
+                <ul class="details-list">
+                  @for (file of strip.filesModified; track file) {
+                    <li>
+                      <code class="mono">@for (part of splitMono(file); track $index) {<span>{{ part }}</span><wbr />}</code>
+                    </li>
+                  }
+                </ul>
+              </section>
+            }
+            @if (importSummaryUrl(); as summaryUrl) {
+              <div class="details-foot">
+                <a class="summary-link" [href]="summaryUrl" download>
+                  <mat-icon aria-hidden="true">download</mat-icon>
+                  {{ TOKENS.IMPORT.RUN.DOWNLOADSUMMARY | transloco }}
+                </a>
+              </div>
+            }
+          </div>
+        </app-run-result-strip>
+      }
+
       <!-- No Matches State -->
       @if (hasNoMatches()) {
         <div class="no-matches" role="status" aria-live="polite">
@@ -315,6 +516,23 @@
                       <mat-icon>output</mat-icon>
                       <span>{{ TOKENS.EXPORT.CARD.MENUITEM | transloco }}</span>
                     </button>
+                    <!-- A disabled button takes no pointer events, so the tooltip sits on the wrapper. The
+                         card's read-only note is the visible explanation for everyone else. -->
+                    <span
+                      class="menu-item-tooltip"
+                      [matTooltip]="card.readOnly ? (TOKENS.IMPORT.CARD.READONLYTOOLTIP | transloco) : ''"
+                      matTooltipPosition="left"
+                    >
+                      <button
+                        mat-menu-item
+                        data-testid="card-import"
+                        [disabled]="card.readOnly"
+                        (click)="openCardImport(card.name)"
+                      >
+                        <mat-icon>input</mat-icon>
+                        <span>{{ TOKENS.IMPORT.CARD.MENUITEM | transloco }}</span>
+                      </button>
+                    </span>
                     <button mat-menu-item (click)="openDeleteDialog(card.name)">
                       <mat-icon>delete</mat-icon>
                       <span>{{ TOKENS.COMMON.ACTIONS.DELETE | transloco }}</span>
