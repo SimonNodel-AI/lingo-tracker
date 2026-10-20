@@ -9,6 +9,14 @@ describe('matchApiRoute public export', () => {
     expect(API_ROUTES).toContain(route);
   });
 
+  it('exports the upload route and shared limits through the public barrel', async () => {
+    const { IMPORT_UPLOAD_MAX_FILES, IMPORT_UPLOAD_MAX_BYTES, IMPORT_UPLOAD_EXTENSIONS } = await import('../index');
+    expect(matchApiRoute('POST', '/api/imports/sources')).toEqual({ method: 'POST', path: '/api/imports/sources' });
+    expect(IMPORT_UPLOAD_MAX_FILES).toBe(10);
+    expect(IMPORT_UPLOAD_MAX_BYTES).toBe(20 * 1024 * 1024);
+    expect(IMPORT_UPLOAD_EXTENSIONS).toEqual(['.xliff', '.xlf', '.json']);
+  });
+
   it('prefers static segments over params in either declaration order', () => {
     const param: ApiRoute = { method: 'GET', path: '/api/resources/:id' };
     const tree: ApiRoute = { method: 'GET', path: '/api/resources/tree' };

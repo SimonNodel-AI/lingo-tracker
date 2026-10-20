@@ -18,6 +18,7 @@ import { ExportJobService } from './exports/export-job.service';
 import { ExportsController } from './exports/exports.controller';
 import { ImportJobService } from './imports/import-job.service';
 import { ImportSourceService } from './imports/import-source.service';
+import { ImportUploadService } from './imports/import-upload.service';
 import { ImportsController } from './imports/imports.controller';
 import { TranslationJobService } from './translation-job/translation-job.service';
 
@@ -45,6 +46,7 @@ import { TranslationJobService } from './translation-job/translation-job.service
     ExportJobService,
     ImportJobService,
     ImportSourceService,
+    ImportUploadService,
     Logger,
     { provide: APP_FILTER, useClass: LingoTrackerExceptionFilter },
   ],

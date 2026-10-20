@@ -123,7 +123,7 @@ LINGO_TRACKER_HOST=0.0.0.0 npx lingo-tracker-app
 ```
 
 **Warning:** Binding to a non-loopback address exposes the full unauthenticated API to other machines.
-This includes listing any server folder, importing from server paths, and uploading import files once that route is added.
+This includes listing any server folder, importing from server paths, and uploading import files to permitted project folders.
 The Host and Origin checks still apply in every bind mode.
 
 Inside a container with a published port, pass `--host 0.0.0.0` to accept connections through that port.
@@ -141,8 +141,9 @@ LINGO_TRACKER_ALLOWED_HOSTS=my-laptop.local,other-laptop.local npx lingo-tracker
 
 The list is comma-separated, ignores case, and trims spaces around each name.
 
-The API accepts HTTP and HTTPS Origins on `localhost`, `127.0.0.0/8`, or `[::1]`, with any port.
-It also accepts HTTP and HTTPS Origins whose parsed host and port match the request Host header, ignoring case.
+The API accepts only HTTP and HTTPS Origins without userinfo whose parsed host and port match the request Host header, ignoring case.
+A different localhost port or loopback hostname receives 403.
+The Angular dev proxy preserves `Host: localhost:4200`, which matches the browser Origin `http://localhost:4200`.
 Other Origins, including `null`, malformed Origins, and multiple values, receive a 403 response before a handler runs.
 Requests without an Origin header pass the Origin check.
 CORS uses the same Origin rule.

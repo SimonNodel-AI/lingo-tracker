@@ -38,6 +38,7 @@ export const API_ROUTES = [
   { method: 'POST', path: '/api/exports' },
   { method: 'GET', path: '/api/exports/jobs/:jobId' },
   { method: 'GET', path: '/api/imports/sources' },
+  { method: 'POST', path: '/api/imports/sources' },
   { method: 'POST', path: '/api/imports/dry-run' },
   { method: 'POST', path: '/api/imports' },
   { method: 'GET', path: '/api/imports/jobs/:jobId' },

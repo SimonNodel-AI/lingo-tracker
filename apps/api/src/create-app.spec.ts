@@ -146,24 +146,24 @@ describe('createApp over HTTP', () => {
     });
   });
 
-  it('allows cross-origin PATCH preflights', async () => {
+  it('allows same-origin PATCH preflights', async () => {
     const response = await request('/api/collections/x/resources', {
       method: 'OPTIONS',
-      headers: { Origin: 'http://localhost:4200', 'Access-Control-Request-Method': 'PATCH' },
+      headers: { Origin: baseUrl, 'Access-Control-Request-Method': 'PATCH' },
     });
     expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
+    expect(response.headers.get('access-control-allow-origin')).toBe(baseUrl);
     expect(response.headers.get('access-control-allow-methods')?.split(/,\s*/)).toContain('PATCH');
     expect(response.headers.get('access-control-allow-headers')).toBe('Content-Type, Authorization');
   });
 
-  it('allows cross-origin DELETE preflights', async () => {
+  it('allows same-origin DELETE preflights', async () => {
     const response = await request('/api/collections/x/resources', {
       method: 'OPTIONS',
-      headers: { Origin: 'http://localhost:4200', 'Access-Control-Request-Method': 'DELETE' },
+      headers: { Origin: baseUrl, 'Access-Control-Request-Method': 'DELETE' },
     });
     expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
+    expect(response.headers.get('access-control-allow-origin')).toBe(baseUrl);
     expect(response.headers.get('access-control-allow-methods')?.split(/,\s*/)).toContain('DELETE');
     expect(response.headers.get('access-control-allow-headers')).toBe('Content-Type, Authorization');
   });
@@ -198,10 +198,12 @@ describe('createApp over HTTP', () => {
     expect(handlerCalls).toBe(before + 1);
   });
 
-  it('allows the Angular dev Origin and returns its CORS header', async () => {
-    const response = await request('/api/origin-probe', { headers: { Origin: 'http://localhost:4200' } });
+  it('allows the Angular dev Origin when the proxy preserves the matching Host', async () => {
+    const response = await requestWithHost(`${baseUrl}/api/origin-probe`, 'localhost:4200', {
+      origin: 'http://localhost:4200',
+    });
     expect(response.status).toBe(200);
-    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
+    expect(response.allowOrigin).toBe('http://localhost:4200');
   });
 
   it('allows a multipart POST from the API origin to reach its controller', async () => {
@@ -221,17 +223,31 @@ describe('createApp over HTTP', () => {
     expect(await response.text()).toBe(indexHtml);
   });
 
-  it('allows HTTP and HTTPS loopback Origins with and without ports', async () => {
+  it('allows HTTP and HTTPS Origins only with matching loopback Host and port', async () => {
     for (const hostname of ['localhost', '127.0.0.1', '127.20.30.40', '[::1]']) {
       for (const protocol of ['http', 'https']) {
         for (const port of ['', ':4200']) {
           const origin = `${protocol}://${hostname}${port}`;
-          const response = await request('/api/origin-probe', { headers: { Origin: origin } });
+          const response = await requestWithHost(`${baseUrl}/api/origin-probe`, `${hostname}${port}`, { origin });
           expect(response.status).toBe(200);
-          expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+          expect(response.allowOrigin).toBe(origin);
         }
       }
     }
+  });
+
+  it('rejects another localhost port or loopback hostname before handlers and without CORS permission', async () => {
+    const before = handlerCalls;
+    for (const origin of ['http://localhost:9999', 'http://127.0.0.1:9999', 'http://localhost:3030']) {
+      const response = await requestWithHost(`${baseUrl}/api/origin-probe`, '127.0.0.1:3030', {
+        origin,
+        method: 'POST',
+      });
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+      expect(response.allowOrigin).toBeUndefined();
+    }
+    expect(handlerCalls).toBe(before);
   });
 
   it('rejects null and misleading loopback Origins', async () => {

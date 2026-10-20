@@ -213,8 +213,19 @@ export const searchQuery: Schema<SearchQuery> = object<SearchQuery>({
 export interface ImportSourcesQuery {
   collection: string;
   folder?: string;
+  overwrite?: string;
 }
-export const importSourcesQuery = object<ImportSourcesQuery>({ collection: string(), folder: optional(string()) });
+export const importSourcesQuery = object<ImportSourcesQuery>({
+  collection: string(),
+  folder: optional(string()),
+  overwrite: optional(string()),
+});
+export type ImportUploadQuery = ImportSourcesQuery;
+export const importUploadQuery = object<ImportUploadQuery>({
+  collection: string(),
+  folder: optional(string()),
+  overwrite: optional(string()),
+});
 export const importRequestBody: Schema<ImportRequestDto> = object<ImportRequestDto>({
   collection: string(),
   files: nonEmptyArray(

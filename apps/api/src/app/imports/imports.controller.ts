@@ -1,4 +1,14 @@
-import { Controller, Get, HttpCode, HttpStatus, Param, Post, Res } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+  UploadedFiles,
+  UseInterceptors,
+} from '@nestjs/common';
 import type { OpenedProject } from '@simoncodes-ca/core';
 import type {
   ImportJobDto,
@@ -8,17 +18,29 @@ import type {
 } from '@simoncodes-ca/data-transfer';
 import type { Response } from 'express';
 import { RouteProject } from '../config/route-project';
-import { type ImportSourcesQuery, importRequestBody, importSourcesQuery } from '../validation/dto-schemas';
+import {
+  type ImportSourcesQuery,
+  type ImportUploadQuery,
+  importRequestBody,
+  importSourcesQuery,
+  importUploadQuery,
+} from '../validation/dto-schemas';
 import { ValidBody, ValidQuery } from '../validation/valid-body';
 import { ImportJobService } from './import-job.service';
 import { ImportSourceService } from './import-source.service';
+import { ImportUploadInterceptor } from './import-upload.interceptor';
+import { ImportUploadService, type UploadedImportFile } from './import-upload.service';
 
 @Controller('imports')
 export class ImportsController {
   readonly #jobs: ImportJobService;
   readonly #sources: ImportSourceService;
 
-  constructor(jobs: ImportJobService, sources: ImportSourceService) {
+  constructor(
+    jobs: ImportJobService,
+    sources: ImportSourceService,
+    private readonly uploads: ImportUploadService,
+  ) {
     this.#jobs = jobs;
     this.#sources = sources;
   }
@@ -29,6 +51,16 @@ export class ImportsController {
     @RouteProject() project: OpenedProject,
   ): ImportSourceListingDto {
     return this.#sources.listSources(project, query);
+  }
+
+  @Post('sources')
+  @UseInterceptors(ImportUploadInterceptor)
+  upload(
+    @ValidQuery(importUploadQuery) query: ImportUploadQuery,
+    @UploadedFiles() files: UploadedImportFile[] | undefined,
+    @RouteProject() project: OpenedProject,
+  ): ImportSourceListingDto {
+    return this.uploads.upload(project, query, files);
   }
 
   @Post('dry-run')

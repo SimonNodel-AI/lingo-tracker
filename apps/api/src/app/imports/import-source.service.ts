@@ -12,15 +12,23 @@ export function importDisplayPath(root: string, path: string): string {
   return local === '..' || local.startsWith(`..${sep}`) || isAbsolute(local) ? path : local || '.';
 }
 
+export function resolveImportFolder(
+  project: OpenedProject,
+  collection: ReturnType<typeof openProjectCollection>,
+  requestedFolder?: string,
+): { defaultFolder: string; folder: string } {
+  const defaultFolder = resolve(
+    project.projectRoot,
+    collection.config.importFolder ?? project.sourceConfig.importFolder ?? DEFAULT_CONFIG.importFolder,
+  );
+  return { defaultFolder, folder: resolve(project.projectRoot, requestedFolder ?? defaultFolder) };
+}
+
 @Injectable()
 export class ImportSourceService {
   listSources(project: OpenedProject, query: ImportSourcesQuery): ImportSourceListingDto {
     const collection = openProjectCollection(project, query.collection);
-    const defaultFolder = resolve(
-      project.projectRoot,
-      collection.config.importFolder ?? project.sourceConfig.importFolder ?? DEFAULT_CONFIG.importFolder,
-    );
-    const folder = query.folder === undefined ? defaultFolder : resolve(project.projectRoot, query.folder);
+    const { defaultFolder, folder } = resolveImportFolder(project, collection, query.folder);
     const base = {
       collection: collection.name,
       folder: importDisplayPath(project.projectRoot, folder),

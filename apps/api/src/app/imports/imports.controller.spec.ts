@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { ConflictException } from '@nestjs/common';
+import { IMPORT_UPLOAD_MAX_BYTES } from '@simoncodes-ca/data-transfer';
 import type {
   ImportJobDto,
   ImportPlanDto,
@@ -28,7 +29,7 @@ describe('ImportsController HTTP (real project)', () => {
     const server = project.app?.getHttpServer() as Server | undefined;
     const address = server?.address() as AddressInfo | null;
     if (!address) throw new Error('Missing HTTP address');
-    return fetch(`http://localhost:${address.port}/imports/jobs/${id}/summary`);
+    return fetch(`http://localhost:${address.port}/api/imports/jobs/${id}/summary`);
   };
   const finished = async (id: string) => {
     for (let count = 0; count < 100; count++) {
@@ -40,7 +41,7 @@ describe('ImportsController HTTP (real project)', () => {
   };
   beforeEach(async () => {
     project = new HttpProject();
-    await project.start();
+    await project.start(true);
     await project.seed('hello', 'Hello');
     project.write('dist/import/fr-ca.json', '{"hello":"Bonjour"}');
   });
@@ -284,5 +285,175 @@ describe('ImportsController HTTP (real project)', () => {
       status: 'completed',
       result: { totals: { changed: 0 }, files: [{ changed: 0 }] },
     });
+  });
+  it('uploads multipart files and returns the refreshed listing without invalidating the index', async () => {
+    const index = project.app?.get(CollectionIndex);
+    if (!index) throw new Error('Missing index');
+    const mutation = jest.spyOn(index, 'sink');
+    expect(
+      await project.requestMultipart('/imports/sources?collection=test-collection', [
+        { name: 'es.json', contents: '{}' },
+      ]),
+    ).toMatchObject({
+      status: 201,
+      body: { files: [{ name: 'es.json' }, { name: 'fr-ca.json' }] },
+    });
+    expect(project.read('dist/import/es.json')).toBe('{}');
+    expect(mutation).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for an unknown upload collection and 403 for a read-only collection', async () => {
+    for (const [collection, status] of [
+      ['missing', 404],
+      ['vendor', 403],
+    ] as const) {
+      expect(
+        (
+          await project.requestMultipart(`/imports/sources?collection=${collection}`, [
+            { name: 'es.json', contents: '{}' },
+          ])
+        ).status,
+      ).toBe(status);
+    }
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+
+  it('returns 409 with upload names then replaces only with overwrite=true', async () => {
+    const files = [{ name: 'fr-ca.json', contents: '{"hello":"Salut"}' }];
+    expect(await project.requestMultipart('/imports/sources?collection=test-collection', files)).toMatchObject({
+      status: 409,
+      body: { errors: ['fr-ca.json'] },
+    });
+    expect(project.read('dist/import/fr-ca.json')).toBe('{"hello":"Bonjour"}');
+    expect(
+      (await project.requestMultipart('/imports/sources?collection=test-collection&overwrite=true', files)).status,
+    ).toBe(201);
+    expect(project.read('dist/import/fr-ca.json')).toBe(files[0]?.contents);
+  });
+
+  it('returns 413 for a file larger than the shared limit without writing it', async () => {
+    expect(
+      (
+        await project.requestMultipart('/imports/sources?collection=test-collection', [
+          { name: 'large.json', contents: new Uint8Array(IMPORT_UPLOAD_MAX_BYTES + 1) },
+        ])
+      ).status,
+    ).toBe(413);
+    expect(project.exists('dist/import/large.json')).toBe(false);
+  });
+
+  it('returns 400 for eleven files without writing any of them', async () => {
+    const files = Array.from({ length: 11 }, (_, index) => ({ name: `file${index}.json`, contents: '{}' }));
+    expect((await project.requestMultipart('/imports/sources?collection=test-collection', files)).status).toBe(400);
+    for (const file of files) expect(project.exists(`dist/import/${file.name}`)).toBe(false);
+  });
+
+  it('returns 400 for the wrong multipart field or a missing collection', async () => {
+    const files = [{ name: 'es.json', contents: '{}' }];
+    expect((await project.requestMultipart('/imports/sources?collection=test-collection', files, 'file')).status).toBe(
+      400,
+    );
+    expect((await project.requestMultipart('/imports/sources', files)).status).toBe(400);
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+
+  it('rejects a cross-origin multipart upload before writing any file', async () => {
+    expect(
+      await project.requestMultipart(
+        '/imports/sources?collection=test-collection',
+        [{ name: 'es.json', contents: '{}' }],
+        'files',
+        { Origin: 'https://evil.example' },
+      ),
+    ).toMatchObject({ status: 403, body: { message: 'Origin not allowed' } });
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+  it('rejects multipart text fields with a sanitized 400 and no file written', async () => {
+    const response = await project.requestMultipart(
+      '/imports/sources?collection=test-collection',
+      [{ name: 'es.json', contents: '{}' }],
+      'files',
+      undefined,
+      { collection: 'test-collection' },
+    );
+    expect(response).toMatchObject({ status: 400, body: { message: 'Invalid upload', errors: [expect.any(String)] } });
+    expect(JSON.stringify(response.body)).not.toContain(project.root);
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+
+  it('decodes UTF-8 multipart filenames and stores their NFC spelling', async () => {
+    const response = await project.requestMultipart('/imports/sources?collection=test-collection', [
+      { name: 'cafe\u0301.json', contents: '{}' },
+    ]);
+    expect(response).toMatchObject({
+      status: 201,
+      body: { files: expect.arrayContaining([expect.objectContaining({ name: 'café.json' })]) },
+    });
+    expect(project.read('dist/import/café.json')).toBe('{}');
+  });
+
+  it.each([
+    '../x.json',
+    'a/b.json',
+    'a\\b.json',
+  ])('rejects raw multipart paths %p without writing a file', async (name) => {
+    const response = await project.requestMultipart('/imports/sources?collection=test-collection', [
+      { name, contents: '{}' },
+    ]);
+    expect(response).toMatchObject({
+      status: 400,
+      body: {
+        message: 'Invalid upload',
+        errors: expect.arrayContaining([`"${name}" must not contain path separators or control characters.`]),
+      },
+    });
+    expect(project.exists('dist/import/x.json')).toBe(false);
+    expect(project.exists('dist/import/b.json')).toBe(false);
+    expect(project.exists('dist/import/a')).toBe(false);
+    expect(project.exists('dist/x.json')).toBe(false);
+  });
+
+  it('rejects a multipart POST from a different localhost port without writing a file', async () => {
+    expect(
+      await project.requestMultipart(
+        '/imports/sources?collection=test-collection',
+        [{ name: 'es.json', contents: '{}' }],
+        'files',
+        { Origin: 'http://localhost:9999' },
+      ),
+    ).toMatchObject({ status: 403, body: { message: 'Origin not allowed' } });
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+  it('returns 400 for a JSON upload request with missing files', async () => {
+    expect(await project.request('POST', '/imports/sources?collection=test-collection', {})).toMatchObject({
+      status: 400,
+      body: {
+        statusCode: 400,
+        message: 'Invalid upload',
+        error: 'Bad Request',
+        errors: ['files must contain at least one file.'],
+      },
+    });
+    expect(project.exists('dist/import/es.json')).toBe(false);
+  });
+  it('allows uploads in the import folder and subfolders, rejecting siblings and ancestors', async () => {
+    for (const folder of ['dist/import', 'dist/import/nested']) {
+      expect(
+        (
+          await project.requestMultipart(`/imports/sources?collection=test-collection&folder=${folder}`, [
+            { name: 'allowed.json', contents: '{}' },
+          ])
+        ).status,
+      ).toBe(201);
+      expect(project.read(`${folder}/allowed.json`)).toBe('{}');
+    }
+    for (const folder of ['dist', 'dist/sibling', 'dist/import-sibling']) {
+      expect(
+        await project.requestMultipart(`/imports/sources?collection=test-collection&folder=${folder}`, [
+          { name: 'rejected.json', contents: '{}' },
+        ]),
+      ).toMatchObject({ status: 400, body: { errors: ['folder is not allowed for uploads.'] } });
+      expect(project.exists(`${folder}/rejected.json`)).toBe(false);
+    }
   });
 });

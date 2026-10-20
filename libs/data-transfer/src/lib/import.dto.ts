@@ -1,5 +1,9 @@
 import type { TranslationStatus } from './translation-status';
 
+export const IMPORT_UPLOAD_MAX_FILES = 10;
+export const IMPORT_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+export const IMPORT_UPLOAD_EXTENSIONS = ['.xliff', '.xlf', '.json'] as const;
+
 export interface ImportSourceListingDto {
   readonly collection: string;
   /** Resolved folder, relative to the project root when inside it, else absolute. */

@@ -242,7 +242,7 @@ export class CollectionsController {
 - **Commits**: Use `pnpm run commit` for conventional commits with commitizen
 - **Testing**: Vitest for unit tests (the API uses Jest); see [Testing](#testing) for running a single file
 - **API Port**: Default 3030, configurable via `LINGO_TRACKER_PORT` env var
-- **CORS**: Allow HTTP/HTTPS loopback Origins (localhost, 127.0.0.0/8, [::1], any port) or Origins whose parsed host and port match the request Host header, ignoring case. Reject foreign/null/malformed/multiple Origins with 403 before handlers; no-Origin requests pass this check. In every bind mode, Host must name localhost, an IPv4 literal, a bracketed IPv6 literal, or an exact name in LINGO_TRACKER_ALLOWED_HOSTS (comma-separated, trimmed, case-insensitive; port optional). Missing/disallowed Host receives 403. LAN IP access needs no extra setting; named LAN access requires an allowed-host entry.
+- **CORS**: Allow only HTTP/HTTPS Origins without userinfo whose parsed host and port match the request Host header, ignoring case. Other localhost ports and loopback hostnames do not bypass this rule. The Angular dev proxy preserves Host localhost:4200, matching its browser Origin. Reject foreign/null/malformed/multiple Origins with 403 before handlers; no-Origin requests pass this check. In every bind mode, Host must name localhost, an IPv4 literal, a bracketed IPv6 literal, or an exact name in LINGO_TRACKER_ALLOWED_HOSTS (comma-separated, trimmed, case-insensitive; port optional). Missing/disallowed Host receives 403. LAN IP access needs no extra setting; named LAN access requires an allowed-host entry.
 
 <!-- nx configuration start-->
 <!-- Leave the start & end comments to automatically receive updates. -->

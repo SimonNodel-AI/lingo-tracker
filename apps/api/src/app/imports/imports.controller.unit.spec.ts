@@ -6,6 +6,7 @@ import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { closeImportProject, flushImportJobs, importProject, writeImport } from './import.spec-helpers';
 import { ImportJobService } from './import-job.service';
 import { ImportSourceService } from './import-source.service';
+import { ImportUploadService } from './import-upload.service';
 import { ImportsController } from './imports.controller';
 
 describe('ImportsController (real core, direct calls)', () => {
@@ -17,7 +18,11 @@ describe('ImportsController (real core, direct calls)', () => {
     project = importProject();
     writeImport(project);
     jobs = new ImportJobService(new Logger());
-    controller = new ImportsController(jobs, new ImportSourceService());
+    controller = new ImportsController(
+      jobs,
+      new ImportSourceService(),
+      new ImportUploadService(new ImportSourceService()),
+    );
   });
   afterEach(() => closeImportProject(project));
 

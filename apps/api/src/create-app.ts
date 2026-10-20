@@ -93,10 +93,7 @@ function isAllowedOrigin(origin: string | undefined, host: string | undefined): 
       url.password === '';
     if (valid === false) return false;
     if (url.protocol === 'http:' || url.protocol === 'https:') {
-      const hostname = url.hostname.toLowerCase();
-      const loopback =
-        hostname === 'localhost' || hostname === '[::1]' || (isIP(hostname) === 4 && hostname.startsWith('127.'));
-      return loopback || url.host.toLowerCase() === host?.toLowerCase();
+      return url.host.toLowerCase() === host?.toLowerCase();
     }
     return false;
   } catch {
