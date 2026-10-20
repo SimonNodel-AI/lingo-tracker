@@ -69,11 +69,11 @@ ${formatStatusTransitions(result.statusTransitions)}
 
 ${formatFilesModified(result.filesModified)}
 `;
-  } else if (isDryRun && result.filesModified.length > 0) {
+  } else if (isDryRun && result.filesAffected.length > 0) {
     summary += `
 ## Files That Would Be Modified
 
-${formatFilesModified(result.filesModified)}
+${formatFilesModified(result.filesAffected)}
 `;
   }
 

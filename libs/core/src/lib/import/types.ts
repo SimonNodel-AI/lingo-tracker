@@ -164,6 +164,8 @@ export interface ImportResult {
   statusTransitions: StatusTransition[];
   /** Files modified during import */
   filesModified: string[];
+  /** Files whose entries or metadata change, including in a dry run. */
+  filesAffected: string[];
   /** Warning messages */
   warnings: string[];
   /** Error messages */

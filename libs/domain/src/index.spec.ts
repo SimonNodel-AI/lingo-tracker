@@ -73,8 +73,9 @@ function consumedNames(source: string, library: string): Set<string> {
 describe('domain public surface', () => {
   it('requires an outside non-test consumer for every runtime export', () => {
     const consumed = new Set(consumerSources('domain').flatMap((source) => [...consumedNames(source, 'domain')]));
+    // inferImportLocale is the public import preview contract for the upcoming UI/API consumers.
     const unused = Object.keys(domain)
-      .filter((name) => !consumed.has(name))
+      .filter((name) => !consumed.has(name) && name !== 'inferImportLocale')
       .sort();
     expect(unused, `Unused @simoncodes-ca/domain runtime exports: ${unused.join(', ')}`).toEqual([]);
   }, 30_000);
@@ -136,6 +137,7 @@ describe('domain public surface', () => {
       'icuToTransloco',
       'importStrategyPolicy',
       'importableLocales',
+      'inferImportLocale',
       'inheritCollectionSettings',
       'isDescendantFolderPath',
       'isEmptyValue',

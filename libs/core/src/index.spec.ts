@@ -70,6 +70,7 @@ function consumedNames(source: string, library: string): Set<string> {
 
 // Each exception records why the name belongs to the public interface.
 const CONTRACT_EXPORTS = {
+  inspectImportSource: 'Public import preview contract: inspects source files before choosing a locale.',
   prepareExportRun: 'Public export preview contract: prepares resources without creating output directories.',
   writePreparedExport: 'Public export job contract: writes an existing prepared export with locale progress.',
   InvalidProjectTermsEditError: 'Callers can identify typed Project Terms refusal errors.',
@@ -116,6 +117,7 @@ describe('core public surface', () => {
         'generatePreparedBundle',
         'hasFsErrorCode',
         'initProject',
+        'inspectImportSource',
         'loadConfig',
         'normalizeCollections',
         'normalizeSearchRequest',

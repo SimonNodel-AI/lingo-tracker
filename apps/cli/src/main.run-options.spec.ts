@@ -48,6 +48,7 @@ const importResult: ImportResult = {
   resourcesFailed: 0,
   statusTransitions: [],
   filesModified: [],
+  filesAffected: [],
   warnings: [],
   errors: [],
   changes: [],

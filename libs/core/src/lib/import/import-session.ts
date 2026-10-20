@@ -62,6 +62,7 @@ export interface ImportSession {
   readonly changes: ImportChange[];
   readonly warnings: string[];
   readonly errors: string[];
+  readonly filesAffected: Set<string>;
   readonly filesModified: Set<string>;
   readonly icuAutoFixes: ICUAutoFix[];
   readonly icuAutoFixErrors: ICUAutoFixError[];
@@ -105,6 +106,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
     warnings,
     errors: [],
     filesModified: new Set(),
+    filesAffected: new Set(),
     icuAutoFixes: [],
     icuAutoFixErrors: [],
   };
@@ -123,6 +125,7 @@ export function sessionResult(session: ImportSession): ImportResult {
     changes: session.changes,
     statusTransitions: calculateStatusTransitions(session.changes),
     filesModified: Array.from(session.filesModified),
+    filesAffected: Array.from(session.filesAffected),
     warnings: session.warnings,
     errors: session.errors,
     icuAutoFixes: session.icuAutoFixes,
