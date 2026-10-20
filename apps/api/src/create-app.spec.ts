@@ -1,13 +1,38 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import type { Server } from 'node:http';
+import { request as httpRequest, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { INestApplication } from '@nestjs/common';
+import { Controller, Get, HttpCode, type INestApplication, Post } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { LingoTrackerConfig } from '@simoncodes-ca/core';
 import { AppModule } from './app/app.module';
 import { ConfigService } from './app/config/config.service';
-import { createApp, resolvePort } from './create-app';
+import { createApp, resolveHost, resolvePort } from './create-app';
+
+function requestWithHost(
+  url: string,
+  host: string | undefined,
+  options: { origin?: string | string[]; method?: string } = {},
+): Promise<{ status: number | undefined; body: string; allowOrigin: string | string[] | undefined }> {
+  return new Promise((resolve, reject) => {
+    const headers: Record<string, string | string[]> = {};
+    if (typeof host === 'string') headers.Host = host;
+    if (typeof options.origin === 'string' || Array.isArray(options.origin)) headers.Origin = options.origin;
+    const req = httpRequest(url, { setHost: false, method: options.method, headers }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => {
+        body += chunk;
+      });
+      res.on('end', () =>
+        resolve({ status: res.statusCode, body, allowOrigin: res.headers['access-control-allow-origin'] }),
+      );
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 describe('createApp over HTTP', () => {
   let root: string | undefined;
@@ -15,6 +40,23 @@ describe('createApp over HTTP', () => {
   let baseUrl = '';
   const indexHtml = '<!doctype html><html><body>Lingo Tracker client fixture</body></html>';
   const asset = 'console.log("client fixture");';
+  let handlerCalls = 0;
+
+  @Controller('origin-probe')
+  class OriginProbeController {
+    @Get()
+    read() {
+      handlerCalls += 1;
+      return { ok: true };
+    }
+
+    @Post()
+    @HttpCode(200)
+    write() {
+      handlerCalls += 1;
+      return { ok: true };
+    }
+  }
 
   beforeAll(async () => {
     const projectRoot = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-api-bootstrap-')));
@@ -37,7 +79,7 @@ describe('createApp over HTTP', () => {
         return projectRoot;
       }
     }
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule], controllers: [OriginProbeController] })
       .overrideProvider(ConfigService)
       .useValue(new ProjectConfigService())
       .compile();
@@ -107,10 +149,10 @@ describe('createApp over HTTP', () => {
   it('allows cross-origin PATCH preflights', async () => {
     const response = await request('/api/collections/x/resources', {
       method: 'OPTIONS',
-      headers: { Origin: 'http://example.com', 'Access-Control-Request-Method': 'PATCH' },
+      headers: { Origin: 'http://localhost:4200', 'Access-Control-Request-Method': 'PATCH' },
     });
     expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
     expect(response.headers.get('access-control-allow-methods')?.split(/,\s*/)).toContain('PATCH');
     expect(response.headers.get('access-control-allow-headers')).toBe('Content-Type, Authorization');
   });
@@ -118,12 +160,192 @@ describe('createApp over HTTP', () => {
   it('allows cross-origin DELETE preflights', async () => {
     const response = await request('/api/collections/x/resources', {
       method: 'OPTIONS',
-      headers: { Origin: 'http://example.com', 'Access-Control-Request-Method': 'DELETE' },
+      headers: { Origin: 'http://localhost:4200', 'Access-Control-Request-Method': 'DELETE' },
     });
     expect(response.status).toBe(204);
-    expect(response.headers.get('access-control-allow-origin')).toBe('*');
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
     expect(response.headers.get('access-control-allow-methods')?.split(/,\s*/)).toContain('DELETE');
     expect(response.headers.get('access-control-allow-headers')).toBe('Content-Type, Authorization');
+  });
+
+  it('rejects foreign Origins on GET before the controller runs', async () => {
+    const before = handlerCalls;
+    const response = await request('/api/origin-probe', { headers: { Origin: 'https://evil.example' } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('rejects a simple multipart POST from a foreign Origin before the controller runs', async () => {
+    const before = handlerCalls;
+    const body = new FormData();
+    body.append('files', new Blob(['{}'], { type: 'application/json' }), 'fr.json');
+    const response = await request('/api/origin-probe', {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example' },
+      body,
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('allows requests without an Origin header', async () => {
+    const before = handlerCalls;
+    const response = await request('/api/origin-probe');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(handlerCalls).toBe(before + 1);
+  });
+
+  it('allows the Angular dev Origin and returns its CORS header', async () => {
+    const response = await request('/api/origin-probe', { headers: { Origin: 'http://localhost:4200' } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('access-control-allow-origin')).toBe('http://localhost:4200');
+  });
+
+  it('allows a multipart POST from the API origin to reach its controller', async () => {
+    const before = handlerCalls;
+    const body = new FormData();
+    body.append('files', new Blob(['{}'], { type: 'application/json' }), 'fr.json');
+    const response = await request('/api/origin-probe', { method: 'POST', headers: { Origin: baseUrl }, body });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true });
+    expect(response.headers.get('access-control-allow-origin')).toBe(baseUrl);
+    expect(handlerCalls).toBe(before + 1);
+  });
+
+  it('serves the static Tracker to its own Origin', async () => {
+    const response = await request('/', { headers: { Origin: baseUrl } });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(indexHtml);
+  });
+
+  it('allows HTTP and HTTPS loopback Origins with and without ports', async () => {
+    for (const hostname of ['localhost', '127.0.0.1', '127.20.30.40', '[::1]']) {
+      for (const protocol of ['http', 'https']) {
+        for (const port of ['', ':4200']) {
+          const origin = `${protocol}://${hostname}${port}`;
+          const response = await request('/api/origin-probe', { headers: { Origin: origin } });
+          expect(response.status).toBe(200);
+          expect(response.headers.get('access-control-allow-origin')).toBe(origin);
+        }
+      }
+    }
+  });
+
+  it('rejects null and misleading loopback Origins', async () => {
+    const before = handlerCalls;
+    for (const origin of [
+      'null',
+      'http://localhost.evil.example',
+      'http://127.0.0.1.evil.example',
+      'http://localhost@evil.example',
+      'http://@localhost',
+      'http://localhost\\evil',
+      'ftp://localhost',
+      'http://localhost/path',
+      'http://localhost.evil.com',
+      'http://localhost:4200, http://evil.com',
+      'http://localhost:4200 http://evil.com',
+      'http://[::1',
+      'http://localhost/#fragment',
+    ]) {
+      const response = await request('/api/origin-probe', { headers: { Origin: origin } });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+    }
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('rejects a foreign Host before the controller or static handler runs with the default binding', async () => {
+    const before = handlerCalls;
+    for (const path of ['/api/origin-probe', '/']) {
+      const response = await requestWithHost(`${baseUrl}${path}`, 'evil.example:3030');
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    }
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('allows loopback Host headers with and without ports', async () => {
+    for (const hostname of ['localhost', 'LOCALHOST', '127.0.0.1', '192.168.1.5', '[::1]', '[::ffff:7f00:1]']) {
+      for (const port of ['', ':3030']) {
+        const response = await requestWithHost(`${baseUrl}/api/origin-probe`, `${hostname}${port}`);
+        expect(response.status).toBe(200);
+      }
+    }
+  });
+
+  it('rejects foreign Origins before serving static content', async () => {
+    const response = await request('/', { headers: { Origin: 'https://evil.example' } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+  });
+
+  it('allows same-origin LAN POST requests with matching Host and Origin', async () => {
+    const before = handlerCalls;
+    const response = await requestWithHost(`${baseUrl}/api/origin-probe`, '192.168.1.5:3030', {
+      origin: 'http://192.168.1.5:3030',
+      method: 'POST',
+    });
+    expect(response.status).toBe(200);
+    expect(response.allowOrigin).toBe('http://192.168.1.5:3030');
+    expect(JSON.parse(response.body)).toEqual({ ok: true });
+    expect(handlerCalls).toBe(before + 1);
+  });
+
+  it('rejects DNS rebinding even when the Origin matches the Host', async () => {
+    const before = handlerCalls;
+    for (const method of ['GET', 'POST']) {
+      const response = await requestWithHost(`${baseUrl}/api/origin-probe`, 'evil.com:3030', {
+        origin: 'http://evil.com:3030',
+        method,
+      });
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    }
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('rejects a missing Host header before the controller runs', async () => {
+    const before = handlerCalls;
+    const response = await requestWithHost(`${baseUrl}/api/origin-probe`, undefined);
+    expect(response.status).toBe(403);
+    expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    expect(handlerCalls).toBe(before);
+  });
+
+  it('rejects malformed Host headers and unlisted names', async () => {
+    for (const host of [
+      'localhost.evil.com:3030',
+      'my-laptop.local:3030',
+      '999.1.2.3',
+      '[bad:ip]',
+      'localhost/path',
+      'localhost@evil.com',
+      'localhost:3030,evil.com:3030',
+    ]) {
+      const response = await requestWithHost(`${baseUrl}/api/origin-probe`, host);
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    }
+  });
+
+  it('rejects multiple Origin header values', async () => {
+    const response = await requestWithHost(`${baseUrl}/api/origin-probe`, 'localhost:3030', {
+      origin: ['http://localhost:4200', 'http://evil.com'],
+    });
+    expect(response.status).toBe(403);
+    expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+  });
+
+  it('rejects LAN Origins whose host or port differs from the Host header', async () => {
+    for (const origin of ['http://192.168.1.6:3030', 'http://192.168.1.5:4000']) {
+      const response = await requestWithHost(`${baseUrl}/api/origin-probe`, '192.168.1.5:3030', { origin });
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+    }
   });
 
   it('serves Swagger UI at /api', async () => {
@@ -149,7 +371,10 @@ describe('createApp over HTTP', () => {
   });
 });
 
-describe('createApp with the production Nest factory', () => {
+describe.each([
+  '',
+  '  My-Laptop.Local , OTHER.local  ',
+])('createApp with the production Nest factory (allowedHosts %s)', (allowedHosts) => {
   let root: string | undefined;
   let app: INestApplication | undefined;
   let baseUrl = '';
@@ -160,7 +385,7 @@ describe('createApp with the production Nest factory', () => {
     root = clientPath;
     writeFileSync(join(clientPath, 'index.html'), indexHtml);
 
-    app = await createApp({ clientPath });
+    app = await createApp({ clientPath, allowedHosts });
     await app.listen(0);
     const server = app.getHttpServer() as Server;
     const address = server.address();
@@ -187,9 +412,50 @@ describe('createApp with the production Nest factory', () => {
     expect(clientResponse.headers.get('content-type')).toContain('text/html');
     expect(await clientResponse.text()).toBe(indexHtml);
   });
+  it('rejects a foreign Host regardless of allowed names', async () => {
+    const response = await requestWithHost(`${baseUrl}/api/health`, 'evil.example:3030');
+    expect(response.status).toBe(403);
+    expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+  });
+
+  it('still rejects foreign Origins with explicitly allowed names', async () => {
+    const response = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'http://evil.example' } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+  });
+  it('allows named LAN access only when explicitly listed, trimmed and case-insensitive', async () => {
+    const response = await requestWithHost(`${baseUrl}/api/health`, 'MY-LAPTOP.local:3030', {
+      origin: 'http://my-laptop.LOCAL:3030',
+    });
+    const listed = allowedHosts.length > 0;
+    expect(response.status).toBe(listed ? 200 : 403);
+    expect(JSON.parse(response.body)).toEqual(
+      listed
+        ? { status: 'all is good' }
+        : {
+            statusCode: 403,
+            message: 'Host not allowed',
+            error: 'Forbidden',
+          },
+    );
+    if (listed) expect(response.allowOrigin).toBe('http://my-laptop.LOCAL:3030');
+  });
 });
 
 describe('resolvePort', () => {
+  it('supports --port=value with precedence over the environment', () => {
+    expect(resolvePort(['node', 'main.js', '--port=4000'], { LINGO_TRACKER_PORT: 'fallback' })).toBe('4000');
+  });
+
+  it('ignores a following flag and falls back to the environment', () => {
+    expect(resolvePort(['node', 'main.js', '--port', '--host', '4000'], { LINGO_TRACKER_PORT: '4000' })).toBe('4000');
+  });
+
+  it('uses the default for an empty equals value or a following flag', () => {
+    expect(resolvePort(['--port='], {})).toBe(3030);
+    expect(resolvePort(['--port', '--host', '4000'], {})).toBe(3030);
+  });
+
   it('prefers the argv port over the environment port', () => {
     expect(resolvePort(['node', 'main.js', '--port', '4040'], { LINGO_TRACKER_PORT: '5050' })).toBe('4040');
   });
@@ -208,5 +474,44 @@ describe('resolvePort', () => {
 
   it('falls back to the default when --port has no value and the environment has no port', () => {
     expect(resolvePort(['node', 'main.js', '--port'], {})).toBe(3030);
+  });
+});
+
+describe('resolveHost', () => {
+  it('supports --host=value with precedence over the environment', () => {
+    expect(resolveHost(['node', 'main.js', '--host=0.0.0.0'], { LINGO_TRACKER_HOST: 'fallback' })).toBe('0.0.0.0');
+  });
+
+  it('ignores a following flag and falls back to the environment', () => {
+    expect(resolveHost(['node', 'main.js', '--host', '--port', '4000'], { LINGO_TRACKER_HOST: '0.0.0.0' })).toBe(
+      '0.0.0.0',
+    );
+  });
+
+  it('uses the default for an empty equals value or a following flag', () => {
+    expect(resolveHost(['--host='], {})).toBe('127.0.0.1');
+    expect(resolveHost(['--host', '--port', '4000'], {})).toBe('127.0.0.1');
+  });
+
+  it('prefers the argv host over the environment host', () => {
+    expect(resolveHost(['node', 'main.js', '--host', '0.0.0.0'], { LINGO_TRACKER_HOST: '192.168.1.10' })).toBe(
+      '0.0.0.0',
+    );
+  });
+
+  it('uses the environment host when argv has no host', () => {
+    expect(resolveHost(['node', 'main.js'], { LINGO_TRACKER_HOST: '0.0.0.0' })).toBe('0.0.0.0');
+  });
+
+  it('defaults to 127.0.0.1 when neither argv nor the environment has a host', () => {
+    expect(resolveHost(['node', 'main.js'], {})).toBe('127.0.0.1');
+  });
+
+  it('falls back to the environment when --host has no value', () => {
+    expect(resolveHost(['node', 'main.js', '--host'], { LINGO_TRACKER_HOST: '0.0.0.0' })).toBe('0.0.0.0');
+  });
+
+  it('falls back to the default when --host has no value and the environment has no host', () => {
+    expect(resolveHost(['node', 'main.js', '--host'], {})).toBe('127.0.0.1');
   });
 });

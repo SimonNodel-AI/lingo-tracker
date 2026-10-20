@@ -10,12 +10,14 @@ sidebar_position: 4
 The LingoTracker API provides REST endpoints for managing translation resources, collections, and configuration.
 
 - **Base URL**: `http://localhost:3030/api`
+- **Bind address**: `127.0.0.1` (configurable via `--host` / `LINGO_TRACKER_HOST`)
 - **Default Port**: `3030` (configurable via `LINGO_TRACKER_PORT` environment variable)
 - **Cache revalidation interval**: `2000` ms (configurable via `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` environment variable)
 - **Cached collections**: `4` at most, least-recently-used evicted (configurable via `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` environment variable)
 - **Content-Type**: `application/json`
 - **Response Format**: JSON
-- **CORS**: Enabled with wildcard origin (`*`) in development
+- **CORS and Origin protection**: HTTP and HTTPS Origins are allowed on `localhost`, `127.0.0.0/8`, or `[::1]`, with any port. Same-origin requests are also allowed when the parsed Origin host and port match the request Host header, ignoring case. Other Origins, including `null`, malformed Origins, and multiple values, receive 403 before handlers run. Requests without an Origin header pass this check. CORS uses the same rule.
+- **Host protection**: Every bind mode requires a Host header naming `localhost`, an IPv4 literal, a bracketed IPv6 literal, or an exact name from `LINGO_TRACKER_ALLOWED_HOSTS`. Ports are optional. The comma-separated list trims spaces and ignores case. Access by LAN IP needs no extra setting; access by name requires an explicit entry, such as `my-laptop.local`. Missing or disallowed Host headers receive 403.
 - **Swagger Documentation**: Available at `http://localhost:3030/api` when the server is running
 
 ## Authentication

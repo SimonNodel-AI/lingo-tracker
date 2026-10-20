@@ -105,6 +105,48 @@ Or set the `LINGO_TRACKER_PORT` environment variable. The `--port` flag takes pr
 }
 ```
 
+#### Configuring the host
+
+The server binds to `127.0.0.1` by default, so only your machine can connect.
+The `--host` flag takes precedence over the `LINGO_TRACKER_HOST` environment variable.
+
+To allow LAN access, pass `--host 0.0.0.0`:
+
+```bash
+npx lingo-tracker-app --host 0.0.0.0
+```
+
+Or set the environment variable:
+
+```bash
+LINGO_TRACKER_HOST=0.0.0.0 npx lingo-tracker-app
+```
+
+**Warning:** Binding to a non-loopback address exposes the full unauthenticated API to other machines.
+This includes listing any server folder, importing from server paths, and uploading import files once that route is added.
+The Host and Origin checks still apply in every bind mode.
+
+Inside a container with a published port, pass `--host 0.0.0.0` to accept connections through that port.
+
+The Host header must name `localhost`, an IPv4 literal, a bracketed IPv6 literal, or an explicitly allowed name.
+The check is case-insensitive and accepts an optional port.
+Missing or disallowed Host headers receive a 403 response before a handler runs.
+
+Access by LAN IP needs no extra setting.
+For access by name, set `LINGO_TRACKER_ALLOWED_HOSTS` to the exact allowed names:
+
+```bash
+LINGO_TRACKER_ALLOWED_HOSTS=my-laptop.local,other-laptop.local npx lingo-tracker-app --host 0.0.0.0
+```
+
+The list is comma-separated, ignores case, and trims spaces around each name.
+
+The API accepts HTTP and HTTPS Origins on `localhost`, `127.0.0.0/8`, or `[::1]`, with any port.
+It also accepts HTTP and HTTPS Origins whose parsed host and port match the request Host header, ignoring case.
+Other Origins, including `null`, malformed Origins, and multiple values, receive a 403 response before a handler runs.
+Requests without an Origin header pass the Origin check.
+CORS uses the same Origin rule.
+
 ### Initialize a project
 
 Run in your project root to create `.lingo-tracker.json`:
