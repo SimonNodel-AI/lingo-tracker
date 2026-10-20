@@ -34,7 +34,13 @@ const completed: ImportJobDto = {
   },
 };
 const failure = new ApiError({ kind: 'not-found', status: 404, serverMessage: 'Job gone' });
-const api = { startImport: vi.fn(), getImportJob: vi.fn(), dryRunImport: vi.fn(), listImportSources: vi.fn() };
+const api = {
+  startImport: vi.fn(),
+  getImportJob: vi.fn(),
+  dryRunImport: vi.fn(),
+  listImportSources: vi.fn(),
+  uploadImportSources: vi.fn(),
+};
 const createStore = createServiceFactory({
   service: CollectionsStore,
   imports: [getTranslocoTestingModule()],
@@ -49,6 +55,44 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('withImportFeature', () => {
+  it('passes upload files, options and the listing through without changing run state', () => {
+    const store = createStore().service;
+    const files: readonly File[] = [new File(['{}'], 'fr.json')];
+    const listing = { collection: 'main', folder: 'in', defaultFolder: 'in', exists: true, files: [] };
+    const response = of(listing);
+    api.uploadImportSources.mockReturnValue(response);
+    const next = vi.fn();
+    expect(store.uploadImportSources('main', files)).toBe(response);
+    expect(api.uploadImportSources).toHaveBeenLastCalledWith('main', files, {});
+    const options = { folder: 'vendor/fr', overwrite: true };
+    store.uploadImportSources('main', files, options).subscribe(next);
+    expect(api.uploadImportSources).toHaveBeenLastCalledWith('main', files, options);
+    expect(next).toHaveBeenCalledExactlyOnceWith(listing);
+    expect(store.importRun()).toBeNull();
+    expect(store.isImporting()).toBe(false);
+    expect(sessionStorage.getItem(IMPORT_RUN_STORAGE_KEY)).toBeNull();
+  });
+
+  it('propagates upload conflicts and other API errors without changing run state', () => {
+    const store = createStore().service;
+    const files: readonly File[] = [new File(['{}'], 'fr.json')];
+    const conflict = new ApiError({
+      kind: 'conflict',
+      status: 409,
+      serverMessage: 'Files already exist',
+      details: ['fr.json'],
+    });
+    for (const rejected of [conflict, failure]) {
+      api.uploadImportSources.mockReturnValue(throwError(() => rejected));
+      const error = vi.fn();
+      store.uploadImportSources('main', files).subscribe({ error });
+      expect(error).toHaveBeenCalledExactlyOnceWith(rejected);
+      expect(store.importRun()).toBeNull();
+      expect(store.isImporting()).toBe(false);
+      expect(sessionStorage.getItem(IMPORT_RUN_STORAGE_KEY)).toBeNull();
+    }
+  });
+
   it('passes source listing arguments and errors through without changing run state', () => {
     const store = createStore().service;
     const listing = { collection: 'main', folder: 'in', defaultFolder: 'in', exists: true, files: [] };

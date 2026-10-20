@@ -137,6 +137,22 @@ export class CollectionsApiService {
     });
   }
 
+  uploadImportSources(
+    collection: string,
+    files: readonly File[],
+    options: { folder?: string; overwrite?: boolean } = {},
+  ): Observable<ImportSourceListingDto> {
+    const body = new FormData();
+    for (const file of files) body.append('files', file, file.name);
+    return this.http.post<ImportSourceListingDto>(apiPath('POST /api/imports/sources'), body, {
+      params: {
+        collection,
+        ...(options.folder?.trim() ? { folder: options.folder } : {}),
+        ...(options.overwrite ? { overwrite: 'true' } : {}),
+      },
+    });
+  }
+
   dryRunImport(body: ImportRequestDto): Observable<ImportPlanDto> {
     return this.http.post<ImportPlanDto>(apiPath('POST /api/imports/dry-run'), body);
   }

@@ -47,6 +47,11 @@ export function withImportFeature() {
           return age >= 0 && age <= JOB_RETENTION_MS;
         },
         listImportSources: (collection: string, folder?: string) => api.listImportSources(collection, folder),
+        uploadImportSources: (
+          collection: string,
+          files: readonly File[],
+          options: { folder?: string; overwrite?: boolean } = {},
+        ) => api.uploadImportSources(collection, files, options),
         dryRunImport: (body: ImportRequestDto) => api.dryRunImport(body),
         startImport: (body: ImportRequestDto) => controller.start(body),
         retryImport: () => controller.retry(),
