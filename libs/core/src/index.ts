@@ -121,6 +121,7 @@ export type {
 } from './lib/import';
 // Operations: import
 export {
+  assertImportableLocale,
   detectImportFormat,
   inspectImportSource,
   runImport,

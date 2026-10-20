@@ -98,6 +98,7 @@ describe('core public surface', () => {
         'addResource',
         'addResources',
         'assertCollectionFields',
+        'assertImportableLocale',
         'assertProtectedTerms',
         'buildGlossary',
         'createFolder',

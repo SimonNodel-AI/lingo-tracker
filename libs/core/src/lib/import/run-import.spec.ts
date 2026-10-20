@@ -161,4 +161,17 @@ describe('runImport', () => {
     );
     noWrites();
   });
+  it('reports parsed entries before validation, including failed and skipped entries', async () => {
+    writeFileSync(join(directory, 'counts.json'), JSON.stringify({ 'common.ok': 'OK', 'bad@key': 'Bad', empty: '' }));
+    const run = await runImport(collection, {
+      source: 'counts.json',
+      cwd: directory,
+      locale: 'en',
+      strategy: 'migration',
+      dryRun: true,
+    });
+    expect(run.entriesParsed).toBe(3);
+    expect(run.result.resourcesFailed).toBeGreaterThan(0);
+    noWrites();
+  });
 });

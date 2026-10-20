@@ -162,6 +162,8 @@ describe('toHttpException', () => {
     );
     const statuses: Readonly<Partial<Record<string, readonly [number, string]>>> = {
       INVALID_REQUEST: [400, 'Bad Request'],
+      INVALID_IMPORT_LOCALE: [400, 'Bad Request'],
+      IMPORT_SOURCE_ERROR: [400, 'Bad Request'],
       MISSING_API_KEY: [500, 'Internal Server Error'],
       UNKNOWN_PROVIDER: [500, 'Internal Server Error'],
       AUTH_ERROR: [500, 'Internal Server Error'],
