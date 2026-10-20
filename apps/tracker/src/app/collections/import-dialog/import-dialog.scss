@@ -82,6 +82,16 @@
   margin-left: auto;
 }
 
+.field-label .link ~ .link {
+  margin-left: var(--spacing-3);
+}
+
+.field-label .link:disabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
+  text-decoration: none;
+}
+
 .field-error .link {
   margin-left: var(--spacing-1);
 }
@@ -644,6 +654,7 @@
     animation: none;
   }
 
+  .drop-zone,
   .disclosure-chevron,
   .preview,
   .rail-item,
@@ -653,4 +664,56 @@
   .locked-group {
     transition: none;
   }
+}
+
+// Dropping files on the well uploads them.
+.drop-zone {
+  border-radius: var(--border-radius-lg);
+  outline: 2px dashed transparent;
+  outline-offset: 2px;
+  transition:
+    background var(--transition-fast),
+    outline-color var(--transition-fast);
+
+  &--over {
+    outline-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  }
+}
+
+.upload-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+
+  mat-spinner {
+    flex: none;
+  }
+}
+
+.upload-errors {
+  padding: 0;
+}
+
+.upload-clash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 50%, var(--color-border));
+  border-radius: var(--border-radius-lg);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+
+  p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.upload-clash-actions {
+  display: flex;
+  gap: var(--spacing-2);
 }

@@ -9,6 +9,11 @@ import type {
   ImportStrategyDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
+import {
+  IMPORT_UPLOAD_EXTENSIONS,
+  IMPORT_UPLOAD_MAX_BYTES,
+  IMPORT_UPLOAD_MAX_FILES,
+} from '@simoncodes-ca/data-transfer';
 import { canImportLocale, findCollectionEntry, importableLocales, inferImportLocale } from '@simoncodes-ca/domain';
 import {
   catchError,
@@ -22,6 +27,7 @@ import {
   Subject,
   Subscription,
   switchMap,
+  takeUntil,
   throwError,
   timer,
 } from 'rxjs';
@@ -44,6 +50,64 @@ import { ImportPreview } from './import-preview';
 
 export type ImportSection = 'source' | 'strategy' | 'options';
 export type ListingStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type UploadStatus = 'idle' | 'uploading' | 'error';
+
+const BYTES_PER_MB = 1024 * 1024;
+const TOO_MANY_REQUESTS = 429;
+
+interface ParsedFolder {
+  /** `''` for a project-relative path, `/` for a POSIX absolute one, `c:` for a Windows drive. */
+  readonly root: string;
+  readonly segments: readonly string[];
+  /** Windows-style (drive letter or backslashes): compared without case. */
+  readonly windows: boolean;
+}
+
+function parseFolder(folder: string): ParsedFolder {
+  const trimmed = folder.trim();
+  const windows = /^[a-zA-Z]:/.test(trimmed) || trimmed.includes('\\');
+  let rest = trimmed.replace(/\\/g, '/');
+  let root = '';
+  const drive = /^([a-zA-Z]:)/.exec(rest);
+  if (drive) {
+    root = (drive[1] ?? '').toLowerCase();
+    rest = rest.slice(2);
+    if (rest.startsWith('/')) root += '/';
+  } else if (rest.startsWith('/')) root = '/';
+  const segments: string[] = [];
+  for (const segment of rest.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (segment === '..') {
+      if (segments.length > 0 && segments[segments.length - 1] !== '..') segments.pop();
+      else if (root === '') segments.push(segment);
+    } else segments.push(segment);
+  }
+  return { root, segments, windows };
+}
+
+/** A folder path as the comparison sees it: separators, `.`/`..`, root kind, and case for Windows-style paths. */
+export function normalizeFolderPath(folder: string): string {
+  const { root, segments, windows } = parseFolder(folder);
+  const path = `${root}${segments.join('/')}`;
+  return windows ? path.toLowerCase() : path;
+}
+
+/**
+ * Uploads land only in the collection's import folder or below it; the server stays the authority.
+ * An absolute path is never inside a project-relative folder, and case only matters for POSIX-style paths.
+ */
+export function isUploadFolder(folder: string, importFolder: string): boolean {
+  const target = parseFolder(folder);
+  const base = parseFolder(importFolder);
+  if (base.segments.length === 0 || target.root !== base.root) return false;
+  const fold = (value: string) => (target.windows || base.windows ? value.toLowerCase() : value);
+  return (
+    target.segments.length >= base.segments.length &&
+    base.segments.every((segment, index) => fold(segment) === fold(target.segments[index] ?? ''))
+  );
+}
+
+const foldName = (name: string): string => name.normalize('NFC').toLowerCase();
 
 /** Typing in the folder field relists after this pause; choosing a collection relists at once. */
 export const FOLDER_DEBOUNCE_MS = 300;
@@ -82,10 +146,15 @@ interface FormControls {
 
 export interface ImportFormOptions {
   data: ImportDialogData;
-  translate: (key: string) => string;
+  translate: (key: string, params?: Record<string, unknown>) => string;
   config: () => LingoTrackerConfigDto | null;
   listSources: (collection: string, folder?: string) => Observable<ImportSourceListingDto>;
   dryRun: (request: ImportRequestDto) => Observable<ImportPlanDto>;
+  uploadSources: (
+    collection: string,
+    files: readonly File[],
+    options: { folder?: string; overwrite?: boolean },
+  ) => Observable<ImportSourceListingDto>;
   storage?: () => StorageAdapter | undefined;
 }
 
@@ -96,6 +165,7 @@ export class ImportForm {
   readonly #formTick = signal(Symbol());
   readonly #listRequests = new Subject<{ collection: string; folder: string; delay: number }>();
   readonly #relisted = new Subject<void>();
+  readonly #listCancel = new Subject<void>();
   readonly #folders: Record<string, string>;
   readonly #localeChoices = signal<Readonly<Record<string, string>>>({});
   #lastListKey = '';
@@ -120,6 +190,15 @@ export class ImportForm {
   /** Checked files that a relist found gone; cleared by the next choice the user makes. */
   readonly droppedCount = signal(0);
 
+  readonly uploadStatus = signal<UploadStatus>('idle');
+  readonly uploadingCount = signal(0);
+  readonly uploadErrors = signal<readonly string[]>([]);
+  /** The clashing upload with the destination it was sent to: Replace goes back there, never to the current folder. */
+  readonly uploadClash = signal<
+    { files: readonly File[]; names: readonly string[]; collection: string; folder: string } | undefined
+  >(undefined);
+  readonly uploadNotice = signal<{ uploaded: number; listed: number; checked: number } | undefined>(undefined);
+
   readonly collectionNames = computed(() => Object.keys(this.options.config()?.collections ?? {}));
   readonly settings = computed(() => {
     this.#formTick();
@@ -135,6 +214,22 @@ export class ImportForm {
       ? listing.defaultFolder
       : this.configuredFolder(this.draft().collection);
   });
+  /** The folder the next upload would write to is the import folder or below it. */
+  readonly uploadAllowed = computed(() => {
+    const listing = this.listing();
+    const draft = this.draft();
+    const resolved =
+      this.listingStatus() === 'ready' && listing?.collection === draft.collection ? listing.folder : undefined;
+    return isUploadFolder(resolved ?? (draft.folder.trim() || this.defaultFolder()), this.defaultFolder());
+  });
+  readonly canUpload = computed(
+    () =>
+      !this.readOnly() &&
+      !this.saving() &&
+      this.uploadAllowed() &&
+      this.uploadStatus() !== 'uploading' &&
+      this.form.controls.collection.value !== '',
+  );
   readonly folderIsCustom = computed(() => {
     const folder = this.draft().folder.trim();
     return folder !== '' && folder !== this.defaultFolder();
@@ -221,8 +316,18 @@ export class ImportForm {
       }),
     );
     this.#changes.add(this.form.events.subscribe(() => this.#formTick.set(Symbol())));
-    this.#changes.add(c.collection.valueChanges.subscribe(() => this.requestListing(0)));
-    this.#changes.add(c.folder.valueChanges.subscribe(() => this.requestListing(FOLDER_DEBOUNCE_MS)));
+    this.#changes.add(
+      c.collection.valueChanges.subscribe(() => {
+        this.uploadClash.set(undefined);
+        this.requestListing(0);
+      }),
+    );
+    this.#changes.add(
+      c.folder.valueChanges.subscribe(() => {
+        this.uploadClash.set(undefined);
+        this.requestListing(FOLDER_DEBOUNCE_MS);
+      }),
+    );
     this.#changes.add(this.listSubscription());
     this.refreshSelections();
     this.preview = new ImportPreview({
@@ -284,6 +389,81 @@ export class ImportForm {
     value: boolean,
   ): void {
     this.form.controls[name].setValue(value);
+  }
+
+  /** Upload files into the listed folder, then apply the refreshed listing and check what arrived. */
+  uploadFiles(files: readonly File[], overwrite = false): void {
+    const { collection, folder } = this.form.getRawValue();
+    this.startUpload(files, overwrite, collection, folder.trim());
+  }
+
+  /** Overwrite the files the server reported as clashing, in the destination they clashed in. */
+  replaceClashing(): void {
+    const clash = this.uploadClash();
+    if (clash) this.startUpload(clash.files, true, clash.collection, clash.folder);
+  }
+
+  private startUpload(files: readonly File[], overwrite: boolean, collection: string, folder: string): void {
+    if (this.readOnly() || this.saving() || this.uploadStatus() === 'uploading' || files.length === 0) return;
+    this.uploadErrors.set([]);
+    this.uploadClash.set(undefined);
+    this.uploadNotice.set(undefined);
+    this.droppedCount.set(0);
+    const translate = this.options.translate;
+    const source = TRACKER_TOKENS.IMPORT.DIALOG.SOURCE;
+    const problems: string[] = [];
+    if (files.length > IMPORT_UPLOAD_MAX_FILES)
+      problems.push(translate(source.UPLOADTOOMANYX, { max: IMPORT_UPLOAD_MAX_FILES }));
+    for (const file of files) {
+      const lower = file.name.toLowerCase();
+      if (!IMPORT_UPLOAD_EXTENSIONS.some((extension) => lower.endsWith(extension)))
+        problems.push(translate(source.UPLOADWRONGTYPEX, { file: file.name }));
+      else if (file.size > IMPORT_UPLOAD_MAX_BYTES)
+        problems.push(
+          translate(source.UPLOADTOOLARGEX, { file: file.name, max: IMPORT_UPLOAD_MAX_BYTES / BYTES_PER_MB }),
+        );
+    }
+    if (problems.length > 0) {
+      this.uploadErrors.set(problems);
+      this.uploadStatus.set('error');
+      return;
+    }
+    const destination = { collection, folder };
+    this.uploadingCount.set(files.length);
+    this.uploadStatus.set('uploading');
+    this.#changes.add(
+      this.options
+        .uploadSources(collection, files, { folder: folder || undefined, overwrite })
+        .pipe(
+          finalize(() => {
+            if (this.uploadStatus() === 'uploading') this.uploadStatus.set('idle');
+          }),
+        )
+        .subscribe({
+          next: (listing) => {
+            this.uploadStatus.set('idle');
+            if (!this.isCurrentDestination(destination)) {
+              this.requestListing(0, true);
+              return;
+            }
+            // An older listing request must not resolve after this one and undo the checks.
+            this.#listCancel.next();
+            this.applyListing(listing);
+            const { listed, checked } = this.checkUploaded(files);
+            this.uploadNotice.set({ uploaded: files.length, listed, checked });
+          },
+          error: (error: unknown) => this.uploadFailed(error, files, destination),
+        }),
+    );
+  }
+
+  private isCurrentDestination(destination: { collection: string; folder: string }): boolean {
+    const { collection, folder } = this.form.getRawValue();
+    return destination.collection === collection && destination.folder === folder.trim();
+  }
+
+  dismissClash(): void {
+    this.uploadClash.set(undefined);
   }
 
   retryListing(): void {
@@ -389,6 +569,7 @@ export class ImportForm {
   destroy(): void {
     this.#changes.unsubscribe();
     this.#listRequests.complete();
+    this.#listCancel.complete();
     this.#relisted.complete();
   }
 
@@ -488,9 +669,75 @@ export class ImportForm {
   }
 
   /** Relist when the (collection, folder) key changed, or on demand. Stale responses are dropped by switchMap. */
+  private listKey(): string {
+    const { collection, folder } = this.form.getRawValue();
+    return `${collection}\n${folder.trim()}`;
+  }
+
+  /**
+   * Check the rows for the uploaded names (not blocked ones). `listed` counts uploaded files that
+   * appear in the list; `checked` counts those that are checked now, newly or already.
+   */
+  private checkUploaded(files: readonly File[]): { listed: number; checked: number } {
+    const names = new Set(files.map((file) => foldName(file.name)));
+    const rows = this.rows().filter((row) => names.has(foldName(row.file.name)));
+    const control = this.form.controls.files;
+    const added = rows
+      .filter((row) => !row.blocked && !row.checked)
+      .map((row) => ({ path: row.file.path, locale: row.locale }));
+    control.markAsTouched();
+    if (added.length > 0) control.setValue(this.orderByListing([...control.value, ...added]));
+    const checkedPaths = new Set(control.value.map((choice) => choice.path));
+    return { listed: rows.length, checked: rows.filter((row) => checkedPaths.has(row.file.path)).length };
+  }
+
+  private uploadFailed(
+    error: unknown,
+    files: readonly File[],
+    destination: { collection: string; folder: string },
+  ): void {
+    if (!this.isCurrentDestination(destination)) {
+      // The user moved on: nothing here concerns the folder now on screen, except that the folder may have changed.
+      this.uploadStatus.set('idle');
+      this.requestListing(0, true);
+      return;
+    }
+    if (error instanceof ApiError && error.kind === 'conflict') {
+      const names = error.details.filter((item): item is string => typeof item === 'string');
+      this.uploadClash.set({ files, names, ...destination });
+      this.uploadStatus.set('idle');
+      return;
+    }
+    const details =
+      error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
+    const fallback = this.options.translate(
+      error instanceof ApiError && error.status === TOO_MANY_REQUESTS
+        ? TRACKER_TOKENS.IMPORT.DIALOG.SOURCE.UPLOADBUSY
+        : TRACKER_TOKENS.IMPORT.DIALOG.SOURCE.UPLOADFAILED,
+    );
+    this.uploadErrors.set(
+      error instanceof ApiError && error.status === TOO_MANY_REQUESTS
+        ? [fallback]
+        : details.length > 0
+          ? details
+          : [apiErrorMessage(error, fallback)],
+    );
+    this.uploadStatus.set('error');
+    // A partial write may have changed the folder: the relist shows whatever landed.
+    this.requestListing(0, true);
+  }
+
+  private applyListing(listing: ImportSourceListingDto): void {
+    this.listing.set(listing);
+    this.listingStatus.set('ready');
+    this.reconcile(listing);
+    this.refreshSelections();
+    this.#relisted.next();
+  }
+
   private requestListing(delay: number, force = false): void {
     const { collection, folder } = this.form.getRawValue();
-    const key = `${collection}\n${folder.trim()}`;
+    const key = this.listKey();
     if (!force && key === this.#lastListKey) return;
     this.#lastListKey = key;
     this.#listRequests.next({ collection, folder: folder.trim(), delay });
@@ -510,6 +757,7 @@ export class ImportForm {
             switchMap(() => this.options.listSources(request.collection, request.folder || undefined)),
             map((listing) => ({ listing })),
             catchError(() => of({ listing: undefined })),
+            takeUntil(this.#listCancel),
           );
         }),
       )

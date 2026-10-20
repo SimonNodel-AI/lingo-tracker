@@ -120,6 +120,7 @@ interface Harness {
     listImportSources: ReturnType<typeof vi.fn>;
     dryRunImport: ReturnType<typeof vi.fn>;
     startImport: ReturnType<typeof vi.fn>;
+    uploadImportSources: ReturnType<typeof vi.fn>;
   };
   root: HTMLElement;
 }
@@ -128,6 +129,7 @@ interface Options {
   data?: ImportDialogData;
   plan?: ImportPlanDto;
   listing?: ImportSourceListingDto;
+  uploaded?: ImportSourceListingDto;
   listSources?: (collection: string, folder?: string) => Observable<ImportSourceListingDto>;
 }
 
@@ -139,6 +141,7 @@ function build(options: Options = {}): Harness {
     listImportSources: vi.fn(options.listSources ?? (() => of(options.listing ?? listing()))),
     dryRunImport: vi.fn((_request: ImportRequestDto) => of(options.plan ?? plan())),
     startImport: vi.fn(() => of(job)),
+    uploadImportSources: vi.fn(() => of(options.uploaded ?? listing())),
   };
   const spectator = createComponent({
     providers: [
@@ -292,7 +295,7 @@ describe('ImportDialog', () => {
     it('explains an empty folder', () => {
       const harness = build({ listing: listing([]) });
       settle(harness);
-      expect(text(harness, 'folder-empty')).toBe('No XLIFF or JSON files in in.');
+      expect(text(harness, 'folder-empty')).toContain('No XLIFF or JSON files in in.');
     });
 
     it('reports a failed listing and tries again', () => {
@@ -758,6 +761,272 @@ describe('ImportDialog', () => {
       settle(harness);
       expect(harness.store.dryRunImport).toHaveBeenCalledWith(request);
       expect(text(harness, 'rail-source')).toContain('2 files');
+    });
+  });
+  describe('upload', () => {
+    const vendor = file('vendor.xliff', { locale: 'es', localeSource: 'xliff-target-language' });
+    const withVendor = listing([...FILES, vendor]);
+    const pick = (harness: Harness, files: File[]): void => {
+      const input = query<HTMLInputElement>(harness, 'upload-input');
+      Object.defineProperty(input, 'files', { value: files, configurable: true });
+      input?.dispatchEvent(new Event('change'));
+      harness.fixture.detectChanges();
+    };
+    const dropEvent = (type: string, files: File[] = []): DragEvent => {
+      const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
+      Object.defineProperty(event, 'dataTransfer', { value: { files, types: ['Files'] } });
+      return event;
+    };
+
+    it('opens the hidden file input from a real button', () => {
+      const harness = build();
+      settle(harness);
+      const input = query<HTMLInputElement>(harness, 'upload-input');
+      const click = vi.spyOn(input as HTMLInputElement, 'click');
+      expect(input?.getAttribute('accept')).toBe('.xliff,.xlf,.json');
+      expect(input?.multiple).toBe(true);
+      expect(query(harness, 'upload-files')?.tagName).toBe('BUTTON');
+      query(harness, 'upload-files')?.click();
+      expect(click).toHaveBeenCalled();
+    });
+
+    it('uploads picked files, checks them and says so in the notice and live region', () => {
+      const harness = build({ uploaded: withVendor });
+      settle(harness);
+      pick(harness, [new File(['{}'], 'vendor.xliff')]);
+      expect(harness.store.uploadImportSources).toHaveBeenCalledWith('main', [expect.any(File)], {
+        folder: 'in',
+        overwrite: false,
+      });
+      expect(checkboxOf(harness, 'vendor.xliff')?.checked).toBe(true);
+      expect(text(harness, 'upload-notice')).toBe('1 file uploaded and checked.');
+      expect(text(harness, 'upload-live')).toBe('1 file uploaded and checked.');
+    });
+
+    it('says how many uploaded files appear when some do not', () => {
+      const harness = build({ uploaded: withVendor });
+      settle(harness);
+      pick(harness, [new File(['{}'], 'vendor.xliff'), new File(['{}'], 'ghost.json')]);
+      expect(text(harness, 'upload-notice')).toBe('1 of 2 uploaded files appear in the list.');
+    });
+
+    it('shows an uploading status line while the request runs', () => {
+      const harness = build();
+      harness.store.uploadImportSources.mockReturnValue(NEVER);
+      settle(harness);
+      pick(harness, [new File(['{}'], 'a.json'), new File(['{}'], 'b.json')]);
+      // One announcement only: the sr-only live region. The visible line is plain text.
+      expect(query(harness, 'upload-status')?.hasAttribute('role')).toBe(false);
+      expect(query(harness, 'upload-status')?.closest('[aria-live]')).toBeNull();
+      expect(text(harness, 'upload-status')).toContain('Uploading 2 files…');
+      expect(text(harness, 'upload-live')).toBe('Uploading 2 files…');
+      expect(query<HTMLButtonElement>(harness, 'upload-files')?.disabled).toBe(true);
+    });
+
+    it('keeps Import unavailable while an upload runs and shows the checking footer', () => {
+      const harness = build();
+      settle(harness);
+      check(harness, 'es.xliff');
+      settle(harness);
+      expect(query<HTMLButtonElement>(harness, 'submit')?.disabled).toBe(false);
+      harness.store.uploadImportSources.mockReturnValue(NEVER);
+      pick(harness, [new File(['{}'], 'vendor.xliff')]);
+      expect(query<HTMLButtonElement>(harness, 'submit')?.disabled).toBe(true);
+      expect(text(harness, 'footer-meta')).toContain('Checking…');
+    });
+
+    it('disables Upload and the drop zone while the import is being started', () => {
+      const harness = build({ uploaded: withVendor });
+      settle(harness);
+      check(harness, 'es.xliff');
+      settle(harness);
+      harness.store.startImport.mockReturnValue(NEVER);
+      click(harness, 'submit');
+      expect(query<HTMLButtonElement>(harness, 'upload-files')?.disabled).toBe(true);
+      query(harness, 'drop-zone')?.dispatchEvent(dropEvent('drop', [new File(['{}'], 'vendor.xliff')]));
+      expect(harness.store.uploadImportSources).not.toHaveBeenCalled();
+    });
+
+    it('says honestly when the uploaded file could not be checked', () => {
+      const harness = build();
+      settle(harness);
+      pick(harness, [new File(['{}'], 'en.json')]);
+      expect(text(harness, 'upload-notice')).toContain('1 file uploaded, not checked.');
+      expect(text(harness, 'upload-notice')).toContain('migration strategy');
+      expect(text(harness, 'upload-notice')).not.toContain('uploaded and checked');
+      expect(text(harness, 'upload-live')).toBe(text(harness, 'upload-notice'));
+      expect(harness.component.model.checkedCount()).toBe(0);
+    });
+
+    it('keeps the drag highlight while the pointer moves between child elements', () => {
+      const harness = build();
+      settle(harness);
+      const zone = query(harness, 'drop-zone') as HTMLElement;
+      const child = zone.querySelector('.file-row') as HTMLElement;
+      zone.dispatchEvent(dropEvent('dragenter'));
+      child.dispatchEvent(dropEvent('dragenter'));
+      zone.dispatchEvent(dropEvent('dragleave'));
+      harness.fixture.detectChanges();
+      expect(zone.classList.contains('drop-zone--over')).toBe(true);
+      child.dispatchEvent(dropEvent('dragleave'));
+      harness.fixture.detectChanges();
+      expect(zone.classList.contains('drop-zone--over')).toBe(false);
+    });
+
+    it('ends the drag highlight on a document-level dragend or drop, a relist and a pane change', () => {
+      const harness = build();
+      settle(harness);
+      const zone = query(harness, 'drop-zone') as HTMLElement;
+      const over = () => zone.classList.contains('drop-zone--over');
+      const hover = () => {
+        zone.dispatchEvent(dropEvent('dragenter'));
+        harness.fixture.detectChanges();
+        expect(over()).toBe(true);
+      };
+      hover();
+      document.dispatchEvent(new Event('dragend'));
+      harness.fixture.detectChanges();
+      expect(over()).toBe(false);
+      hover();
+      document.body.dispatchEvent(new Event('drop', { bubbles: true }));
+      harness.fixture.detectChanges();
+      expect(over()).toBe(false);
+      // The hovered row is replaced by a relist: its dragleave never arrives.
+      hover();
+      harness.component.retryListing();
+      settle(harness);
+      expect(query(harness, 'drop-zone')?.classList.contains('drop-zone--over')).toBe(false);
+      // The counter is back to zero: one enter then one leave ends the highlight.
+      const fresh = query(harness, 'drop-zone') as HTMLElement;
+      fresh.dispatchEvent(dropEvent('dragenter'));
+      fresh.dispatchEvent(dropEvent('dragleave'));
+      harness.fixture.detectChanges();
+      expect(fresh.classList.contains('drop-zone--over')).toBe(false);
+    });
+
+    it('stops listening at the document once the dialog is destroyed', () => {
+      const harness = build();
+      settle(harness);
+      const remove = vi.spyOn(document, 'removeEventListener');
+      harness.fixture.destroy();
+      expect(remove).toHaveBeenCalledWith('dragend', expect.any(Function));
+      expect(remove).toHaveBeenCalledWith('drop', expect.any(Function));
+    });
+
+    it('shows pre-check errors as an alert without a request', () => {
+      const harness = build();
+      settle(harness);
+      pick(harness, [new File(['x'], 'notes.txt')]);
+      expect(query(harness, 'upload-errors')?.getAttribute('role')).toBe('alert');
+      expect(text(harness, 'upload-errors')).toBe('notes.txt is not an XLIFF or JSON file.');
+      expect(harness.store.uploadImportSources).not.toHaveBeenCalled();
+    });
+
+    it('shows server errors', () => {
+      const harness = build();
+      harness.store.uploadImportSources.mockReturnValue(
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({
+              status: 400,
+              error: { statusCode: 400, message: 'Invalid upload', errors: ['"x.json" is empty.'] },
+            }),
+          ),
+        ),
+      );
+      settle(harness);
+      pick(harness, [new File(['x'], 'x.json')]);
+      expect(text(harness, 'upload-errors')).toBe('"x.json" is empty.');
+    });
+
+    it('prompts on a clash and replaces or keeps', () => {
+      const harness = build({ uploaded: withVendor });
+      harness.store.uploadImportSources.mockReturnValueOnce(
+        throwError(() =>
+          toApiError(
+            new HttpErrorResponse({
+              status: 409,
+              error: { statusCode: 409, message: 'Files already exist', errors: ['es.xliff', 'fr.xliff'] },
+            }),
+          ),
+        ),
+      );
+      settle(harness);
+      pick(harness, [new File(['x'], 'es.xliff'), new File(['x'], 'fr.xliff')]);
+      expect(query(harness, 'upload-clash')?.getAttribute('role')).toBe('alert');
+      expect(text(harness, 'upload-clash')).toContain('Already in this folder: es.xliff, fr.xliff.');
+      click(harness, 'upload-replace');
+      expect(harness.store.uploadImportSources).toHaveBeenLastCalledWith('main', expect.any(Array), {
+        folder: 'in',
+        overwrite: true,
+      });
+      expect(query(harness, 'upload-clash')).toBeNull();
+    });
+
+    it('drops the clash prompt on Keep existing', () => {
+      const harness = build();
+      harness.store.uploadImportSources.mockReturnValue(
+        throwError(() =>
+          toApiError(new HttpErrorResponse({ status: 409, error: { statusCode: 409, errors: ['es.xliff'] } })),
+        ),
+      );
+      settle(harness);
+      pick(harness, [new File(['x'], 'es.xliff')]);
+      click(harness, 'upload-keep');
+      expect(query(harness, 'upload-clash')).toBeNull();
+    });
+
+    it('uploads dropped files and highlights the zone while dragging', () => {
+      const harness = build({ uploaded: withVendor });
+      settle(harness);
+      const zone = query(harness, 'drop-zone');
+      zone?.dispatchEvent(dropEvent('dragover'));
+      harness.fixture.detectChanges();
+      expect(zone?.classList.contains('drop-zone--over')).toBe(true);
+      zone?.dispatchEvent(new Event('dragleave'));
+      harness.fixture.detectChanges();
+      expect(zone?.classList.contains('drop-zone--over')).toBe(false);
+      const drop = dropEvent('drop', [new File(['{}'], 'vendor.xliff')]);
+      zone?.dispatchEvent(drop);
+      harness.fixture.detectChanges();
+      expect(drop.defaultPrevented).toBe(true);
+      expect(harness.store.uploadImportSources).toHaveBeenCalledTimes(1);
+      expect(checkboxOf(harness, 'vendor.xliff')?.checked).toBe(true);
+    });
+
+    it('invites a drop in the empty and missing states', () => {
+      const empty = build({ listing: listing([]) });
+      settle(empty);
+      expect(text(empty, 'drop-here-empty')).toBe('Drop XLIFF or JSON files here to add them to this folder.');
+    });
+
+    it('invites a drop when the folder does not exist yet', () => {
+      const missing = build({ listing: listing([], { exists: false }) });
+      settle(missing);
+      expect(text(missing, 'drop-here-missing')).toContain('Drop XLIFF or JSON files here');
+    });
+
+    it('is out of reach for a read-only collection', () => {
+      const harness = build({ data: { preselectedCollection: 'locked' } });
+      settle(harness);
+      expect(query(harness, 'source-group')?.hasAttribute('inert')).toBe(true);
+      expect(query<HTMLButtonElement>(harness, 'upload-files')?.disabled).toBe(true);
+      query(harness, 'drop-zone')?.dispatchEvent(dropEvent('drop', [new File(['{}'], 'a.json')]));
+      expect(harness.store.uploadImportSources).not.toHaveBeenCalled();
+    });
+
+    it('disables Upload with a hint when the folder is outside the import folder', () => {
+      const harness = build();
+      settle(harness);
+      expect(query(harness, 'upload-not-allowed')).toBeNull();
+      harness.component.model.form.controls.folder.setValue('elsewhere');
+      harness.fixture.detectChanges();
+      expect(query<HTMLButtonElement>(harness, 'upload-files')?.disabled).toBe(true);
+      expect(text(harness, 'upload-not-allowed')).toContain('import folder or one of its subfolders');
+      const drop = dropEvent('drop', [new File(['{}'], 'a.json')]);
+      query(harness, 'drop-zone')?.dispatchEvent(drop);
+      expect(drop.defaultPrevented).toBe(true);
+      expect(harness.store.uploadImportSources).not.toHaveBeenCalled();
     });
   });
 });

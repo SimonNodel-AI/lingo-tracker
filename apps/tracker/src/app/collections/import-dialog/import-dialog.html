@@ -174,13 +174,46 @@
             <div class="field">
               <span class="field-label" id="import-files-label">
                 {{ TOKENS.IMPORT.DIALOG.SOURCE.FILESLABEL | transloco }}
+                <button
+                  type="button"
+                  class="link"
+                  data-testid="upload-files"
+                  [disabled]="!model.canUpload()"
+                  (click)="fileInput.click()"
+                >
+                  {{ TOKENS.IMPORT.DIALOG.SOURCE.UPLOADFILES | transloco }}
+                </button>
+                <input
+                  #fileInput
+                  type="file"
+                  multiple
+                  class="sr-only"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  data-testid="upload-input"
+                  [accept]="uploadAccept"
+                  (change)="onFilesPicked($event)"
+                />
                 @if (fileRows().length > 0) {
                   <button type="button" class="link" data-testid="toggle-all-files" (click)="toggleAllFiles()">
                     {{ (allChecked() ? TOKENS.IMPORT.DIALOG.SOURCE.CLEAR : TOKENS.IMPORT.DIALOG.SOURCE.SELECTALL) | transloco }}
                   </button>
                 }
               </span>
+              @if (!model.uploadAllowed() && !model.readOnly()) {
+                <p class="field-hint" data-testid="upload-not-allowed">{{ TOKENS.IMPORT.DIALOG.SOURCE.UPLOADNOTALLOWEDFOLDER | transloco }}</p>
+              }
 
+              <!-- Dropping files anywhere on the well uploads them; the button above is the other way. -->
+              <div
+                class="drop-zone"
+                data-testid="drop-zone"
+                [class.drop-zone--over]="dragOver()"
+                (dragenter)="onDragEnter($event)"
+                (dragover)="onDragOver($event)"
+                (dragleave)="onDragLeave()"
+                (drop)="onDrop($event)"
+              >
               @switch (model.listingStatus()) {
                 @case ('loading') {
                   <div class="file-skeleton" data-testid="listing-loading" aria-busy="true">
@@ -203,10 +236,16 @@
                     <div class="empty-well" data-testid="folder-missing">
                       <p [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.NOFOLDERX | transloco: { path: folderMarkup() }"></p>
                       <p class="field-hint">{{ TOKENS.IMPORT.DIALOG.SOURCE.NOFOLDERHINT | transloco }}</p>
+                      @if (model.canUpload()) {
+                        <p class="field-hint" data-testid="drop-here-missing">{{ TOKENS.IMPORT.DIALOG.SOURCE.DROPHERE | transloco }}</p>
+                      }
                     </div>
                   } @else if (folderEmpty()) {
                     <div class="empty-well" data-testid="folder-empty">
                       <p [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.NOFILESX | transloco: { path: folderMarkup() }"></p>
+                      @if (model.canUpload()) {
+                        <p class="field-hint" data-testid="drop-here-empty">{{ TOKENS.IMPORT.DIALOG.SOURCE.DROPHERE | transloco }}</p>
+                      }
                     </div>
                   } @else {
                     <ul class="file-list" role="group" aria-labelledby="import-files-label" data-testid="file-list">
@@ -273,6 +312,38 @@
                     </ul>
                   }
                 }
+              }
+              </div>
+
+              @if (model.uploadStatus() === 'uploading') {
+                <!-- Plain text: the sr-only live region below is the one announcement. -->
+                <p class="upload-status" data-testid="upload-status">
+                  <mat-spinner diameter="14" aria-hidden="true"></mat-spinner>
+                  <span>{{ TOKENS.IMPORT.DIALOG.SOURCE.UPLOADINGX | transloco: { count: model.uploadingCount() } }}</span>
+                </p>
+              }
+              @if (uploadMessage(); as message) {
+                <p class="field-hint" data-testid="upload-notice">{{ message.token | transloco: message.params }}</p>
+              }
+              @if (model.uploadErrors().length > 0) {
+                <div class="submit-errors upload-errors" role="alert" data-testid="upload-errors">
+                  @for (message of model.uploadErrors(); track message) {
+                    <p class="field-error">{{ message }}</p>
+                  }
+                </div>
+              }
+              @if (model.uploadClash(); as clash) {
+                <div class="upload-clash" role="alert" data-testid="upload-clash">
+                  <p class="field-hint">{{ TOKENS.IMPORT.DIALOG.SOURCE.UPLOADCLASHX | transloco: { names: clash.names.join(', ') } }}</p>
+                  <span class="upload-clash-actions">
+                    <button mat-flat-button color="primary" type="button" data-testid="upload-replace" (click)="model.replaceClashing()">
+                      {{ TOKENS.IMPORT.DIALOG.SOURCE.REPLACE | transloco }}
+                    </button>
+                    <button mat-button type="button" data-testid="upload-keep" (click)="model.dismissClash()">
+                      {{ TOKENS.IMPORT.DIALOG.SOURCE.KEEPEXISTING | transloco }}
+                    </button>
+                  </span>
+                </div>
               }
 
               @if (model.droppedCount() > 0) {
@@ -487,6 +558,15 @@
       <ng-container *ngTemplateOutlet="previewBlocks" />
     </aside>
   </form>
+
+  <!-- Mirrors the upload status for screen readers. -->
+  <span class="sr-only" aria-live="polite" data-testid="upload-live">
+    @if (model.uploadStatus() === 'uploading') {
+      {{ TOKENS.IMPORT.DIALOG.SOURCE.UPLOADINGX | transloco: { count: model.uploadingCount() } }}
+    } @else if (uploadMessage(); as message) {
+      {{ message.token | transloco: message.params }}
+    }
+  </span>
 
   <!-- Announces only when the number of entries that would fail changes. -->
   <span class="sr-only" aria-live="polite" data-testid="will-fail-live">

@@ -1,4 +1,4 @@
-import { LowerCasePipe, NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT, LowerCasePipe, NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -19,7 +19,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
-import type { ImportStrategyDto } from '@simoncodes-ca/data-transfer';
+import { IMPORT_UPLOAD_EXTENSIONS, type ImportStrategyDto } from '@simoncodes-ca/data-transfer';
 import { finalize } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { codeMarkup } from '../../shared/code-markup';
@@ -126,14 +126,31 @@ export class ImportDialog {
 
   readonly model = new ImportForm({
     data: this.#data,
-    translate: (key) => this.#transloco.translate(key),
+    translate: (key, params) => this.#transloco.translate(key, params),
     config: () => this.store.config(),
     listSources: (collection, folder) => this.store.listImportSources(collection, folder),
     dryRun: (request) => this.store.dryRunImport(request),
+    uploadSources: (collection, files, options) => this.store.uploadImportSources(collection, files, options),
     storage: inject(LOCAL_STORAGE),
   });
   readonly saving = this.model.saving;
   readonly previewOpen = signal(false);
+  readonly dragOver = signal(false);
+  #dragDepth = 0;
+  readonly #document = inject(DOCUMENT);
+  /** What the upload did, in the words that stay accurate: all checked, some not listed, or some not checkable. */
+  readonly uploadMessage = computed(() => {
+    const notice = this.model.uploadNotice();
+    const source = TRACKER_TOKENS.IMPORT.DIALOG.SOURCE;
+    if (!notice) return undefined;
+    if (notice.listed < notice.uploaded)
+      return { token: source.UPLOADEDPARTIALX, params: { listed: notice.listed, count: notice.uploaded } };
+    if (notice.checked < notice.uploaded)
+      return { token: source.UPLOADEDUNCHECKEDX, params: { count: notice.uploaded, checked: notice.checked } };
+    return { token: source.UPLOADEDX, params: { count: notice.uploaded } };
+  });
+  /** Technical value for the file input's `accept`, not copy. */
+  readonly uploadAccept = IMPORT_UPLOAD_EXTENSIONS.join(',');
   readonly #advancedChoice = signal<boolean | undefined>(undefined);
   /** Open by default when no primary option rows are shown (every strategy but migration); never persisted. */
   readonly advancedOpen = computed(() => this.#advancedChoice() ?? !this.isMigration());
@@ -253,6 +270,8 @@ export class ImportDialog {
     const model = this.model;
     if (model.readOnly()) return 'readOnly';
     if (!model.settings()) return 'invalid';
+    // The file list is about to change: wait for the upload rather than offer an import of the old one.
+    if (model.uploadStatus() === 'uploading') return 'checking';
     if (model.listingStatus() !== 'error' && model.checkedCount() === 0) return 'noFiles';
     if (!model.valid() || model.listingStatus() === 'error') return 'invalid';
     const preview = model.preview;
@@ -273,6 +292,7 @@ export class ImportDialog {
     () =>
       ['ready', 'checking', 'previewFailed'].includes(this.footerState()) &&
       this.model.listingStatus() === 'ready' &&
+      this.model.uploadStatus() !== 'uploading' &&
       !this.saving() &&
       !this.store.isImporting(),
   );
@@ -291,7 +311,27 @@ export class ImportDialog {
     effect(() => {
       if (this.store.config()) untracked(() => this.model.configLoaded());
     });
-    this.#destroyRef.onDestroy(() => this.model.destroy());
+    // A drag can end where the zone never hears it (a hovered row replaced by a relist, a drop outside
+    // the zone), so the document ends it too, and so does anything that replaces the well's contents.
+    const endDrag = () => this.#resetDrag();
+    this.#document.addEventListener('dragend', endDrag);
+    this.#document.addEventListener('drop', endDrag);
+    effect(() => {
+      this.model.listing();
+      this.model.listingStatus();
+      this.model.activeSection();
+      untracked(() => this.#resetDrag());
+    });
+    this.#destroyRef.onDestroy(() => {
+      this.#document.removeEventListener('dragend', endDrag);
+      this.#document.removeEventListener('drop', endDrag);
+      this.model.destroy();
+    });
+  }
+
+  #resetDrag(): void {
+    this.#dragDepth = 0;
+    this.dragOver.set(false);
   }
 
   /**
@@ -310,6 +350,43 @@ export class ImportDialog {
 
   chooseCollection(name: string): void {
     this.model.selectCollection(name);
+  }
+
+  onFilesPicked(event: Event): void {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement)) return;
+    const files = Array.from(input.files ?? []);
+    // Picking the same file again must still fire `change`.
+    input.value = '';
+    this.model.uploadFiles(files);
+  }
+
+  /** The browser would otherwise navigate to a dropped file, so the zone always claims the drag. */
+  onDragEnter(event: DragEvent): void {
+    event.preventDefault();
+    this.#dragDepth += 1;
+    this.dragOver.set(this.#carriesFiles(event));
+  }
+
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    this.dragOver.set(this.#carriesFiles(event));
+  }
+
+  /** Moving over a child fires leave on the zone, so the highlight ends only when the depth returns to zero. */
+  onDragLeave(): void {
+    this.#dragDepth = Math.max(0, this.#dragDepth - 1);
+    if (this.#dragDepth === 0) this.dragOver.set(false);
+  }
+
+  #carriesFiles(event: DragEvent): boolean {
+    return this.model.canUpload() && event.dataTransfer?.types.includes('Files') === true;
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    this.#resetDrag();
+    if (this.model.canUpload()) this.model.uploadFiles(Array.from(event.dataTransfer?.files ?? []));
   }
 
   toggleFile(path: string, checked: boolean): void {

@@ -5,12 +5,18 @@ import type {
   ImportSourceListingDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { EMPTY, of, Subject, throwError } from 'rxjs';
+import { EMPTY, NEVER, of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../shared/api-error/api-error';
 import { MemoryStorageAdapter } from '../../shared/storage/keyed-storage';
 import { defaultDraft, persistDraft } from './import-draft';
-import { FOLDER_DEBOUNCE_MS, ImportForm, type ImportFormOptions } from './import-form';
+import {
+  FOLDER_DEBOUNCE_MS,
+  ImportForm,
+  type ImportFormOptions,
+  isUploadFolder,
+  normalizeFolderPath,
+} from './import-form';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'out',
@@ -61,6 +67,7 @@ function build(options: Partial<ImportFormOptions> = {}) {
     config: () => config,
     listSources,
     dryRun: () => EMPTY,
+    uploadSources: () => EMPTY,
     ...options,
   });
   models.push(model);
@@ -587,6 +594,283 @@ describe('ImportForm', () => {
       expect(model.submitErrors()).toEqual(['File "x" is not importable.']);
       model.form.controls.strategy.setValue('update');
       expect(model.submitErrors()).toEqual([]);
+    });
+  });
+  describe('upload', () => {
+    const upload = (name: string, size = 10) => {
+      const file = new File(['x'], name);
+      Object.defineProperty(file, 'size', { value: size });
+      return file;
+    };
+    const uploaded = listing([...FILES, file('vendor.xliff', { locale: 'es', localeSource: 'xliff-target-language' })]);
+
+    it('pre-checks count, type and size without a request', () => {
+      const uploadSources = vi.fn(() => of(uploaded));
+      const { model } = build({ uploadSources });
+      settle();
+      model.uploadFiles(Array.from({ length: 11 }, (_, index) => upload(`f${index}.json`)));
+      expect(model.uploadErrors()).toEqual(['import.dialog.source.uploadTooManyX']);
+      expect(model.uploadStatus()).toBe('error');
+      model.uploadFiles([upload('notes.txt'), upload('big.json', 21 * 1024 * 1024)]);
+      expect(model.uploadErrors()).toHaveLength(2);
+      expect(uploadSources).not.toHaveBeenCalled();
+    });
+
+    it('passes the file name, size limit and counts to the translator', () => {
+      const translate = vi.fn((key: string) => key);
+      const { model } = build({ translate });
+      settle();
+      model.uploadFiles([upload('big.json', 21 * 1024 * 1024)]);
+      expect(translate).toHaveBeenCalledWith('import.dialog.source.uploadTooLargeX', { file: 'big.json', max: 20 });
+    });
+
+    it('applies the returned listing and checks the uploaded rows that are not blocked', () => {
+      const withBase = listing([...uploaded.files]);
+      const uploadSources = vi.fn(() => of(withBase));
+      const { model } = build({ uploadSources });
+      settle();
+      model.uploadFiles([upload('vendor.xliff'), upload('EN.json')]);
+      expect(uploadSources).toHaveBeenCalledWith('main', expect.any(Array), { folder: 'in', overwrite: false });
+      expect(model.draft().files).toEqual([{ path: 'in/vendor.xliff', locale: 'es' }]);
+      expect(model.uploadNotice()).toEqual({ uploaded: 2, listed: 2, checked: 1 });
+      expect(model.uploadStatus()).toBe('idle');
+      expect(model.form.controls.files.touched).toBe(true);
+    });
+
+    it('reports fewer listed than uploaded', () => {
+      const { model } = build({ uploadSources: () => of(uploaded) });
+      settle();
+      model.uploadFiles([upload('vendor.xliff'), upload('ghost.json')]);
+      expect(model.uploadNotice()).toEqual({ uploaded: 2, listed: 1, checked: 1 });
+    });
+
+    it('does not duplicate rows that were already checked', () => {
+      const { model } = build({ uploadSources: () => of(uploaded) });
+      settle();
+      model.toggleFile('in/es.xliff', true);
+      model.uploadFiles([upload('es.xliff'), upload('vendor.xliff')]);
+      expect(model.draft().files.map((choice) => choice.path)).toEqual(['in/es.xliff', 'in/vendor.xliff']);
+    });
+
+    it('reruns the preview once for the applied listing', () => {
+      const dryRun = vi.fn(() => of({} as ImportPlanDto));
+      const { model } = build({ dryRun, uploadSources: () => of(uploaded) });
+      settle();
+      model.uploadFiles([upload('vendor.xliff')]);
+      vi.advanceTimersByTime(FOLDER_DEBOUNCE_MS);
+      expect(dryRun).toHaveBeenCalledTimes(1);
+      expect(dryRun).toHaveBeenCalledWith(
+        expect.objectContaining({ files: [{ path: 'in/vendor.xliff', locale: 'es' }] }),
+      );
+    });
+
+    it('relists instead of applying a response for a folder the user has left', () => {
+      const reply = new Subject<ImportSourceListingDto>();
+      const { model, listSources } = build({ uploadSources: () => reply });
+      settle();
+      model.uploadFiles([upload('vendor.xliff')]);
+      expect(model.uploadStatus()).toBe('uploading');
+      model.form.controls.folder.setValue('in/other');
+      settle();
+      listSources.mockClear();
+      reply.next(uploaded);
+      vi.advanceTimersByTime(0);
+      expect(listSources).toHaveBeenCalledWith('main', 'in/other');
+      expect(model.draft().files).toEqual([]);
+      expect(model.uploadNotice()).toBeUndefined();
+    });
+
+    it('offers Replace on a clash and resends with overwrite', () => {
+      const clash = new ApiError({ kind: 'conflict', status: 409, details: ['es.xliff'] });
+      const uploadSources = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => clash))
+        .mockReturnValue(of(uploaded));
+      const { model } = build({ uploadSources });
+      settle();
+      model.uploadFiles([upload('es.xliff')]);
+      expect(model.uploadClash()?.names).toEqual(['es.xliff']);
+      expect(model.uploadStatus()).toBe('idle');
+      model.replaceClashing();
+      expect(uploadSources).toHaveBeenLastCalledWith('main', expect.any(Array), { folder: 'in', overwrite: true });
+      expect(model.uploadClash()).toBeUndefined();
+    });
+
+    it('keeps the existing file when the clash is dismissed', () => {
+      const clash = new ApiError({ kind: 'conflict', status: 409, details: ['es.xliff'] });
+      const { model } = build({ uploadSources: () => throwError(() => clash) });
+      settle();
+      model.uploadFiles([upload('es.xliff')]);
+      model.dismissClash();
+      expect(model.uploadClash()).toBeUndefined();
+    });
+
+    it('shows server details and relists after another error', () => {
+      const failure = new ApiError({ kind: 'invalid', status: 400, details: ['"x" is empty.'] });
+      const { model, listSources } = build({ uploadSources: () => throwError(() => failure) });
+      settle();
+      listSources.mockClear();
+      model.uploadFiles([upload('x.json')]);
+      expect(model.uploadErrors()).toEqual(['"x" is empty.']);
+      expect(model.uploadStatus()).toBe('error');
+      vi.advanceTimersByTime(0);
+      expect(listSources).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back to the generic message, and a friendly one for 429', () => {
+      const busy = new ApiError({ kind: 'other', status: 429 });
+      const { model } = build({ uploadSources: () => throwError(() => busy) });
+      settle();
+      model.uploadFiles([upload('x.json')]);
+      expect(model.uploadErrors()).toEqual(['import.dialog.source.uploadBusy']);
+      const generic = new ApiError({ kind: 'other', status: 500 });
+      const second = build({ uploadSources: () => throwError(() => generic) });
+      settle();
+      second.model.uploadFiles([upload('x.json')]);
+      expect(second.model.uploadErrors()).toEqual(['import.dialog.source.uploadFailed']);
+    });
+
+    it('does nothing for a read-only collection, an empty drop or a running upload', () => {
+      const uploadSources = vi.fn(() => NEVER);
+      const locked = build({ data: { preselectedCollection: 'locked' }, uploadSources });
+      settle();
+      locked.model.uploadFiles([upload('a.json')]);
+      expect(uploadSources).not.toHaveBeenCalled();
+      const running = build({ uploadSources });
+      settle();
+      running.model.uploadFiles([]);
+      running.model.uploadFiles([upload('a.json')]);
+      running.model.uploadFiles([upload('b.json')]);
+      expect(uploadSources).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows uploads only into the import folder or below it', () => {
+      const { model } = build();
+      settle();
+      expect(model.canUpload()).toBe(true);
+      model.form.controls.folder.setValue('in/sub');
+      settle();
+      expect(model.uploadAllowed()).toBe(true);
+      model.form.controls.folder.setValue('elsewhere');
+      expect(model.uploadAllowed()).toBe(false);
+      expect(model.canUpload()).toBe(false);
+    });
+
+    it('normalises separators, dots and trailing slashes', () => {
+      expect(normalizeFolderPath(' ./dist//lingo-import/ ')).toBe('dist/lingo-import');
+      expect(normalizeFolderPath('dist/lingo-import/../x')).toBe('dist/x');
+      expect(normalizeFolderPath('/dist/lingo-import')).toBe('/dist/lingo-import');
+      expect(normalizeFolderPath('C:\\Dist\\Import\\')).toBe('c:/dist/import');
+    });
+
+    it('keeps absolute paths distinct from project-relative ones', () => {
+      expect(isUploadFolder('/dist/lingo-import', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('C:/dist/lingo-import', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('/abs/in/sub', '/abs/in')).toBe(true);
+      expect(isUploadFolder('/abs/other', '/abs/in')).toBe(false);
+    });
+
+    it('compares case only for POSIX-style paths', () => {
+      expect(isUploadFolder('Dist/Lingo-Import', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('DIST\\lingo-import\\sub', 'dist/lingo-import')).toBe(true);
+      expect(isUploadFolder('C:\\Dist\\Import', 'c:/dist/import')).toBe(true);
+    });
+
+    it('treats only the folder and its descendants as inside', () => {
+      expect(isUploadFolder('dist/lingo-import', 'dist/lingo-import')).toBe(true);
+      expect(isUploadFolder('dist/lingo-import/sub', 'dist/lingo-import')).toBe(true);
+      expect(isUploadFolder('dist/lingo-import-other', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('dist/lingo-import/../x', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('dist', 'dist/lingo-import')).toBe(false);
+      expect(isUploadFolder('x', '')).toBe(false);
+    });
+
+    it('sends Replace to the destination that clashed, with the same File objects', () => {
+      const first = upload('es.xliff');
+      const second = upload('fr.xliff');
+      const clash = new ApiError({ kind: 'conflict', status: 409, details: ['es.xliff'] });
+      const uploadSources = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => clash))
+        .mockReturnValue(of(uploaded));
+      const { model } = build({ uploadSources });
+      settle();
+      model.uploadFiles([first, second]);
+      model.replaceClashing();
+      const [collection, sent, options] = uploadSources.mock.calls[1] ?? [];
+      expect(collection).toBe('main');
+      expect(sent[0]).toBe(first);
+      expect(sent[1]).toBe(second);
+      expect(options).toEqual({ folder: 'in', overwrite: true });
+    });
+
+    it('drops a clash that arrives after the destination changed', () => {
+      const reply = new Subject<ImportSourceListingDto>();
+      const { model } = build({ uploadSources: () => reply });
+      settle();
+      model.uploadFiles([upload('es.xliff')]);
+      model.selectCollection('other');
+      reply.error(new ApiError({ kind: 'conflict', status: 409, details: ['es.xliff'] }));
+      expect(model.uploadClash()).toBeUndefined();
+      expect(model.uploadErrors()).toEqual([]);
+      expect(model.uploadStatus()).toBe('idle');
+    });
+
+    it('clears a shown clash when the folder or the collection changes, so Replace cannot hit the new one', () => {
+      const clash = new ApiError({ kind: 'conflict', status: 409, details: ['es.xliff'] });
+      const uploadSources = vi.fn(() => throwError(() => clash));
+      const { model } = build({ uploadSources });
+      settle();
+      model.uploadFiles([upload('es.xliff')]);
+      model.form.controls.folder.setValue('in/other');
+      expect(model.uploadClash()).toBeUndefined();
+      model.uploadFiles([upload('es.xliff')]);
+      expect(model.uploadClash()).toBeDefined();
+      model.selectCollection('other');
+      expect(model.uploadClash()).toBeUndefined();
+      uploadSources.mockClear();
+      model.replaceClashing();
+      expect(uploadSources).not.toHaveBeenCalled();
+    });
+
+    it('lets the upload listing win over an older listing request that resolves later', () => {
+      const older = new Subject<ImportSourceListingDto>();
+      const listSources = vi
+        .fn()
+        .mockReturnValueOnce(of(listing(FILES)))
+        .mockReturnValue(older);
+      const { model } = build({ listSources, uploadSources: () => of(uploaded) });
+      settle();
+      model.retryListing();
+      vi.advanceTimersByTime(0);
+      model.uploadFiles([upload('vendor.xliff')]);
+      expect(model.draft().files).toEqual([{ path: 'in/vendor.xliff', locale: 'es' }]);
+      older.next(listing(FILES));
+      expect(model.draft().files).toEqual([{ path: 'in/vendor.xliff', locale: 'es' }]);
+      expect(model.rows().map((row) => row.file.name)).toContain('vendor.xliff');
+      expect(model.listingStatus()).toBe('ready');
+    });
+
+    it('counts checked files separately from listed ones', () => {
+      const baseOnly = build({ uploadSources: () => of(uploaded) });
+      settle();
+      baseOnly.model.uploadFiles([upload('en.json')]);
+      expect(baseOnly.model.uploadNotice()).toEqual({ uploaded: 1, listed: 1, checked: 0 });
+      const already = build({ uploadSources: () => of(uploaded) });
+      settle();
+      already.model.toggleFile('in/es.xliff', true);
+      already.model.uploadFiles([upload('es.xliff'), upload('en.json')]);
+      expect(already.model.uploadNotice()).toEqual({ uploaded: 2, listed: 2, checked: 1 });
+    });
+
+    it('does not upload while a submit is in flight, and cannot upload', () => {
+      const uploadSources = vi.fn(() => of(uploaded));
+      const { model } = build({ uploadSources });
+      settle();
+      model.saving.set(true);
+      expect(model.canUpload()).toBe(false);
+      model.uploadFiles([upload('es.xliff')]);
+      expect(uploadSources).not.toHaveBeenCalled();
     });
   });
 });
