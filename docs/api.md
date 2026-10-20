@@ -395,6 +395,46 @@ Core trims create and rename names. An omitted name or a trimmed name equal to t
 
 `POST /api/bundles/dry-run` plans a supplied definition. Core trims the supplied name. Dry runs and generation jobs resolve paths against the opened project’s root. Saved generation route names remain unchanged, so a padded route name such as `" tracker "` returns 404.
 
+## Exports API
+
+`POST /api/exports/dry-run` returns `201 Created` with an `ExportPlanDto` with relative file paths, entry counts, skipped locales, and `overwriteCount`. The dry run never creates the output folder or writes files. The plan includes `outputProblem` when the output folder cannot be used. The response caps each diagnostic list (`warnings`, `errors`, and `hierarchicalConflicts`) at 50 messages.
+
+`POST /api/exports` prepares the export before it returns `202 Accepted` with an `ExportJobDto`. The initial snapshot contains `status: "pending"`, the request, and progress `{current: 0, total: <planned file count>}`. Exports run one at a time. A second request joins the queue.
+
+`GET /api/exports/jobs/:jobId` returns the job snapshot with `200 OK`. Status progresses from `pending` to `running`, then `completed` or `failed`. Progress includes `current`, `total`, and the current file name during a write. A completed job includes `result` with relative file paths, entry counts, locale results, warnings, errors, and the export outcome. A failed job includes `error`. Jobs remain in memory for 30 minutes after completion, with a limit of 100 retained jobs. A server restart clears them.
+
+Both POST routes accept the same body:
+
+```typescript
+interface ExportRequestDto {
+  format: 'xliff' | 'json';
+  collections?: string[];
+  locales?: string[];
+  statuses?: ('new' | 'stale' | 'translated' | 'verified')[];
+  tags?: string[];
+  outputDirectory?: string;
+  filenamePattern?: string;
+  protectedTermNotes?: boolean;
+  json?: {
+    structure?: 'hierarchical' | 'flat';
+    rich?: boolean;
+    includeBase?: boolean;
+    basePropertyName?: string;
+    includeStatus?: boolean;
+    includeComment?: boolean;
+    includeTags?: boolean;
+  };
+}
+```
+
+An omitted `collections` selects every collection, including read-only collections. An omitted `locales` selects every target locale of those collections. Base locales are excluded. An omitted `statuses` uses `['new', 'stale']`. An omitted `tags` applies no tag filter.
+
+An omitted `outputDirectory` uses the project configuration's `exportFolder`, or `dist/lingo-export` if absent. Relative paths resolve against the project root. An omitted `filenamePattern` uses the format's default file name. Custom patterns accept `{locale}`, `{target}`, `{source}`, and `{date}`.
+
+`protectedTermNotes` defaults to `true`. JSON structure defaults to `hierarchical`, and all JSON boolean fields default to `false`. An omitted or empty `basePropertyName` uses `baseValue`. JSON metadata fields apply to rich JSON exports. Export reads collection resources without changing them or their cache index.
+
+Both POST routes return `400 Bad Request` for invalid body shapes, format or structure values, empty collections, and empty or invalid statuses. Invalid or reserved `json.basePropertyName` values also return 400 with the validation message. Incompatible collection base locales also return 400. Invalid format and structure responses include `errors: [...]`. An unknown collection returns `404 Not Found` before a job starts. An unknown or expired job ID returns 404.
+
 ## Resources API
 
 All resource endpoints are scoped to a specific collection.

@@ -18,22 +18,29 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
+import type { ExportJobResultDto } from '@simoncodes-ca/data-transfer';
 import { catchError, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import type { Feedback } from '../browser/feedback';
 import { apiErrorMessage } from '../shared/api-error/api-error';
+import { RunResultStrip } from '../shared/components/run-result-strip/run-result-strip';
 import { injectConfirmedWrite } from '../shared/confirmed-write';
 import { NotificationService } from '../shared/notification';
+import { splitAfterSeparators } from '../shared/utils/split-after-separators';
 import { BundleCard } from './bundle-card/bundle-card';
 import type { BundleFormDialogData } from './bundle-form-dialog/bundle-form-dialog-data';
 import { bundleCards, collectionCards } from './collection-cards';
 import type { CollectionFormDialogData } from './collection-form-dialog/collection-form-dialog-data';
 import type { BundleLink, BundlePort } from './collection-links';
 import { measureCollectionLinks } from './collection-links-measurement';
+import { type ExportDialogData, loadExportDialog } from './export-dialog/export-dialog-data';
 import { CollectionsStore } from './store/collections.store';
 
 /** Below this many collections the name filter is more clutter than help. */
 const FILTER_THRESHOLD = 6;
+
+/** Material caps dialogs at an inline 80vw; the wide panels' CSS width needs this to apply. */
+const WIDE_DIALOG_MAX_WIDTH = 'calc(100vw - 3rem)';
 
 const loadBundleDialog = () =>
   import('./bundle-form-dialog/bundle-form-dialog').then((module) => module.BundleFormDialog);
@@ -76,6 +83,7 @@ const toast = (tone: 'success' | 'error', token: string, detail?: string): Feedb
     MatTooltipModule,
     TranslocoModule,
     BundleCard,
+    RunResultStrip,
   ],
   templateUrl: './collections-manager.html',
   styleUrl: './collections-manager.scss',
@@ -131,6 +139,32 @@ export class CollectionsManager {
 
   /** Convergence point of the current connector lines; null when none are drawn. */
   readonly bundlePort = signal<BundlePort | null>(null);
+
+  /** Whether the export strip's details panel is open. */
+  readonly exportDetailsOpen = signal(false);
+
+  /** The export strip's counts and lists, or null when no export has run. */
+  readonly exportStrip = computed(() => {
+    const run = this.store.exportRun();
+    if (!run) return null;
+    const result = run.result;
+    const errors = result?.errors.length ?? 0;
+    const skipped = result?.localeResults.filter((item) => item.outcome === 'skipped') ?? [];
+    return {
+      run,
+      result,
+      warnings: result?.warnings.length ?? 0,
+      errors,
+      // Skipped locales with no distinct error read as one run followed by the shared reason.
+      skippedPlain: skipped.filter((item) => !item.error).map((item) => item.locale),
+      skippedWithReason: skipped.filter((item) => item.error),
+      files: exportedFiles(result),
+      // A failed run only offers details when there is a per-locale error to read.
+      hasDetails: run.status === 'completed' || errors > 0,
+    };
+  });
+
+  readonly splitMono = splitAfterSeparators;
 
   readonly isGeneratingAll = this.store.isBatchRunning;
   readonly generateAllPosition = this.store.batchPosition;
@@ -210,7 +244,13 @@ export class CollectionsManager {
 
   openCreateBundleDialog(): void {
     const data: BundleFormDialogData = { mode: 'create' };
-    this.#openSavedDialog(loadBundleDialog, data, 'bundle-form-dialog-panel', TRACKER_TOKENS.BUNDLES.TOAST.CREATED);
+    this.#openSavedDialog(
+      loadBundleDialog,
+      data,
+      'bundle-form-dialog-panel',
+      TRACKER_TOKENS.BUNDLES.TOAST.CREATED,
+      WIDE_DIALOG_MAX_WIDTH,
+    );
   }
 
   openEditBundleDialog(name: string): void {
@@ -221,7 +261,13 @@ export class CollectionsManager {
     }
 
     const data: BundleFormDialogData = { mode: 'edit', name, bundle };
-    this.#openSavedDialog(loadBundleDialog, data, 'bundle-form-dialog-panel', TRACKER_TOKENS.BUNDLES.TOAST.UPDATED);
+    this.#openSavedDialog(
+      loadBundleDialog,
+      data,
+      'bundle-form-dialog-panel',
+      TRACKER_TOKENS.BUNDLES.TOAST.UPDATED,
+      WIDE_DIALOG_MAX_WIDTH,
+    );
   }
 
   openDeleteBundleDialog(name: string): void {
@@ -250,6 +296,75 @@ export class CollectionsManager {
   generateAllBundles(): void {
     if (this.store.isAnyBundleRunning()) return;
     this.store.generateAllBundles();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Export
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Opens the export dialog, optionally preselected to one collection. Focus returns to
+   * `returnTo` (the control that opened it), else the focused element, when the dialog closes.
+   */
+  openExportDialog(preselected?: string, returnTo?: HTMLElement): void {
+    this.#openExportDialog(preselected ? { preselectedCollection: preselected } : {}, returnTo);
+  }
+
+  /** Opens the dialog from a card's menu; focus returns to that card's ⋮ trigger, not the closed menu item. */
+  openCardExport(name: string): void {
+    const trigger = Array.from(this.#host.nativeElement.querySelectorAll<HTMLElement>('[data-collection]'))
+      .find((card) => card.dataset['collection'] === name)
+      ?.querySelector<HTMLElement>('.card-actions button');
+    this.openExportDialog(name, trigger ?? undefined);
+  }
+
+  /** Reopens the dialog with the last request so the cause of a failure can be fixed. */
+  retryExport(): void {
+    const request = this.store.exportRun()?.request;
+    this.#openExportDialog(request ? { request } : {});
+  }
+
+  dismissExport(): void {
+    this.exportDetailsOpen.set(false);
+    this.store.clearExportRun();
+  }
+
+  #openExportDialog(data: ExportDialogData, returnTo?: HTMLElement): void {
+    // Captured before the lazy load: the trigger may be a menu item or a button that is gone by then.
+    const active = document.activeElement;
+    const trigger = returnTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
+    // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
+    void loadExportDialog().then((component) => {
+      const ref = this.#dialog.open(component, {
+        data,
+        panelClass: 'export-dialog-panel',
+        maxWidth: WIDE_DIALOG_MAX_WIDTH,
+        restoreFocus: false,
+      });
+      ref.afterClosed().subscribe(() => this.#restoreExportFocus(trigger));
+    });
+  }
+
+  /**
+   * The trigger can be busy-disabled or gone once the export starts (the Export button, the
+   * Retry button), so fall back to the strip, then to the section heading.
+   */
+  #restoreExportFocus(trigger: HTMLElement | null): void {
+    const host = this.#host.nativeElement;
+    const usable = (element: HTMLElement | null): element is HTMLElement =>
+      !!element &&
+      element.isConnected &&
+      // Safari does not focus a clicked button, so the "active" element can be the body.
+      element !== document.body &&
+      element.tabIndex >= -1 &&
+      !(element instanceof HTMLButtonElement && element.disabled) &&
+      element.getAttribute('aria-disabled') !== 'true';
+    const target = [
+      trigger,
+      host.querySelector<HTMLElement>('[data-testid="export-strip"]'),
+      host.querySelector<HTMLElement>('#collections-heading'),
+    ].find(usable);
+    target?.focus();
   }
 
   /** Opens the create form and toasts only when it closes with a saved result. */
@@ -288,6 +403,7 @@ export class CollectionsManager {
     data: D,
     panelClass: string,
     successToken: string,
+    maxWidth?: string,
   ): void {
     load()
       .then(
@@ -296,6 +412,7 @@ export class CollectionsManager {
             const ref = this.#dialog.open<T, D, unknown>(component, {
               data,
               panelClass,
+              ...(maxWidth ? { maxWidth } : {}),
               // Land on the first field, not the close button.
               autoFocus: 'input',
             });
@@ -350,4 +467,13 @@ export class CollectionsManager {
   navigateToBrowser(collectionName: string): void {
     this.#router.navigate(['/browser', collectionName]);
   }
+}
+
+/** Files written with their entry counts, matched from the per-locale results. */
+function exportedFiles(result: ExportJobResultDto | undefined): readonly { file: string; entries?: number }[] {
+  if (!result) return [];
+  return result.filesWritten.map((file) => ({
+    file,
+    entries: result.localeResults.find((item) => item.file === file)?.entriesExported,
+  }));
 }

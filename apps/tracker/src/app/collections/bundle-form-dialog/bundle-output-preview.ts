@@ -2,6 +2,7 @@ import { computed, signal } from '@angular/core';
 import type { BundleDryRunRequestDto, BundleDryRunResultDto } from '@simoncodes-ca/data-transfer';
 import { bundleOutputFile } from '@simoncodes-ca/domain';
 import { catchError, debounceTime, map, type Observable, of, type Subscription, startWith, switchMap, tap } from 'rxjs';
+import { PATH_SEPARATORS, splitAfterSeparators } from '../../shared/utils/split-after-separators';
 import { type BundleDraft, bundleDryRunRequest } from './bundle-draft';
 
 interface OutputDraft {
@@ -38,7 +39,6 @@ interface PreviewPath {
 }
 
 export const LOCALE_PLACEHOLDER = '{locale}';
-const PATH_SEPARATORS = /(?<=[._\-/])/;
 
 /** Projects draft output paths or an API plan into the dialog's file preview. */
 export function bundleOutputPreview(input: {
@@ -109,10 +109,6 @@ function groupIntoFolders(files: readonly PreviewPath[]): readonly PreviewFolder
     pathParts: splitAfterSeparators(path, PATH_SEPARATORS),
     files,
   }));
-}
-
-function splitAfterSeparators(value: string, separators: RegExp): readonly string[] {
-  return value.length === 0 ? [] : value.split(separators);
 }
 
 export type PreviewStatus = 'waiting' | 'loading' | 'ready' | 'error';

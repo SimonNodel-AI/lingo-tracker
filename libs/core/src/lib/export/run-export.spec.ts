@@ -4,7 +4,11 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { type Collection, openCollection } from '../config/open-collection';
-import { CoreOperationError, InvalidTranslationStatusError } from '../errors/lingo-tracker-error';
+import {
+  CoreOperationError,
+  InvalidExportBasePropertyNameError,
+  InvalidTranslationStatusError,
+} from '../errors/lingo-tracker-error';
 // Standalone fixtures and readback retain unreported saves.
 import { openUnreportedResourceFolder } from '../resource/resource-folder';
 import * as jsonExporter from './export-to-json';
@@ -82,7 +86,7 @@ describe('runExport', () => {
   it('rejects an invalid base property name before exporting', async () => {
     await expect(
       runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: 'value' }),
-    ).rejects.toThrow(CoreOperationError);
+    ).rejects.toThrow(InvalidExportBasePropertyNameError);
     await expect(
       runExport([open('common')], { format: 'json', outputDirectory, basePropertyName: '' }),
     ).rejects.toThrow('basePropertyName cannot be empty');
@@ -258,6 +262,17 @@ describe('runExport', () => {
     expect(existsSync(join(outputDirectory, 'fr.json'))).toBe(false);
     expect(result.outcome).toBe('succeeded');
     expect(result.summary).toContain('# Export Summary (DRY RUN)');
+  });
+
+  it('dry run writes nothing and creates no folder', async () => {
+    const common = open('common');
+    seed(common, 'f', { ok: { source: 'OK' } });
+    const missingOutput = join(projectDir, 'missing', 'export');
+    const result = await runExport([common], { format: 'json', outputDirectory: missingOutput, dryRun: true });
+    expect(result.filesCreated).toEqual(['fr.json', 'es.json']);
+    expect(result.resourcesExported).toBe(2);
+    expect(existsSync(join(projectDir, 'missing'))).toBe(false);
+    expect(jsonExporter.exportToJson).not.toHaveBeenCalled();
   });
 
   it('writes XLIFF with the base locale as source language and do-not-translate notes from the Project Terms', async () => {
@@ -483,6 +498,7 @@ describe('runExport', () => {
       expect.any(Array),
       expect.objectContaining({ locales: ['fr'], collections: ['common'], filenamePattern: 'strings-{locale}' }),
       'en',
+      expect.objectContaining({ fileName: 'strings-fr.json', hierarchy: expect.any(Object) }),
     );
     expect(existsSync(join(outputDirectory, 'strings-fr.json'))).toBe(true);
   });

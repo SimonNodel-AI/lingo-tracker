@@ -8,6 +8,10 @@ import type {
   CreateResourceDto,
   DeleteFolderDto,
   DeleteResourceDto,
+  ExportFormatDto,
+  ExportJsonOptionsDto,
+  ExportJsonStructureDto,
+  ExportRequestDto,
   GenerateBundleRequestDto,
   LingoTrackerCollectionDto,
   MoveFolderDto,
@@ -100,6 +104,27 @@ export const generateBundleBody: Schema<GenerateBundleRequestDto | undefined> = 
     locales: optional(array(string())),
   }),
 );
+export const exportRequestBody: Schema<ExportRequestDto> = object<ExportRequestDto>({
+  format: string() as Schema<ExportFormatDto>,
+  collections: optional(array(string())),
+  locales: optional(array(string())),
+  statuses: optional(array(translationStatus as Schema<NonNullable<ExportRequestDto['statuses']>[number]>)),
+  tags: optional(array(string())),
+  outputDirectory: optional(string()),
+  filenamePattern: optional(string()),
+  protectedTermNotes: optional(boolean()),
+  json: optional(
+    object<ExportJsonOptionsDto>({
+      structure: optional(string() as Schema<ExportJsonStructureDto>),
+      rich: optional(boolean()),
+      includeBase: optional(boolean()),
+      basePropertyName: optional(string()),
+      includeStatus: optional(boolean()),
+      includeComment: optional(boolean()),
+      includeTags: optional(boolean()),
+    }),
+  ),
+});
 export const addLocaleBody: Schema<AddLocaleDto> = object<AddLocaleDto>({ locale: string() });
 export const translateResourceBody: Schema<TranslateResourceDto> = object<TranslateResourceDto>({ key: string() });
 export const createResource: Schema<CreateResourceDto> = object<CreateResourceDto>({

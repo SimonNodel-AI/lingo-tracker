@@ -219,6 +219,83 @@
   justify-content: flex-end;
 }
 
+// The export strip sits between the section head and the grid. Its details panel is
+// projected, so the list styling lives here (mirrors the bundle card).
+app-run-result-strip {
+  margin-bottom: var(--spacing-4);
+}
+
+.details-heading {
+  color: var(--color-text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}
+
+.details-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    align-items: baseline;
+    display: flex;
+    gap: var(--spacing-3);
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .mono {
+    color: var(--color-text-primary);
+    font-family: var(--font-family-mono);
+    font-size: var(--font-size-xs);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .num {
+    flex: none;
+  }
+
+  .skipped-reason {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+  }
+
+  // Skipped locales wrap as one inline run; the reason follows in secondary ink.
+  .skipped-run .mono {
+    margin-right: var(--spacing-2);
+  }
+
+  // Warnings and errors are prose paragraphs: show three lines, full text on hover.
+  &--warnings li,
+  &--errors li {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    display: -webkit-box;
+    line-height: var(--line-height-snug);
+    max-width: 62ch;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+
+    // Marker kept as inline content so it stays inside the clamped box.
+    &::before {
+      content: '•';
+      margin-right: var(--spacing-2);
+    }
+  }
+
+  &--warnings li {
+    color: var(--color-warning-text);
+  }
+
+  &--errors li {
+    color: color-mix(in srgb, var(--color-error) 70%, var(--color-text-primary));
+  }
+}
 
 .bundles-stack {
   display: flex;

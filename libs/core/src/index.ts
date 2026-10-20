@@ -89,6 +89,13 @@ export type {
 } from './lib/config/update-project-terms';
 export * from './lib/errors';
 export type { ExportLocaleResult, ExportRunOptions, ExportRunResult } from './lib/export/run-export';
+export {
+  prepareExportRun,
+  type PreparedExportRun,
+  type ExportPlanFile,
+  type ExportPlanSkip,
+} from './lib/export/prepare-export-run';
+export { writePreparedExport, type ExportWriteProgress } from './lib/export/write-prepared-export';
 // Operations: export
 export { exportTargetLocales, runExport } from './lib/export/run-export';
 export type { ExportFormat, ExportResult } from './lib/export/types';

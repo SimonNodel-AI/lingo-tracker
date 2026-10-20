@@ -300,6 +300,13 @@ export class ParentDirectoryMissingError extends defineError(
 
 // --- Locales -----------------------------------------------------------------
 
+/** An export base property name is empty or collides with a rich JSON field. */
+export class InvalidExportBasePropertyNameError extends defineError(
+  'INVALID_EXPORT_BASE_PROPERTY_NAME',
+  'invalid',
+  (message: string) => ({ message }),
+) {}
+
 /** A caller supplied a translation status outside the domain status list. */
 export class InvalidTranslationStatusError extends defineError(
   'INVALID_TRANSLATION_STATUS',

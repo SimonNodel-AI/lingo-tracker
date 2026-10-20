@@ -2,12 +2,19 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { buildKeyTree, DEFAULT_EXPORT_BASE_PROPERTY_NAME } from '@simoncodes-ca/domain';
 import { writeJsonFile } from '../file-io/json-file-operations';
+import { exportFileName } from './export-file-name';
 import type { ExportOptions, ExportResult, FilteredResource } from './types';
 
 /**
  * Exports resources to JSON format.
  */
-export function exportToJson(resources: FilteredResource[], options: ExportOptions, baseLocale?: string): ExportResult {
+export function exportToJson(
+  resources: FilteredResource[],
+  options: ExportOptions,
+  baseLocale?: string,
+  prepared?: { fileName: string; hierarchy?: ReturnType<typeof buildHierarchicalStructure> },
+): ExportResult {
+  const date = new Date();
   const result: ExportResult = {
     format: 'json',
     filesCreated: [],
@@ -37,7 +44,7 @@ export function exportToJson(resources: FilteredResource[], options: ExportOptio
         options.onProgress(`Processing ${locale} (${localeResources.length} resources)`);
       }
 
-      const filename = getFilename(locale, options, baseLocale);
+      const filename = prepared?.fileName ?? exportFileName('json', locale, baseLocale, options.filenamePattern, date);
       const filePath = path.join(options.outputDirectory, filename);
 
       let content: Record<string, unknown>;
@@ -49,7 +56,7 @@ export function exportToJson(resources: FilteredResource[], options: ExportOptio
         keysCount = Object.keys(content).length;
       } else {
         // Default to hierarchical
-        const built = buildHierarchicalStructure(localeResources, options);
+        const built = prepared?.hierarchy ?? buildHierarchicalStructure(localeResources, options);
         content = built.tree;
         conflicts = built.conflicts;
         keysCount = built.keysCount;
@@ -78,25 +85,6 @@ export function exportToJson(resources: FilteredResource[], options: ExportOptio
   }
 
   return result;
-}
-
-function getFilename(locale: string, options: ExportOptions, baseLocale?: string): string {
-  if (options.filenamePattern) {
-    let name = options.filenamePattern
-      .replace('{locale}', locale)
-      .replace('{target}', locale) // Alias for locale in JSON context
-      .replace('{date}', new Date().toISOString().split('T')[0]);
-
-    if (baseLocale) {
-      name = name.replace('{source}', baseLocale);
-    }
-
-    if (!name.endsWith('.json')) {
-      name += '.json';
-    }
-    return name;
-  }
-  return `${locale}.json`;
 }
 
 export function buildFlatStructure(resources: FilteredResource[], options: ExportOptions): Record<string, unknown> {

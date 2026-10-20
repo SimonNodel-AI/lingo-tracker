@@ -24,17 +24,18 @@ import {
   GlossaryExtractorError,
   GlossaryNoCollectionsError,
   ImportSourceError,
+  InvalidBaseValueError,
   InvalidBundleDefinitionError,
   InvalidBundleLocalesError,
   InvalidCollectionError,
   InvalidCollectionFolderError,
   InvalidConfigError,
+  InvalidExportBasePropertyNameError,
   InvalidFolderPathError,
   InvalidImportLocaleError,
   InvalidLocaleError,
   InvalidNameError,
   InvalidProjectTermsEditError,
-  InvalidBaseValueError,
   InvalidResourceKeyError,
   InvalidTranslationStatusError,
   LingoTrackerError,
@@ -62,6 +63,12 @@ describe('LingoTrackerError subclasses', () => {
   });
 
   const cases: ReadonlyArray<{ error: LingoTrackerError; name: string; code: string; message: string }> = [
+    {
+      error: new InvalidExportBasePropertyNameError('basePropertyName cannot be empty'),
+      name: 'InvalidExportBasePropertyNameError',
+      code: 'INVALID_EXPORT_BASE_PROPERTY_NAME',
+      message: 'basePropertyName cannot be empty',
+    },
     {
       error: new BracedPlaceholderError('en', ['braced']),
       name: 'BracedPlaceholderError',
@@ -406,6 +413,7 @@ describe('LingoTrackerError subclasses', () => {
       ProtectedTermsFileNotSetError: 'invalid',
       ParentDirectoryMissingError: 'invalid',
       InvalidTranslationStatusError: 'invalid',
+      InvalidExportBasePropertyNameError: 'invalid',
       InvalidLocaleError: 'invalid',
       LocaleNotFoundError: 'invalid',
       LocaleAlreadyExistsError: 'invalid',
