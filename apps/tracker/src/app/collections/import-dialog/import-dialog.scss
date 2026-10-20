@@ -530,13 +530,17 @@
   overflow-wrap: anywhere;
 }
 
+// The locale a file writes, in the export dialog's chosen-locale tint (`.pill--button[aria-pressed]`).
 .loc-pill {
+  flex: none;
   padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--color-secondary) 35%, transparent);
   border-radius: var(--border-radius-full);
-  background: var(--color-background-muted);
+  background: color-mix(in srgb, var(--color-secondary) 16%, transparent);
   font-size: 11px;
   font-weight: var(--font-weight-semibold);
-  color: var(--color-text-secondary);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--color-secondary) 45%, var(--color-text-primary));
   white-space: nowrap;
 }
 

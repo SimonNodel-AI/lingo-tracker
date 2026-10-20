@@ -22,6 +22,7 @@ import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { ImportStrategyDto } from '@simoncodes-ca/data-transfer';
 import { finalize } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
+import { codeMarkup } from '../../shared/code-markup';
 import { LOCAL_STORAGE } from '../../shared/storage/browser-storage';
 import { STATUS_PRESENTATION } from '../../shared/translation-status/translation-status-presentation';
 import { splitAfterSeparators } from '../../shared/utils/split-after-separators';
@@ -162,8 +163,9 @@ export class ImportDialog {
         readOnly: collections[name]?.readOnly === true,
       }));
   });
-  readonly folderPathParts = computed(() => splitAfterSeparators(this.model.listing()?.folder ?? ''));
   readonly folderShown = computed(() => this.model.listing()?.folder ?? this.model.draft().folder.trim());
+  /** The folder as mono `<code>` runs that may break after each separator, as export's resolved path. */
+  readonly folderMarkup = computed(() => splitAfterSeparators(this.folderShown()).map(codeMarkup).join('<wbr>'));
   readonly dateFormat = computed(
     () => new Intl.DateTimeFormat(this.#transloco.getActiveLang(), { dateStyle: 'medium', timeStyle: 'short' }),
   );

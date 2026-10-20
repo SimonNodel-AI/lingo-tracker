@@ -166,7 +166,7 @@
               <p id="import-folder-hint" class="field-hint">
                 {{ TOKENS.IMPORT.DIALOG.SOURCE.FOLDERHINT | transloco }}
                 @if (model.listingStatus() === 'ready') {
-                  <span data-testid="folder-resolved">{{ TOKENS.IMPORT.DIALOG.SOURCE.FOLDERRESOLVEDX | transloco: { path: folderShown() } }}</span>
+                  <span data-testid="folder-resolved" [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.FOLDERRESOLVEDX | transloco: { path: folderMarkup() }"></span>
                 }
               </p>
             </div>
@@ -184,7 +184,7 @@
               @switch (model.listingStatus()) {
                 @case ('loading') {
                   <div class="file-skeleton" data-testid="listing-loading" aria-busy="true">
-                    <p class="field-hint">{{ TOKENS.IMPORT.DIALOG.SOURCE.LOOKING | transloco: { path: folderShown() } }}</p>
+                    <p class="field-hint" [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.LOOKING | transloco: { path: folderMarkup() }"></p>
                     <span class="file-skeleton-row" aria-hidden="true"></span>
                     <span class="file-skeleton-row" aria-hidden="true"></span>
                     <span class="file-skeleton-row" aria-hidden="true"></span>
@@ -201,12 +201,12 @@
                 @case ('ready') {
                   @if (folderMissing()) {
                     <div class="empty-well" data-testid="folder-missing">
-                      <p>{{ TOKENS.IMPORT.DIALOG.SOURCE.NOFOLDERX | transloco: { path: folderShown() } }}</p>
+                      <p [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.NOFOLDERX | transloco: { path: folderMarkup() }"></p>
                       <p class="field-hint">{{ TOKENS.IMPORT.DIALOG.SOURCE.NOFOLDERHINT | transloco }}</p>
                     </div>
                   } @else if (folderEmpty()) {
                     <div class="empty-well" data-testid="folder-empty">
-                      <p>{{ TOKENS.IMPORT.DIALOG.SOURCE.NOFILESX | transloco: { path: folderShown() } }}</p>
+                      <p [innerHTML]="TOKENS.IMPORT.DIALOG.SOURCE.NOFILESX | transloco: { path: folderMarkup() }"></p>
                     </div>
                   } @else {
                     <ul class="file-list" role="group" aria-labelledby="import-files-label" data-testid="file-list">

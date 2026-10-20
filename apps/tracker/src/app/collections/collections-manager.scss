@@ -317,8 +317,19 @@ app-run-result-strip {
     justify-content: flex-start;
   }
 
-  .details-list--files li {
-    flex-wrap: wrap;
+  // Path and locale on one line, the figures under them: tight inside a file, a clear gap
+  // between files, so each count line reads with its own path.
+  .details-list--files {
+    gap: var(--spacing-2);
+
+    li {
+      flex-wrap: wrap;
+      gap: 0 var(--spacing-2);
+    }
+
+    .figures {
+      flex-basis: 100%;
+    }
   }
 
   .locale-pill {
@@ -342,7 +353,10 @@ app-run-result-strip {
     margin-left: auto;
   }
 
+  // Lowercase in running text, as the dialog preview's status changes.
   .status-word {
+    text-transform: lowercase;
+
     &--new {
       color: var(--color-status-new);
     }
@@ -385,11 +399,16 @@ app-run-result-strip {
     overflow: hidden;
   }
 
-  .details-list--fixes li,
-  .details-list--issues li {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 0;
+  // Key over its text: the same tight-inside, gap-between rhythm as the files list.
+  .details-list--fixes,
+  .details-list--issues {
+    gap: var(--spacing-2);
+
+    li {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0;
+    }
   }
 
   .more-note {
