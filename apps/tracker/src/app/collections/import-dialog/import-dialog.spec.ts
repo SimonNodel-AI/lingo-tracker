@@ -219,6 +219,17 @@ describe('ImportDialog', () => {
       expect(text(harness, 'rail-options')).toContain('1 changed');
     });
 
+    it('moves focus to the clicked rail item, so only one item looks selected', () => {
+      const harness = build();
+      settle(harness);
+      document.body.appendChild(harness.root);
+      query<HTMLButtonElement>(harness, 'rail-source')?.focus();
+      // A click that the browser did not turn into focus (Safari) still leaves focus on the item.
+      query<HTMLButtonElement>(harness, 'rail-strategy')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      expect(document.activeElement).toBe(query(harness, 'rail-strategy'));
+      harness.root.remove();
+    });
+
     it('marks Source with an error dot after a failed attempt to continue', () => {
       const harness = build();
       settle(harness);
@@ -402,18 +413,30 @@ describe('ImportDialog', () => {
       expect(query(harness, 'option-updateTags')?.classList.contains('mat-mdc-slide-toggle-checked')).toBe(true);
     });
 
-    it('keeps Advanced closed, then shows its two options and a changed summary', () => {
+    it('opens Advanced by default when no primary option rows are shown, and shows a changed summary', () => {
       const harness = build();
       settle(harness);
       click(harness, 'rail-options');
-      expect(query(harness, 'option-validateBase')).toBeNull();
-      expect(text(harness, 'advanced-toggle')).toContain('Defaults');
-      click(harness, 'advanced-toggle');
       expect(query(harness, 'advanced-toggle')?.getAttribute('aria-expanded')).toBe('true');
       expect(query(harness, 'option-validateBase')).not.toBeNull();
+      expect(text(harness, 'advanced-toggle')).toContain('Defaults');
       harness.component.setOption('validateBase', false);
       harness.fixture.detectChanges();
       expect(text(harness, 'advanced-toggle')).toContain('1 changed');
+    });
+
+    it('keeps Advanced closed under migration, follows a manual toggle, and does not persist the state', () => {
+      const harness = build();
+      settle(harness);
+      harness.component.model.setStrategy('migration');
+      click(harness, 'rail-options');
+      expect(query(harness, 'advanced-toggle')?.getAttribute('aria-expanded')).toBe('false');
+      expect(query(harness, 'option-validateBase')).toBeNull();
+      click(harness, 'advanced-toggle');
+      expect(query(harness, 'option-validateBase')).not.toBeNull();
+      click(harness, 'advanced-toggle');
+      expect(query(harness, 'option-validateBase')).toBeNull();
+      expect(localStorage.getItem('lingo-tracker.importDraft') ?? '').not.toContain('advanced');
     });
   });
 

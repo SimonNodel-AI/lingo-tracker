@@ -75,7 +75,7 @@
     "tags": ["import"],
     "es": "{ count, plural, =1 {1 fallida} other {{count} fallidas} }",
     "fr-ca": "{ count, plural, =1 {1 échouée} other {{count} échouées} }",
-    "ru": "{ count, plural, one {С ошибкой: {count}} few {С ошибкой: {count}} many {С ошибкой: {count}} other {С ошибкой: {count}} }",
+    "ru": "{ count, plural, one {{count} с ошибкой} few {{count} с ошибкой} many {{count} с ошибкой} other {{count} с ошибкой} }",
     "ja": "{ count, plural, other {{count} 件が失敗} }",
     "de": "{ count, plural, =1 {1 fehlgeschlagen} other {{count} fehlgeschlagen} }"
   },
@@ -85,7 +85,7 @@
     "tags": ["import"],
     "es": "{ count, plural, =1 {1 omitida} other {{count} omitidas} }",
     "fr-ca": "{ count, plural, =1 {1 ignorée} other {{count} ignorées} }",
-    "ru": "{ count, plural, one {Пропущено: {count}} few {Пропущено: {count}} many {Пропущено: {count}} other {Пропущено: {count}} }",
+    "ru": "{ count, plural, one {{count} пропущено} few {{count} пропущено} many {{count} пропущено} other {{count} пропущено} }",
     "ja": "{ count, plural, other {{count} 件をスキップ} }",
     "de": "{ count, plural, =1 {1 übersprungen} other {{count} übersprungen} }"
   },

@@ -1,7 +1,7 @@
 import { createEnvironmentInjector, EnvironmentInjector } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { createServiceFactory } from '@ngneat/spectator/vitest';
-import { JOB_RETENTION_MS, type ImportJobDto, type ImportRequestDto } from '@simoncodes-ca/data-transfer';
+import { type ImportJobDto, type ImportRequestDto, JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';

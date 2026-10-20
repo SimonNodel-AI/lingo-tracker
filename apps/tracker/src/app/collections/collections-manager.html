@@ -299,8 +299,8 @@
                   ...(strip.failedFiles > 0
                     ? [TOKENS.IMPORT.RUN.FILESFAILEDX | transloco: { count: strip.failedFiles }]
                     : []),
-                  ...(strip.skipped > 0 ? [TOKENS.IMPORT.RUN.SKIPPEDX | transloco: { count: strip.skipped }] : []),
                   ...(strip.failed > 0 ? [TOKENS.IMPORT.RUN.FAILEDX | transloco: { count: strip.failed }] : []),
+                  ...(strip.skipped > 0 ? [TOKENS.IMPORT.RUN.SKIPPEDX | transloco: { count: strip.skipped }] : []),
                   ...(strip.warnings > 0 ? [TOKENS.IMPORT.RUN.WARNINGSX | transloco: { count: strip.warnings }] : []),
                 ]
               : []

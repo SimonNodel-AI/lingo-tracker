@@ -134,7 +134,9 @@ export class ImportDialog {
   });
   readonly saving = this.model.saving;
   readonly previewOpen = signal(false);
-  readonly advancedOpen = signal(false);
+  readonly #advancedChoice = signal<boolean | undefined>(undefined);
+  /** Open by default when no primary option rows are shown (every strategy but migration); never persisted. */
+  readonly advancedOpen = computed(() => this.#advancedChoice() ?? !this.isMigration());
   readonly listing = this.model.listing;
 
   /** A previous plan is never shown beside a failed preview. */
@@ -292,8 +294,13 @@ export class ImportDialog {
     this.#destroyRef.onDestroy(() => this.model.destroy());
   }
 
-  activate(section: ImportSection): void {
+  /**
+   * Focus follows the clicked rail item. Safari does not focus a button on click, which would
+   * leave the ring on the item that had focus when the dialog opened beside the selected fill.
+   */
+  activate(section: ImportSection, event?: Event): void {
     this.model.activeSection.set(section);
+    if (event?.currentTarget instanceof HTMLElement) event.currentTarget.focus({ preventScroll: true });
   }
 
   /** Arrow keys move through a radio group natively; this keeps the strategy rows in step with it. */
@@ -339,7 +346,7 @@ export class ImportDialog {
   }
 
   toggleAdvanced(): void {
-    this.advancedOpen.update((open) => !open);
+    this.#advancedChoice.set(!this.advancedOpen());
   }
 
   onCancel(): void {

@@ -15,7 +15,7 @@
     "tags": ["import"],
     "es": "{ count, plural, =1 {1 fallará} other {{count} fallarán} }",
     "fr-ca": "{ count, plural, =1 {1 échouera} other {{count} échoueront} }",
-    "ru": "{ count, plural, one {С ошибкой: {count}} few {С ошибкой: {count}} many {С ошибкой: {count}} other {С ошибкой: {count}} }",
+    "ru": "{ count, plural, one {{count} запись не будет импортирована} few {{count} записи не будут импортированы} many {{count} записей не будут импортированы} other {{count} записи не будут импортированы} }",
     "ja": "{ count, plural, other {{count} 件が失敗} }",
     "de": "{ count, plural, =1 {1 schlägt fehl} other {{count} schlagen fehl} }"
   },

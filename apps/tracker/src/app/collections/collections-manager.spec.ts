@@ -1091,9 +1091,11 @@ describe('CollectionsManager', () => {
     it('renders skipped, failed and warning clauses with the warning tint', () => {
       completed({ totals: { ...totals, skipped: 12, failed: 2 }, warnings: ['Large import file', 'Another'] });
 
-      expect(stripText()).toContain('12 skipped');
       expect(stripText()).toContain('2 failed');
+      expect(stripText()).toContain('12 skipped');
       expect(stripText()).toContain('2 warnings');
+      expect(stripText().indexOf('2 failed')).toBeLessThan(stripText().indexOf('12 skipped'));
+      expect(stripText().indexOf('12 skipped')).toBeLessThan(stripText().indexOf('2 warnings'));
       expect(strip()?.querySelector('.result--warn')).not.toBeNull();
       expect(strip()?.querySelector('.result--failed')).toBeNull();
     });

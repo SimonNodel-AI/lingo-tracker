@@ -1,7 +1,7 @@
 import { computed, DestroyRef, inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
-import { JOB_RETENTION_MS, type ImportRequestDto } from '@simoncodes-ca/data-transfer';
+import { type ImportRequestDto, JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
 import { timer } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';

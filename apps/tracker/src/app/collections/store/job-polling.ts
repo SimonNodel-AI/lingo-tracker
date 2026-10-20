@@ -1,4 +1,4 @@
-import { type Observable, concat, of, switchMap, takeWhile } from 'rxjs';
+import { concat, type Observable, of, switchMap, takeWhile } from 'rxjs';
 
 /** Emits the accepted snapshot and each poll, including the terminal snapshot. */
 export function followJob<Job>(

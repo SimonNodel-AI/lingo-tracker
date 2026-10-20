@@ -30,7 +30,7 @@
         [class.rail-item--on]="model.activeSection() === 'source'"
         [attr.aria-current]="model.activeSection() === 'source' ? 'true' : null"
         [attr.cdkFocusInitial]="model.activeSection() === 'source' ? '' : null"
-        (click)="activate('source')"
+        (click)="activate('source', $event)"
       >
         <mat-icon aria-hidden="true">folder_copy</mat-icon>
         <span class="rail-stack">
@@ -51,7 +51,7 @@
         [class.rail-item--on]="model.activeSection() === 'strategy'"
         [attr.aria-current]="model.activeSection() === 'strategy' ? 'true' : null"
         [attr.cdkFocusInitial]="model.activeSection() === 'strategy' ? '' : null"
-        (click)="activate('strategy')"
+        (click)="activate('strategy', $event)"
       >
         <mat-icon aria-hidden="true">tune</mat-icon>
         <span class="rail-stack">
@@ -67,7 +67,7 @@
         [class.rail-item--on]="model.activeSection() === 'options'"
         [attr.aria-current]="model.activeSection() === 'options' ? 'true' : null"
         [attr.cdkFocusInitial]="model.activeSection() === 'options' ? '' : null"
-        (click)="activate('options')"
+        (click)="activate('options', $event)"
       >
         <mat-icon aria-hidden="true">toggle_on</mat-icon>
         <span class="rail-stack">

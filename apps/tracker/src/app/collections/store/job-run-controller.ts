@@ -11,8 +11,8 @@ import {
   throwError,
 } from 'rxjs';
 import type { KeyedStorage } from '../../shared/storage/keyed-storage';
-import { toBundleErrorMessage } from './bundle-runs';
 import type { BundleTime } from './bundle-run-controller';
+import { toBundleErrorMessage } from './bundle-runs';
 import { followJob } from './job-polling';
 
 export interface JobSnapshot<Request> {
