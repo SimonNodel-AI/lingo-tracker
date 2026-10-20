@@ -470,9 +470,11 @@ The optional format overrides extension detection. `POST /api/imports/dry-run` r
 
 Before the 50-item cap, the API places failed issues before skipped issues. It preserves the original order within each group. Each issue and ICU auto-fix includes an optional `path`, the request file path that produced it. This field distinguishes two files with the same locale and appears in both plans and job results.
 
+For each plan file and job-result file, `imported = created + updated`. Run totals sum those per-file counts. A migration that only creates keys therefore reports a positive imported count.
+
 Plan files and job-result files include a required `changed` count derived from core's `filesAffected`. It counts distinct affected resource files, including entry data and metadata files, rather than entries. A zero count means that the file causes no writes. An identical-file import with the `update` strategy returns zero, even when core reports an entry as `updated`.
 
-`totals.changed` is also required and sums the per-file counts. Each file in a multi-file dry run is previewed against the current stored state, without proposed changes from earlier files. Thus, `changed` totals can count the same resource file once per request file. All existing entry counts keep their current meaning.
+`totals.changed` is also required and sums the per-file counts. Each file in a multi-file dry run is previewed against the current stored state, without proposed changes from earlier files. Thus, `changed` totals can count the same resource file once per request file.
 
 If a source cannot be read, detected, or parsed, its plan file contains zero counts, `sourceProblem`, and an error message. The API still checks the other files. An undetectable source uses `json` as the plan's required format placeholder until the caller supplies a format. The preview writes no files. Each file sees the collection's current state, without proposed changes from earlier preview files.
 

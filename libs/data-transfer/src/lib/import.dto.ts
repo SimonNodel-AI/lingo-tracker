@@ -60,7 +60,8 @@ export interface ImportPlanFileDto {
   readonly format: 'xliff' | 'json';
   /** Entries found in the file after parsing (before validation). */
   readonly entries: number;
-  readonly imported: number; // resourcesImported
+  /** Created + updated entries, in both preview and job results. */
+  readonly imported: number;
   readonly created: number;
   readonly updated: number;
   readonly skipped: number;
@@ -84,6 +85,7 @@ export interface ImportPlanDto {
   readonly files: readonly ImportPlanFileDto[];
   readonly totals: {
     entries: number;
+    /** Sum of per-file imported counts (created + updated). */
     imported: number;
     created: number;
     updated: number;

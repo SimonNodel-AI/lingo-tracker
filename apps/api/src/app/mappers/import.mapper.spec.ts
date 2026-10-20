@@ -280,9 +280,15 @@ describe('import mapper', () => {
         mapImportRunToPlan(updateRequest, runs),
         mapImportRunToJobResult(updateRequest, runs, project.projectRoot),
       ]) {
-        expect(result.files[0]?.changed).toBe(0);
-        expect(result.totals.changed).toBe(0);
+        expect(result.files[0]).toMatchObject({ imported: 1, created: 0, updated: 1, changed: 0 });
+        expect(result.files[0]?.imported).toBe(result.files[0]?.updated);
+        expect(result.totals).toMatchObject({ imported: 1, created: 0, updated: 1, changed: 0 });
+        expect(result.totals.imported).toBe(result.totals.updated);
       }
+      expect(mapImportRunToJobResult(updateRequest, runs, project.projectRoot)).toMatchObject({
+        outcome: 'succeeded',
+        files: [{ outcome: 'imported' }],
+      });
     }
     // An unchanged value can still change status metadata; the file signal includes that write.
     const verification = await runImport(collection, { ...option, strategy: 'verification', dryRun: true });
@@ -355,6 +361,43 @@ describe('import mapper', () => {
         { path: 'first.json', locale: 'fr' },
         { path: 'second.json', locale: 'fr' },
       ]);
+    }
+  });
+  it('counts newly created migration entries as imported in previews and job results', async () => {
+    writeImport(
+      project,
+      'new.json',
+      JSON.stringify({
+        'new.first': { value: 'Premier', baseValue: 'First' },
+        'new.second': { value: 'Deuxième', baseValue: 'Second' },
+      }),
+    );
+    const dto: ImportRequestDto = {
+      collection: 'app',
+      strategy: 'migration',
+      createMissing: true,
+      files: [{ path: 'new.json', locale: 'fr' }],
+    };
+    const { collection, options } = mapImportRequestToRunOptions(dto, project);
+    const option = options[0];
+    const file = dto.files[0];
+    if (!option || !file) throw new Error('Missing import options');
+    for (const dryRun of [true, false]) {
+      const run = await runImport(collection, { ...option, dryRun });
+      // Core keeps its CLI contract: creations are separate from resourcesImported.
+      expect(run.result.resourcesImported).toBe(0);
+      const runs = [{ file, format: run.format, run }];
+      for (const result of [mapImportRunToPlan(dto, runs), mapImportRunToJobResult(dto, runs, project.projectRoot)]) {
+        expect(result.files[0]).toMatchObject({ entries: 2, imported: 2, created: 2, updated: 0 });
+        expect(result.files[0]?.imported).toBe(result.files[0]?.created);
+        expect(result.totals).toMatchObject({ entries: 2, imported: 2, created: 2, updated: 0 });
+        expect(result.totals.imported).toBe(result.totals.created);
+        expect(result.totals.changed).toBeGreaterThan(0);
+      }
+      expect(mapImportRunToJobResult(dto, runs, project.projectRoot)).toMatchObject({
+        outcome: 'succeeded',
+        files: [{ outcome: 'imported' }],
+      });
     }
   });
 });

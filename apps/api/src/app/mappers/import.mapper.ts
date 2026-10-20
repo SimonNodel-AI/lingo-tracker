@@ -80,7 +80,7 @@ export function mapImportResultToPlanFile(file: ImportFileRun): ImportPlanFileDt
     locale: file.file.locale,
     format: file.format,
     entries: file.run?.entriesParsed ?? 0,
-    imported: result?.resourcesImported ?? 0,
+    imported: (result?.resourcesCreated ?? 0) + (result?.resourcesUpdated ?? 0),
     created: result?.resourcesCreated ?? 0,
     updated: result?.resourcesUpdated ?? 0,
     skipped: result?.resourcesSkipped ?? 0,
