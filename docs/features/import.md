@@ -352,7 +352,7 @@ The Tracker UI imports with the same strategies and options as the CLI. A live p
 
 ![The Import dialog on the Source pane, with four files checked and the live preview of the changes](../images/import-dialog.png)
 
-Nothing is uploaded. Like the CLI's `--source`, the dialog reads files that are already on the server's disk and lists them for you.
+The dialog reads files from the server's disk, like the CLI's `--source`, and lists them for you. You can also add files from your computer. See [Upload files](#upload-files).
 
 ### Open the dialog
 
@@ -370,6 +370,17 @@ An import writes into one collection. Read-only collections are locked and canno
 | Options | Create missing keys, update comments and update tags (migration only), plus Keep status from file and Warn when the base text differs under **Advanced**. | `--create-missing`, `--update-comments`, `--update-tags`, `--preserve-status`, `--validate-base` |
 
 The Source section lists the `.xliff`, `.xlf` and `.json` files in the import folder. The folder is the collection's `importFolder`, else the global `importFolder`, else `dist/lingo-import`. You can type another folder, relative to the project root. Check the files to import. You can import several files in one run. They share one strategy and one option set, and each file has its own locale.
+
+### Upload files
+
+Files you want to import may be on your own computer rather than on the server. Select **Upload files…** above the file list, or drag files onto the list. LingoTracker copies them into the folder the dialog shows, checks them, and lists them with the rest. From there they follow the usual preview and import.
+
+- Uploads go only to the collection's import folder or one of its subfolders, and always inside the project root. For any other folder the button and the drop area are disabled. A subfolder that does not exist yet is created.
+- A file that has the same name as one already in the folder (ignoring case) prompts you: **Replace** overwrites the existing file, and **Keep existing** discards the upload. Nothing is overwritten unless you choose Replace.
+- You can upload up to 10 files at a time, each up to 20 MB. The files must be `.xliff`, `.xlf` or `.json`. The dialog checks this before it sends anything, and the server checks again.
+- The server accepts one upload at a time. If another is running, try again in a moment.
+- Uploading is not available for read-only collections.
+- An upload row for a base-locale file stays unchecked unless the strategy is `migration`, as for any other file.
 
 LingoTracker infers the locale of each file:
 
