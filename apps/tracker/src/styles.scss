@@ -219,13 +219,15 @@ mark.search-highlight {
 
 // Export dialog: same 1160px master-detail recipe as the bundle dialog; full-screen
 // below 640px like the translation editor.
-.mat-mdc-dialog-container:has(app-export-dialog) {
+.mat-mdc-dialog-container:has(app-export-dialog),
+.mat-mdc-dialog-container:has(app-import-dialog) {
   padding: 0;
   border-top: 3px solid var(--color-primary);
   box-shadow: var(--shadow-lg);
 }
 
-.cdk-overlay-pane.export-dialog-panel {
+.cdk-overlay-pane.export-dialog-panel,
+.cdk-overlay-pane.import-dialog-panel {
   width: 1160px;
   // The open config passes the matching `maxWidth`; Material's inline 80vw default would otherwise win.
   max-width: calc(100vw - 3rem);
@@ -234,11 +236,13 @@ mark.search-highlight {
   .mat-mdc-dialog-container,
   .mat-mdc-dialog-inner-container,
   .mat-mdc-dialog-surface,
-  app-export-dialog {
+  app-export-dialog,
+  app-import-dialog {
     max-height: inherit;
   }
 
-  app-export-dialog {
+  app-export-dialog,
+  app-import-dialog {
     display: block;
   }
 
@@ -248,7 +252,8 @@ mark.search-highlight {
     height: 100dvh;
     max-height: 100dvh;
 
-    .mat-mdc-dialog-container:has(app-export-dialog) {
+    .mat-mdc-dialog-container:has(app-export-dialog),
+    .mat-mdc-dialog-container:has(app-import-dialog) {
       height: 100%;
       border-top-width: 0;
 
@@ -258,7 +263,8 @@ mark.search-highlight {
       }
     }
 
-    app-export-dialog {
+    app-export-dialog,
+    app-import-dialog {
       height: 100%;
     }
   }

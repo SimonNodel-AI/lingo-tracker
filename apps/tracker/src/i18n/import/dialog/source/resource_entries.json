@@ -208,5 +208,15 @@
     "ru": "Эта коллекция доступна только для чтения. Выберите другую коллекцию для импорта.",
     "ja": "このコレクションは読み取り専用です。インポート先には別のコレクションを選んでください。",
     "de": "Diese Sammlung ist schreibgeschützt. Wähle eine andere Sammlung zum Importieren."
+  },
+  "droppedX": {
+    "source": "{count, plural, =1 {1 selected file is no longer in this folder and was unchecked.} other {{count} selected files are no longer in this folder and were unchecked.}}",
+    "comment": "Hint under the import file list after the folder was relisted and checked files vanished. count = number of files unchecked.",
+    "tags": ["import"],
+    "es": "{count, plural, =1 {1 archivo seleccionado ya no está en esta carpeta y se desmarcó.} other {{count} archivos seleccionados ya no están en esta carpeta y se desmarcaron.}}",
+    "fr-ca": "{count, plural, =1 {1 fichier sélectionné ne se trouve plus dans ce dossier et a été décoché.} other {{count} fichiers sélectionnés ne se trouvent plus dans ce dossier et ont été décochés.}}",
+    "ru": "{count, plural, one {# выбранный файл больше не находится в этой папке, и его отметка снята.} few {# выбранных файла больше не находятся в этой папке, и их отметки сняты.} many {# выбранных файлов больше не находятся в этой папке, и их отметки сняты.} other {# выбранного файла больше не находятся в этой папке, и их отметки сняты.}}",
+    "ja": "{count, plural, other {選択していた{count}個のファイルはこのフォルダーに存在しないため、選択を解除しました。}}",
+    "de": "{count, plural, =1 {1 ausgewählte Datei ist nicht mehr in diesem Ordner und wurde abgewählt.} other {{count} ausgewählte Dateien sind nicht mehr in diesem Ordner und wurden abgewählt.}}"
   }
 }
