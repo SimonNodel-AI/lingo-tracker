@@ -1,0 +1,212 @@
+{
+  "description": {
+    "source": "Which collection to write into, and which files to read.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "En qué colección escribir y qué archivos leer.",
+    "fr-ca": "Dans quelle collection écrire et quels fichiers lire.",
+    "ru": "В какую коллекцию записывать и какие файлы читать.",
+    "ja": "書き込み先のコレクションと、読み込むファイルです。",
+    "de": "In welche Sammlung geschrieben wird und welche Dateien gelesen werden."
+  },
+  "collectionLabel": {
+    "source": "Collection",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Colección",
+    "fr-ca": "Collection",
+    "ru": "Коллекция",
+    "ja": "コレクション",
+    "de": "Sammlung"
+  },
+  "folderLabel": {
+    "source": "Import folder",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Carpeta de importación",
+    "fr-ca": "Dossier d’importation",
+    "ru": "Папка импорта",
+    "ja": "インポートフォルダー",
+    "de": "Importordner"
+  },
+  "folderHint": {
+    "source": "Relative to the project root. Defaults to this collection's import folder.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Relativa a la raíz del proyecto. Por defecto, la carpeta de importación de esta colección.",
+    "fr-ca": "Relatif à la racine du projet. Par défaut, le dossier d’importation de cette collection.",
+    "ru": "Относительно корня проекта. По умолчанию — папка импорта этой коллекции.",
+    "ja": "プロジェクトルートからの相対パスです。既定ではこのコレクションのインポートフォルダーです。",
+    "de": "Relativ zum Projektstamm. Standard ist der Importordner dieser Sammlung."
+  },
+  "folderResolvedX": {
+    "source": "Showing {path}",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Mostrando {path}",
+    "fr-ca": "Affichage de {path}",
+    "ru": "Показан путь {path}",
+    "ja": "表示中: {path}",
+    "de": "Zeigt {path}"
+  },
+  "resetFolder": {
+    "source": "Reset to default",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Restablecer valor predeterminado",
+    "fr-ca": "Rétablir la valeur par défaut",
+    "ru": "Сбросить по умолчанию",
+    "ja": "既定に戻す",
+    "de": "Auf Standard zurücksetzen"
+  },
+  "filesLabel": {
+    "source": "Files",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Archivos",
+    "fr-ca": "Fichiers",
+    "ru": "Файлы",
+    "ja": "ファイル",
+    "de": "Dateien"
+  },
+  "selectAll": {
+    "source": "Select all",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Seleccionar todo",
+    "fr-ca": "Tout sélectionner",
+    "ru": "Выбрать все",
+    "ja": "すべて選択",
+    "de": "Alle auswählen"
+  },
+  "clear": {
+    "source": "Clear",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Deseleccionar",
+    "fr-ca": "Désélectionner",
+    "ru": "Снять выбор",
+    "ja": "選択解除",
+    "de": "Auswahl aufheben"
+  },
+  "localeLabelX": {
+    "source": "Locale for {file}",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Idioma de {file}",
+    "fr-ca": "Langue de {file}",
+    "ru": "Язык для {file}",
+    "ja": "{file} のロケール",
+    "de": "Sprache für {file}"
+  },
+  "choose": {
+    "source": "Choose…",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Elegir…",
+    "fr-ca": "Choisir…",
+    "ru": "Выбрать…",
+    "ja": "選択…",
+    "de": "Auswählen…"
+  },
+  "fromTargetLanguage": {
+    "source": "From the file's target-language",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Del target-language del archivo",
+    "fr-ca": "Depuis le target-language du fichier",
+    "ru": "Из target-language файла",
+    "ja": "ファイルの target-language から",
+    "de": "Aus dem target-language der Datei"
+  },
+  "baseLocaleHint": {
+    "source": "Base locale. Only the migration strategy can write it.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Idioma base. Solo la estrategia de migración puede escribirlo.",
+    "fr-ca": "Langue de base. Seule la stratégie de migration peut y écrire.",
+    "ru": "Базовый язык. Записывать его может только стратегия миграции.",
+    "ja": "ベースロケールです。書き込めるのは移行方式のみです。",
+    "de": "Basissprache. Nur die Migrationsstrategie kann sie schreiben."
+  },
+  "duplicateLocaleX": {
+    "source": "Two files write {locale}; they are applied in this order.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Dos archivos escriben {locale}; se aplican en este orden.",
+    "fr-ca": "Deux fichiers écrivent {locale}; ils sont appliqués dans cet ordre.",
+    "ru": "Два файла записывают {locale}; они применяются в таком порядке.",
+    "ja": "2つのファイルが {locale} に書き込みます。この順序で適用されます。",
+    "de": "Zwei Dateien schreiben {locale}; sie werden in dieser Reihenfolge angewendet."
+  },
+  "looking": {
+    "source": "Looking in {path}…",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Buscando en {path}…",
+    "fr-ca": "Recherche dans {path}…",
+    "ru": "Просмотр {path}…",
+    "ja": "{path} を確認中…",
+    "de": "Suche in {path}…"
+  },
+  "noFolderX": {
+    "source": "No folder at {path}.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "No hay ninguna carpeta en {path}.",
+    "fr-ca": "Aucun dossier à l’emplacement {path}.",
+    "ru": "Папки {path} не существует.",
+    "ja": "{path} にフォルダーがありません。",
+    "de": "Kein Ordner unter {path}."
+  },
+  "noFolderHint": {
+    "source": "Export to it first, or point this at the folder your files are in.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Exporta primero a esa carpeta o indica la carpeta donde están tus archivos.",
+    "fr-ca": "Exportez d’abord vers ce dossier, ou indiquez celui qui contient vos fichiers.",
+    "ru": "Сначала выполните экспорт в неё или укажите папку с вашими файлами.",
+    "ja": "先にこのフォルダーにエクスポートするか、ファイルがあるフォルダーを指定してください。",
+    "de": "Exportiere zuerst dorthin oder gib den Ordner mit deinen Dateien an."
+  },
+  "noFilesX": {
+    "source": "No XLIFF or JSON files in {path}.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "No hay archivos XLIFF ni JSON en {path}.",
+    "fr-ca": "Aucun fichier XLIFF ou JSON dans {path}.",
+    "ru": "В {path} нет файлов XLIFF или JSON.",
+    "ja": "{path} に XLIFF または JSON ファイルがありません。",
+    "de": "Keine XLIFF- oder JSON-Dateien in {path}."
+  },
+  "listFailed": {
+    "source": "The folder could not be read.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "No se pudo leer la carpeta.",
+    "fr-ca": "Le dossier n’a pas pu être lu.",
+    "ru": "Не удалось прочитать папку.",
+    "ja": "フォルダーを読み取れませんでした。",
+    "de": "Der Ordner konnte nicht gelesen werden."
+  },
+  "tryAgain": {
+    "source": "Try again",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Intentar de nuevo",
+    "fr-ca": "Réessayer",
+    "ru": "Повторить",
+    "ja": "再試行",
+    "de": "Erneut versuchen"
+  },
+  "readOnly": {
+    "source": "This collection is read-only. Choose another collection to import.",
+    "comment": "Import dialog text",
+    "tags": ["import"],
+    "es": "Esta colección es de solo lectura. Elige otra colección para importar.",
+    "fr-ca": "Cette collection est en lecture seule. Choisissez-en une autre pour l’importation.",
+    "ru": "Эта коллекция доступна только для чтения. Выберите другую коллекцию для импорта.",
+    "ja": "このコレクションは読み取り専用です。インポート先には別のコレクションを選んでください。",
+    "de": "Diese Sammlung ist schreibgeschützt. Wähle eine andere Sammlung zum Importieren."
+  }
+}
