@@ -1059,6 +1059,23 @@ describe('CollectionsManager', () => {
       expect(strip()?.querySelector('[role="status"]')).not.toBeNull();
     });
 
+    it.each([
+      ['posix', 'dist/lingo-import-playground/fr-ca.xliff'],
+      ['windows', 'dist\\lingo-import-playground\\fr-ca.xliff'],
+    ])('shows only the file name of a %s path while running, with the full path on the title', (_name, path) => {
+      startWith({ progress: { current: 1, total: 3, currentFile: path } });
+
+      expect(stripText()).toContain('Reading fr-ca.xliff');
+      expect(stripText()).not.toContain('lingo-import-playground');
+      expect(strip()?.getAttribute('title')).toBe(path);
+    });
+
+    it('carries no title once the run has finished', () => {
+      completed();
+
+      expect(strip()?.hasAttribute('title')).toBe(false);
+    });
+
     it('renders a clean completed strip without skipped, failed or warning clauses', () => {
       completed({ issues: [], truncated: { issues: 0, icuAutoFixes: 0, warnings: 0, errors: 0 } });
 
@@ -1229,6 +1246,51 @@ describe('CollectionsManager', () => {
         expect(strip()?.querySelector('.clamp')?.getAttribute('title')).toBe('{nombre} → {name}');
         expect(details).toContain('Files changed');
         expect(details).toContain('sample/alpha/ok/resource_entries.json');
+      });
+
+      it('drops status changes that did not change the status', () => {
+        completed({
+          statusTransitions: [
+            { from: 'translated', to: 'translated', count: 5 },
+            { from: 'new', to: 'translated', count: 2 },
+            { to: 'verified', count: 1 },
+          ],
+        });
+        openDetails();
+
+        const rows = Array.from(strip()?.querySelectorAll('.details-list--status li') ?? []).map((row) =>
+          row.textContent?.replace(/\s+/g, ''),
+        );
+        expect(rows).toEqual(['New→Translated2', '—→Verified1']);
+      });
+
+      it('hides Status changes when every transition is a no-op', () => {
+        completed({ statusTransitions: [{ from: 'translated', to: 'translated', count: 5 }] });
+        openDetails();
+
+        expect(detailsText()).not.toContain('Status changes');
+      });
+
+      it('caps Files changed at ten with a note for the rest', () => {
+        const paths = Array.from({ length: 22 }, (_, index) => `sample/alpha/k${index}/resource_entries.json`);
+        completed({ filesModified: paths });
+        openDetails();
+
+        const section = Array.from(strip()?.querySelectorAll('section') ?? []).find((item) =>
+          item.textContent?.includes('Files changed'),
+        );
+        expect(section?.querySelectorAll('li').length).toBe(10);
+        expect(section?.querySelector('.more-note')?.textContent?.trim()).toBe('and 12 more in the summary');
+      });
+
+      it('shows no note when Files changed fits', () => {
+        completed({ filesModified: ['a.json', 'b.json'] });
+        openDetails();
+
+        const section = Array.from(strip()?.querySelectorAll('section') ?? []).find((item) =>
+          item.textContent?.includes('Files changed'),
+        );
+        expect(section?.querySelector('.more-note')).toBeNull();
       });
 
       it('lists failed issues before skipped ones and notes the truncation', () => {

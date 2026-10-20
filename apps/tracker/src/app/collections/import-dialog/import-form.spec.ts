@@ -357,11 +357,21 @@ describe('ImportForm', () => {
       ).toEqual(['es.xliff', 'notes.json']);
     });
 
-    it('states provenance only for an XLIFF target-language that was not changed', () => {
+    it('stays quiet when the file name gives the same locale as the target-language', () => {
       const { model } = build();
       settle();
-      expect(model.rows().map((row) => row.fromTargetLanguage)).toEqual([true, false, false, false]);
-      model.setLocale('in/es.xliff', 'fr');
+      expect(model.rows().map((row) => row.fromTargetLanguage)).toEqual([false, false, false, false]);
+    });
+
+    it('states provenance when the name gives no locale or a different one, until the user changes it', () => {
+      const vendor = [
+        file('batch.xliff', { locale: 'es', localeSource: 'xliff-target-language' }),
+        file('fr.xliff', { locale: 'es', localeSource: 'xliff-target-language' }),
+      ];
+      const { model } = build({ listSources: vi.fn(() => of(listing(vendor))) });
+      settle();
+      expect(model.rows().map((row) => row.fromTargetLanguage)).toEqual([true, true]);
+      model.setLocale('in/batch.xliff', 'fr');
       expect(model.rows()[0]?.fromTargetLanguage).toBe(false);
     });
   });

@@ -386,7 +386,7 @@
           } @else {
             <p class="field-hint field-hint--icon" data-testid="create-missing-off">
               <mat-icon aria-hidden="true">info</mat-icon>
-              <span>{{ TOKENS.IMPORT.DIALOG.OPTIONS.CREATEMISSINGOFFX | transloco: { strategy: model.draft().strategy } }}</span>
+              <span>{{ TOKENS.IMPORT.DIALOG.OPTIONS.CREATEMISSINGOFFX | transloco: { strategy: strategyTitle() | transloco } }}</span>
             </p>
           }
 
@@ -637,9 +637,9 @@
     @if (plan(); as current) {
       <section class="preview-block">
         <h4><mat-icon aria-hidden="true">swap_horiz</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.STATUSCHANGES | transloco }}</h4>
-        @if (current.statusTransitions.length > 0) {
+        @if (statusChanges().length > 0) {
           <ul class="transitions" data-testid="status-changes">
-            @for (transition of current.statusTransitions; track $index) {
+            @for (transition of statusChanges(); track $index) {
               <li>
                 <span class="transition-path">
                   @if (transition.from; as from) {

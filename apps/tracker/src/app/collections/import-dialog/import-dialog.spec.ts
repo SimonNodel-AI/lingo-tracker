@@ -311,9 +311,12 @@ describe('ImportDialog', () => {
     });
 
     it('shows provenance only for a locale taken from the target-language', () => {
-      const harness = build();
+      const harness = build({
+        listing: listing([file('batch.xliff', { locale: 'es', localeSource: 'xliff-target-language' }), ES, FR]),
+      });
       settle(harness);
-      expect(text(harness, 'file-row-es.xliff')).toContain("From the file's target-language");
+      expect(text(harness, 'file-row-batch.xliff')).toContain("From the file's target-language");
+      expect(text(harness, 'file-row-es.xliff')).not.toContain('target-language');
       expect(text(harness, 'file-row-fr.xliff')).not.toContain('target-language');
     });
 
@@ -390,7 +393,7 @@ describe('ImportDialog', () => {
       settle(harness);
       click(harness, 'rail-options');
       expect(text(harness, 'create-missing-off')).toContain(
-        'Unknown keys are skipped with the translation-service strategy.',
+        'Unknown keys are skipped with the Translation service strategy.',
       );
       expect(query(harness, 'option-createMissing')).toBeNull();
       harness.component.model.setStrategy('migration');
@@ -535,6 +538,31 @@ describe('ImportDialog', () => {
       click(harness, 'retry-preview');
       settle(harness);
       expect(text(harness, 'footer-meta')).toContain('2 files');
+    });
+
+    it('drops no-op status changes and keeps rows without a source status', () => {
+      const harness = ready({
+        plan: plan({
+          statusTransitions: [
+            { from: 'translated', to: 'translated', count: 2196 },
+            { from: 'new', to: 'new', count: 856 },
+            { from: 'new', to: 'translated', count: 12 },
+            { to: 'translated', count: 3 },
+          ],
+        }),
+      });
+      const rows = Array.from(harness.root.querySelectorAll('[data-testid="status-changes"] li')).map((row) =>
+        row.textContent?.replace(/\s+/g, ''),
+      );
+      expect(rows).toEqual(['new→translated12', '—→translated3']);
+    });
+
+    it('says None when every status change is a no-op', () => {
+      const harness = ready({
+        plan: plan({ statusTransitions: [{ from: 'translated', to: 'translated', count: 5 }] }),
+      });
+      expect(query(harness, 'status-changes')).toBeNull();
+      expect(harness.root.textContent).toContain('None');
     });
 
     it('renders files, summary, status changes, auto-fixes, issues and notes', () => {

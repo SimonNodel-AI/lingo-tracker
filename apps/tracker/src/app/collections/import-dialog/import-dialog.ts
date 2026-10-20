@@ -27,6 +27,7 @@ import { LOCAL_STORAGE } from '../../shared/storage/browser-storage';
 import { STATUS_PRESENTATION } from '../../shared/translation-status/translation-status-presentation';
 import { splitAfterSeparators } from '../../shared/utils/split-after-separators';
 import { CollectionsStore } from '../store/collections.store';
+import { formatModified } from './format-modified';
 import type { ImportDialogData, ImportDialogResult } from './import-dialog-data';
 import { changedAdvancedCount, changedOptionCount, effectiveOptions } from './import-draft';
 import { type FilesProblem, ImportForm, type ImportSection } from './import-form';
@@ -166,9 +167,6 @@ export class ImportDialog {
   readonly folderShown = computed(() => this.model.listing()?.folder ?? this.model.draft().folder.trim());
   /** The folder as mono `<code>` runs that may break after each separator, as export's resolved path. */
   readonly folderMarkup = computed(() => splitAfterSeparators(this.folderShown()).map(codeMarkup).join('<wbr>'));
-  readonly dateFormat = computed(
-    () => new Intl.DateTimeFormat(this.#transloco.getActiveLang(), { dateStyle: 'medium', timeStyle: 'short' }),
-  );
   readonly fileRows = computed(() =>
     this.model.rows().map((row) => ({
       ...row,
@@ -177,7 +175,7 @@ export class ImportDialog {
           ? TRACKER_TOKENS.EXPORT.DIALOG.FORMAT.JSON
           : TRACKER_TOKENS.EXPORT.DIALOG.FORMAT.XLIFF,
       size: sizeLabel(row.file.sizeBytes),
-      modified: this.dateFormat().format(new Date(row.file.modifiedAt)),
+      modified: formatModified(row.file.modifiedAt, new Date(), this.#transloco.getActiveLang()),
     })),
   );
   readonly allChecked = computed(() => {
@@ -222,6 +220,10 @@ export class ImportDialog {
     const plain = [...plan.errors, ...plan.warnings].map((text) => ({ token: undefined, params: undefined, text }));
     return [...plain, ...large];
   });
+  /** No-op transitions (`translated → translated`) say nothing; `—` → x rows stay. */
+  readonly statusChanges = computed(() =>
+    (this.plan()?.statusTransitions ?? []).filter((transition) => transition.from !== transition.to),
+  );
   readonly planFiles = computed(() =>
     (this.plan()?.files ?? []).map((file) => ({
       ...file,

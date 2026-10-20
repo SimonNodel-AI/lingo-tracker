@@ -282,7 +282,8 @@
                 : TOKENS.IMPORT.RUN.FAILED) | transloco
           "
           [currentItemLabel]="TOKENS.IMPORT.RUN.READING | transloco"
-          [currentItem]="strip.run.progress?.currentFile"
+          [currentItem]="strip.currentFile"
+          [attr.title]="strip.run.status === 'running' ? strip.run.progress?.currentFile : null"
           [progress]="strip.run.progress"
           [progressLabel]="
             strip.run.progress && strip.run.progress.total > 0
@@ -436,6 +437,9 @@
                     </li>
                   }
                 </ul>
+                @if (strip.filesModifiedMore > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.filesModifiedMore } }}</p>
+                }
               </section>
             }
             @if (importSummaryUrl(); as summaryUrl) {

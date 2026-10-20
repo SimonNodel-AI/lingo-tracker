@@ -9,7 +9,7 @@ import type {
   ImportStrategyDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { canImportLocale, findCollectionEntry, importableLocales } from '@simoncodes-ca/domain';
+import { canImportLocale, findCollectionEntry, importableLocales, inferImportLocale } from '@simoncodes-ca/domain';
 import {
   catchError,
   defer,
@@ -457,6 +457,7 @@ export class ImportForm {
     const options = settings
       ? importableLocales([...new Set([...settings.locales, settings.baseLocale])], settings.baseLocale, strategy)
       : [];
+    const knownLocales = settings ? [...new Set([...settings.locales, settings.baseLocale])] : [];
     const revealed = this.submitAttempted() || this.form.controls.files.touched;
     const locales = new Map<string, number>();
     for (const choice of files) {
@@ -476,7 +477,11 @@ export class ImportForm {
         localeOptions: locale && locale === baseLocale && !options.includes(locale) ? [...options, locale] : options,
         blocked: !!baseLocale && locale === baseLocale && !canImportLocale(locale, baseLocale, strategy),
         localeMissing: checked && !locale && (revealed || obsolete),
-        fromTargetLanguage: file.localeSource === 'xliff-target-language' && locale === file.locale,
+        // Worth stating only when the file name would not have given the same locale.
+        fromTargetLanguage:
+          file.localeSource === 'xliff-target-language' &&
+          locale === file.locale &&
+          inferImportLocale(file.name, knownLocales)?.locale !== file.locale,
         sharedLocale: checked && locale !== '' && (locales.get(locale) ?? 0) > 1,
       };
     });

@@ -57,6 +57,12 @@ const STATUS_TOKENS: Record<TranslationStatus, string> = {
   verified: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
 };
 
+/** Most paths the Details "Files changed" list shows; the summary download has the rest. */
+const FILES_CHANGED_CAP = 10;
+
+/** The file name of a path with either separator, for the running clause. */
+const basename = (path: string | undefined): string | undefined => path?.split(/[\\/]/).pop() || path;
+
 const toast = (tone: 'success' | 'error', token: string, detail?: string): Feedback => ({
   tone,
   placement: 'toast',
@@ -228,14 +234,19 @@ export class CollectionsManager {
       attention: warnings + errors + failed + failedFiles + (result?.outcome === 'failed' ? 1 : 0),
       skipped: totals?.skipped ?? 0,
       autoFixes: result?.icuAutoFixes ?? [],
-      filesModified: result?.filesModified ?? [],
+      currentFile: basename(run.progress?.currentFile),
+      filesModified: (result?.filesModified ?? []).slice(0, FILES_CHANGED_CAP),
+      filesModifiedMore: Math.max(0, (result?.filesModified?.length ?? 0) - FILES_CHANGED_CAP),
       // Failed entries read before skipped ones.
       issues: [...issues.filter((item) => item.type === 'failed'), ...issues.filter((item) => item.type === 'skipped')],
-      transitions: (result?.statusTransitions ?? []).map((item) => ({
-        ...item,
-        fromToken: item.from ? STATUS_TOKENS[item.from] : undefined,
-        toToken: STATUS_TOKENS[item.to],
-      })),
+      // A transition to the same status changed nothing; one with no `from` is a new entry.
+      transitions: (result?.statusTransitions ?? [])
+        .filter((item) => item.from !== item.to)
+        .map((item) => ({
+          ...item,
+          fromToken: item.from ? STATUS_TOKENS[item.from] : undefined,
+          toToken: STATUS_TOKENS[item.to],
+        })),
       hasDetails: run.status === 'completed' || errors > 0,
     };
   });
