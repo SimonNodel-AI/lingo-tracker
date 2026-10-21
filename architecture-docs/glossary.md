@@ -662,9 +662,28 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ---
 
+### Export Options Policy
+
+The shared export rules in `exportOptionsPolicy` from `libs/domain/src/lib/export-options-policy.ts`.
+Its frozen record holds shared defaults, format and JSON structure guards, and status selection order.
+Named predicates identify JSON and rich JSON.
+The applicability function also owns the base-property question rule: JSON with include-base, even without rich JSON.
+Its advisory function returns reason data for callers to render, including the rich-JSON requirement for metadata output.
+Public types describe the policy, choices, formats, JSON structures, option names, and advisory data.
+CLI and API collapse an empty base property name to undefined so core applies the default.
+The CLI flag record, API mapper, and Tracker draft, dialog, and preview consume this browser-safe policy.
+The default statuses come from `NEEDS_WORK_STATUSES`.
+CLI prompts and Tracker drafts initially select XLIFF, but CLI resolution leaves format unset and the API requires it.
+Only the CLI renders advisories, with its existing text.
+ADR-0002 supersedes ADR-0001 because export gained API and Tracker consumers.
+
+Explained in context: [ADR-0002](../docs/adr/0002-export-options-policy-in-domain.md)
+
+---
+
 ### Export Run
 
-One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the `export` scope of the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An omitted core status filter exports all statuses. The CLI defaults to `new,stale`. The shared base property name default lives in domain because core and lazy CLI metadata both consume it. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults and prompt preselection are in `apps/cli/src/commands/export-cmd-flags.ts`; a prompt answer with no selected collection, locale, or status is refused.
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the `export` scope of the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An omitted core status filter exports all statuses. The CLI defaults to `new,stale`. The domain [Export Options Policy](#export-options-policy) owns shared defaults and reuses the base property name constant that core consumes. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI flag record reads defaults and prompt preselection from the Export Options Policy. A prompt answer with no selected collection, locale, or status is refused.
 
 Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 

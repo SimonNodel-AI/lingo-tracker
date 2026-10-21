@@ -1,7 +1,12 @@
 import type { ExportRunOptions } from '@simoncodes-ca/core';
-import { DEFAULT_EXPORT_BASE_PROPERTY_NAME, TRANSLATION_STATUSES, type TranslationStatus } from '@simoncodes-ca/domain';
+import {
+  type ExportJsonOption,
+  exportOptionsPolicy,
+  TRANSLATION_STATUSES,
+  type TranslationStatus,
+} from '@simoncodes-ca/domain';
 import type prompts from 'prompts';
-import { flagName, resolveFlag, type ResolvingFlagRecords } from '../runner/flag-record';
+import { flagName, type ResolvingFlagRecords, resolveFlag } from '../runner/flag-record';
 import type { selectionPrompt } from '../utils/prompt-utils';
 import type { ExportCommandOptions, ExportOptionsContext } from './export-options';
 
@@ -39,35 +44,34 @@ type ExportOptionResults = {
   >;
 };
 
-const STATUS_DEFAULT: readonly TranslationStatus[] = ['new', 'stale'];
-const STRUCTURE_DEFAULT: NonNullable<ExportCommandOptions['structure']> = 'hierarchical';
+const FORMAT_CHOICES = [
+  { title: 'XLIFF 1.2 (for translation tools)', value: 'xliff' },
+  { title: 'JSON (for runtime bundles)', value: 'json' },
+];
 const STRUCTURE_CHOICES = [
   { title: 'Hierarchical (nested objects)', value: 'hierarchical' },
   { title: 'Flat (dot-delimited keys)', value: 'flat' },
 ];
 
-const json = (options: ExportCommandOptions) => options.format === 'json';
-const richJson = (options: ExportCommandOptions) => json(options) && Boolean(options.rich);
-const jsonAdvice =
-  (flag: string, appliesWhen = richJson) =>
-  (values: ExportCommandOptions) => {
-    if (appliesWhen(values)) return undefined;
-    if (json(values)) return `${flag} has no effect without --rich.`;
-    if (values.format === 'xliff') return `${flag} has no effect with --format xliff.`;
-    return `${flag} applies only to JSON exports.`;
+const optionAdvice = (option: ExportJsonOption, flag: string) => (values: ExportCommandOptions) => {
+  const advice = exportOptionsPolicy.advisory(option, values);
+  if (!advice) return undefined;
+  const messages = {
+    'needs-rich': `${flag} has no effect without --rich.`,
+    xliff: `${flag} has no effect with --format xliff.`,
+    'json-only': `${flag} applies only to JSON exports.`,
+    'needs-base': `${flag} has no effect without --include-base.`,
   };
+  return messages[advice.reason];
+};
 const toggle = (message: string): Partial<prompts.PromptObject> => ({ message, active: 'Yes', inactive: 'No' });
-const BASE_PROPERTY_INITIAL = DEFAULT_EXPORT_BASE_PROPERTY_NAME;
 const STATUS_TITLES: Record<TranslationStatus, string> = {
   new: 'New (not yet translated)',
   stale: 'Stale (source changed)',
   translated: 'Translated (has translation)',
   verified: 'Verified (reviewed)',
 };
-// Keep the established prompt order while deriving the choices from domain.
-const statusOrder = (status: TranslationStatus) =>
-  status === 'stale' ? 1 : status === 'translated' ? 2 : TRANSLATION_STATUSES.indexOf(status);
-// Keep the status fallback help-only; resolution and prompt selection use STATUS_DEFAULT directly.
+// Keep the status fallback help-only; resolution and prompt selection use exportOptionsPolicy.defaults.statuses directly.
 function resolveStatuses(values: ExportAnswers): string[] {
   const status = values.status;
   if (status !== undefined && Array.isArray(status) === false) {
@@ -75,7 +79,7 @@ function resolveStatuses(values: ExportAnswers): string[] {
       `Invalid ${flagName(EXPORT_FLAGS.status)} "${status.input}". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`,
     );
   }
-  const statuses = (Array.isArray(status) ? status : undefined) ?? [...STATUS_DEFAULT];
+  const statuses = (Array.isArray(status) ? status : undefined) ?? [...exportOptionsPolicy.defaults.statuses];
   if (statuses.length === 0)
     throw new Error(`Invalid ${flagName(EXPORT_FLAGS.status)} "". Valid statuses: ${TRANSLATION_STATUSES.join(', ')}`);
   return statuses;
@@ -98,11 +102,8 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
               type: 'select',
               name: 'format',
               message: 'Select export format',
-              choices: [
-                { title: 'XLIFF 1.2 (for translation tools)', value: 'xliff' },
-                { title: 'JSON (for runtime bundles)', value: 'json' },
-              ],
-              initial: 0,
+              choices: FORMAT_CHOICES,
+              initial: FORMAT_CHOICES.findIndex((choice) => choice.value === exportOptionsPolicy.initialFormat),
             },
           ];
     },
@@ -164,7 +165,7 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
     flags: '-s, --status <statuses>',
     description: 'Filter by translation status (comma-separated)',
     list: 'preserve',
-    helpDefault: STATUS_DEFAULT.join(','),
+    helpDefault: exportOptionsPolicy.defaults.statuses.join(','),
     prompt: (options) => {
       return options.status
         ? []
@@ -176,8 +177,12 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
               choices: TRANSLATION_STATUSES.map((status) => ({
                 title: STATUS_TITLES[status],
                 value: status,
-                selected: STATUS_DEFAULT.includes(status),
-              })).sort((left, right) => statusOrder(left.value) - statusOrder(right.value)),
+                selected: exportOptionsPolicy.defaults.statuses.includes(status),
+              })).sort(
+                (left, right) =>
+                  exportOptionsPolicy.statusOrder.indexOf(left.value) -
+                  exportOptionsPolicy.statusOrder.indexOf(right.value),
+              ),
               min: 1,
               hint: 'Space to select. Return to submit',
               instructions: false,
@@ -224,28 +229,28 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   structure: {
     flags: '--structure <type>',
     description: 'JSON structure (flat | hierarchical)',
-    helpDefault: STRUCTURE_DEFAULT,
-    appliesWhen: json,
-    inapplicableMessage: jsonAdvice('--structure', json),
+    helpDefault: exportOptionsPolicy.defaults.structure,
+    appliesWhen: exportOptionsPolicy.isJson,
+    inapplicableMessage: optionAdvice('structure', '--structure'),
     prompt: () => [
       {
         message: 'JSON structure type',
         choices: STRUCTURE_CHOICES,
         name: 'structure',
         type: 'select',
-        initial: STRUCTURE_CHOICES.findIndex((choice) => choice.value === STRUCTURE_DEFAULT),
+        initial: STRUCTURE_CHOICES.findIndex((choice) => choice.value === exportOptionsPolicy.defaults.structure),
       },
     ],
     resolve: (values) => ({
-      jsonStructure: values.structure ?? STRUCTURE_DEFAULT,
+      jsonStructure: values.structure ?? exportOptionsPolicy.defaults.structure,
     }),
   },
   rich: {
     flags: '--rich',
     description: 'Include metadata in JSON objects',
-    helpDefault: false,
-    appliesWhen: json,
-    inapplicableMessage: jsonAdvice('--rich', json),
+    helpDefault: exportOptionsPolicy.defaults.rich,
+    appliesWhen: exportOptionsPolicy.isJson,
+    inapplicableMessage: optionAdvice('rich', '--rich'),
     prompt: (_options, _context, defaultValue) => [
       {
         ...toggle('Use rich JSON objects (include metadata)?'),
@@ -259,9 +264,9 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   includeBase: {
     flags: '--include-base',
     description: 'Include base locale value (JSON only)',
-    helpDefault: false,
-    appliesWhen: richJson,
-    inapplicableMessage: jsonAdvice('--include-base'),
+    helpDefault: exportOptionsPolicy.defaults.includeBase,
+    appliesWhen: exportOptionsPolicy.isRichJson,
+    inapplicableMessage: optionAdvice('includeBase', '--include-base'),
     prompt: (_options, _context, defaultValue) => [
       {
         ...toggle('Include base locale value in rich objects?'),
@@ -275,9 +280,9 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   includeStatus: {
     flags: '--include-status',
     description: 'Include translation status (JSON only)',
-    helpDefault: false,
-    appliesWhen: richJson,
-    inapplicableMessage: jsonAdvice('--include-status'),
+    helpDefault: exportOptionsPolicy.defaults.includeStatus,
+    appliesWhen: exportOptionsPolicy.isRichJson,
+    inapplicableMessage: optionAdvice('includeStatus', '--include-status'),
     prompt: (_options, _context, defaultValue) => [
       {
         ...toggle('Include translation status in rich objects?'),
@@ -291,9 +296,9 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   includeComment: {
     flags: '--include-comment',
     description: 'Include comment (JSON only)',
-    helpDefault: false,
-    appliesWhen: richJson,
-    inapplicableMessage: jsonAdvice('--include-comment'),
+    helpDefault: exportOptionsPolicy.defaults.includeComment,
+    appliesWhen: exportOptionsPolicy.isRichJson,
+    inapplicableMessage: optionAdvice('includeComment', '--include-comment'),
     prompt: (_options, _context, defaultValue) => [
       {
         ...toggle('Include comments?'),
@@ -307,9 +312,9 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   includeTags: {
     flags: '--include-tags',
     description: 'Include tags array (JSON only)',
-    helpDefault: false,
-    appliesWhen: richJson,
-    inapplicableMessage: jsonAdvice('--include-tags'),
+    helpDefault: exportOptionsPolicy.defaults.includeTags,
+    appliesWhen: exportOptionsPolicy.isRichJson,
+    inapplicableMessage: optionAdvice('includeTags', '--include-tags'),
     prompt: (_options, _context, defaultValue) => [
       {
         ...toggle('Include tags array in rich objects?'),
@@ -323,25 +328,21 @@ export const EXPORT_FLAGS: ResolvingFlagRecords<
   protectNotes: {
     flags: '--no-protect-notes',
     description: 'Do not emit do-not-translate instructions for protected terms',
-    runtimeDefault: true,
+    runtimeDefault: exportOptionsPolicy.defaults.protectNotes,
     resolve: (values, defaultValue) => ({ augmentProtectedTerms: (values.protectNotes ?? defaultValue) !== false }),
   },
   // Preserve the includeBase-only condition, including when rich is false.
   basePropertyName: {
     flags: '--base-property-name <name>',
-    description: `Property name for base locale value in JSON output (default: ${BASE_PROPERTY_INITIAL})`,
-    appliesWhen: (options) => json(options) && Boolean(options.includeBase),
-    inapplicableMessage: (values) => {
-      if (values.basePropertyName === '' || values.basePropertyName === undefined) return undefined;
-      if (values.includeBase) return jsonAdvice('--base-property-name')(values);
-      return '--base-property-name has no effect without --include-base.';
-    },
+    description: `Property name for base locale value in JSON output (default: ${exportOptionsPolicy.defaults.basePropertyName})`,
+    appliesWhen: (options) => exportOptionsPolicy.isApplicable('basePropertyName', options),
+    inapplicableMessage: optionAdvice('basePropertyName', '--base-property-name'),
     prompt: () => [
       {
         message: 'Property name for base locale value',
         name: 'basePropertyName',
         type: 'text',
-        initial: BASE_PROPERTY_INITIAL,
+        initial: exportOptionsPolicy.defaults.basePropertyName,
       },
     ],
     resolve: (values) => ({ basePropertyName: values.basePropertyName || undefined }),
