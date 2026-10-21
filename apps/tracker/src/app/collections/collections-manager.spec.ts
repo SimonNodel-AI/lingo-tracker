@@ -631,6 +631,31 @@ describe('CollectionsManager', () => {
       });
     });
 
+    it('updates running progress and current-item copy after a language switch', async () => {
+      const transloco = spectator.inject(TranslocoService);
+      startWith({ status: 'running', progress: { current: 1, total: 2, currentFile: 'dist/de.xlf' } });
+      expect(strip()?.textContent).toContain('1 of 2 locales');
+
+      transloco.setTranslation(
+        {
+          'export.run.exporting': 'Export en cours…',
+          'export.run.writing': 'Écriture',
+          'export.run.localesProgressX': '{{ current }} sur {{ total }} langues',
+        },
+        'fr',
+      );
+      transloco.setActiveLang('fr');
+      await fixture.whenStable();
+      spectator.detectComponentChanges();
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('Export en cours…');
+      expect(content).toContain('Écriture');
+      expect(content).toContain('dist/de.xlf');
+      expect(content).toContain('1 sur 2 langues');
+      expect(content).not.toContain('1 of 2 locales');
+    });
+
     it('re-translates the strip when the language changes', async () => {
       const transloco = spectator.inject(TranslocoService);
       startWith({ status: 'completed', progress: { current: 2, total: 2 }, result });

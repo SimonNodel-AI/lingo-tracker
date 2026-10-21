@@ -1395,6 +1395,22 @@ Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#er
 
 ---
 
+### Run Result Strip
+
+The shared Tracker presentation component in `apps/tracker/src/app/shared/components/run-result-strip/`. Its `RunResultView` union separates running progress, completed clauses and warning counts, and failed errors and retry labels. The component takes three inputs: `view`, `detailsOpen` and `detailsId`. It emits `retry`, `dismiss` and `detailsToggle`. Callers project the details body and own its open state. A [Run Strip Summary](#run-strip-summary) supplies the translated view.
+
+Explained in context: [`frontend.md`](frontend.md#run-strip-summaries-and-the-run-result-strip)
+
+---
+
+### Run Strip Summary
+
+The plain Tracker presentation derivation for one bundle, export or import run. The modules in `apps/tracker/src/app/collections/run-strip-summary/` return an explicitly typed `{ view, details }` object for the [Run Result Strip](#run-result-strip). Each function takes run state and a translation callback. The bundle function also takes the output pattern, bundle name and base locale. Shared helpers select status headlines and gate details. Import helpers count capped messages, calculate attention and order failed issues before skipped issues. Missing persisted fields receive defaults. These functions do not start jobs or change run state.
+
+Explained in context: [`frontend.md`](frontend.md#run-strip-summaries-and-the-run-result-strip)
+
+---
+
 ### Run Summary Writer
 
 The [Reported Run](#reported-run) calls this writer before printing results and announces the saved path after diagnostics and completion text. The CLI utility `saveRunSummary(kind, summary, { dryRun })`, which returns the written `path` and a deferred `announce()` so the private [Run Report](#run-report) renderer can cap its lists against the file, in `apps/cli/src/utils/write-run-summary.ts` owns both persistence and announcement of the import or export run's Markdown summary at a temporary path (`writeRunSummary` does the write). Core supplies the text through import's lazy `summary()` or export's `summary`. The summary file always lists every warning and error (no cap), so a Run Report's `... and N more (full list in <path>)` is accurate; its other sections, such as the modified-files list and detailed changes, remain capped. A real run writes and prints `<Kind> summary written to: <path>`; a failed write only warns and never changes the exit code, which comes from the run outcome. A dry run writes nothing and prints `<Kind> summary would be written to: <path>`; export passes `previewOnDryRun` and also prints the summary text as its only preview, while import renders nothing.

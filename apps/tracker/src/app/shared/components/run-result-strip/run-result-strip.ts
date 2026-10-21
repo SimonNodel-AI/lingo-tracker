@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { splitAfterSeparators } from '../../utils/split-after-separators';
+import type { RunResultView } from './run-result-view';
 
 export type RunResultStatus = 'running' | 'completed' | 'failed';
 
@@ -28,13 +29,13 @@ export interface RunResultProgress {
 
 /**
  * The result strip of a long-running job: running, completed (with or without warnings)
- * or failed. Used by the bundle card and the collections export strip.
+ * or failed. Used by the bundle card and the collections export and import strips.
  *
  * The component owns the anatomy, tints and separators; the caller passes every piece of
  * copy already translated. The details panel body is projected and only rendered while
  * `detailsOpen` is true, so the caller owns the open state and reacts to `detailsToggle`.
  *
- * Details, Dismiss and Retry are opt-in: each renders only when its label input is set,
+ * Details, Dismiss and Retry are opt-in: each renders only when its view label is set,
  * so a control never appears without an accessible name. Completed strips take all three
  * (Retry aside); failed strips take any of them.
  */
@@ -46,40 +47,56 @@ export interface RunResultProgress {
   styleUrl: './run-result-strip.scss',
 })
 export class RunResultStrip {
-  readonly status = input.required<RunResultStatus>();
-
-  /** The bold lead clause, for example "Generating…", "Exported" or "Export failed". */
-  readonly headline = input.required<string>();
-
-  /** Running: the verb before the current item, for example "Writing". */
-  readonly currentItemLabel = input<string | undefined>(undefined);
-  /** Running: the item being processed, shown as a mono identifier after the label. */
-  readonly currentItem = input<string | undefined>(undefined);
-
-  /** Running: drives the progress bar. */
-  readonly progress = input<RunResultProgress | undefined>(undefined);
-  /** Running: the progress clause, for example "2 of 4 locales". Omitted when undefined. */
-  readonly progressLabel = input<string | undefined>(undefined);
-
-  /** Completed: summary clauses after the headline, in order. Include any warnings clause. */
-  readonly clauses = input<readonly (string | RunResultClause)[]>([]);
-  /** Completed: a count above zero switches to the warning tint and glyph. */
-  readonly warningsCount = input(0);
-
-  /** Failed: the error message, shown as prose after the headline. */
-  readonly error = input<string | undefined>(undefined);
-  /** Failed: the label of the retry button; the button is omitted without it. */
-  readonly retryLabel = input<string | undefined>(undefined);
-
-  /** Whether the details panel is open (completed or failed). */
+  readonly view = input.required<RunResultView>();
   readonly detailsOpen = input(false);
-  /** Id of the details panel, wired to `aria-controls` on the toggle. */
   readonly detailsId = input<string | undefined>(undefined);
-  /** Text of the Details toggle; the toggle and the panel are omitted without it. */
-  readonly detailsLabel = input<string | undefined>(undefined);
-  readonly detailsAriaLabel = input<string | undefined>(undefined);
-  /** Accessible name of the Dismiss button; the button is omitted without it. */
-  readonly dismissAriaLabel = input<string | undefined>(undefined);
+
+  readonly status = computed(() => this.view().status);
+  readonly headline = computed(() => this.view().headline);
+  readonly currentItemLabel = computed(() => {
+    const view = this.view();
+    return view.status === 'running' ? view.currentItemLabel : undefined;
+  });
+  readonly currentItem = computed(() => {
+    const view = this.view();
+    return view.status === 'running' ? view.currentItem : undefined;
+  });
+  readonly progress = computed(() => {
+    const view = this.view();
+    return view.status === 'running' ? view.progress : undefined;
+  });
+  readonly progressLabel = computed(() => {
+    const view = this.view();
+    return view.status === 'running' ? view.progressLabel : undefined;
+  });
+  readonly clauses = computed(() => {
+    const view = this.view();
+    return view.status === 'completed' ? (view.clauses ?? []) : [];
+  });
+  readonly warningsCount = computed(() => {
+    const view = this.view();
+    return view.status === 'completed' ? (view.warningsCount ?? 0) : 0;
+  });
+  readonly error = computed(() => {
+    const view = this.view();
+    return view.status === 'failed' ? view.error : undefined;
+  });
+  readonly retryLabel = computed(() => {
+    const view = this.view();
+    return view.status === 'failed' ? view.retryLabel : undefined;
+  });
+  readonly detailsLabel = computed(() => {
+    const view = this.view();
+    return view.status !== 'running' ? view.detailsLabel : undefined;
+  });
+  readonly detailsAriaLabel = computed(() => {
+    const view = this.view();
+    return view.status !== 'running' ? view.detailsAriaLabel : undefined;
+  });
+  readonly dismissAriaLabel = computed(() => {
+    const view = this.view();
+    return view.status !== 'running' ? view.dismissAriaLabel : undefined;
+  });
 
   readonly retry = output<void>();
   readonly dismiss = output<void>();

@@ -18,7 +18,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { TranslocoModule, TranslocoService } from '@jsverse/transloco';
-import { type ExportJobResultDto, JOB_RETENTION_MS, type TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
 import { catchError, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../i18n-types/tracker-resources';
 import type { Feedback } from '../browser/feedback';
@@ -35,6 +35,10 @@ import type { BundleLink, BundlePort } from './collection-links';
 import { measureCollectionLinks } from './collection-links-measurement';
 import { type ExportDialogData, loadExportDialog } from './export-dialog/export-dialog-data';
 import { type ImportDialogData, loadImportDialog } from './import-dialog/import-dialog-data';
+import { launchRunDialog } from './run-dialog';
+import { exportSummary } from './run-strip-summary/export-summary';
+import { importSummary } from './run-strip-summary/import-summary';
+import { injectStripTranslate } from './run-strip-summary/inject-strip-translate';
 import { CollectionsApiService } from './services/collections-api.service';
 import { CollectionsStore } from './store/collections.store';
 
@@ -48,20 +52,6 @@ const loadBundleDialog = () =>
   import('./bundle-form-dialog/bundle-form-dialog').then((module) => module.BundleFormDialog);
 const loadCollectionDialog = () =>
   import('./collection-form-dialog/collection-form-dialog').then((module) => module.CollectionFormDialog);
-
-/** Token for each status word in the import details' status changes. */
-const STATUS_TOKENS: Record<TranslationStatus, string> = {
-  new: TRACKER_TOKENS.BROWSER.STATUS.NEW,
-  translated: TRACKER_TOKENS.BROWSER.STATUS.TRANSLATED,
-  stale: TRACKER_TOKENS.BROWSER.STATUS.STALE,
-  verified: TRACKER_TOKENS.BROWSER.STATUS.VERIFIED,
-};
-
-/** Most paths the Details "Files changed" list shows; the summary download has the rest. */
-const FILES_CHANGED_CAP = 10;
-
-/** The file name of a path with either separator, for the running clause. */
-const basename = (path: string | undefined): string | undefined => path?.split(/[\\/]/).pop() || path;
 
 const toast = (tone: 'success' | 'error', token: string, detail?: string): Feedback => ({
   tone,
@@ -116,6 +106,8 @@ export class CollectionsManager {
   readonly #router = inject(Router);
   readonly #transloco = inject(TranslocoService);
 
+  readonly #translateSummary = injectStripTranslate();
+
   readonly TOKENS = TRACKER_TOKENS;
 
   /** Current text typed into the name/folder filter. */
@@ -162,93 +154,13 @@ export class CollectionsManager {
 
   /** The export strip's counts and lists, or null when no export has run. */
   readonly exportStrip = computed(() => {
-    const run = this.store.exportRun();
-    if (!run) return null;
-    const result = run.result;
-    const errors = result?.errors.length ?? 0;
-    const skipped = result?.localeResults.filter((item) => item.outcome === 'skipped') ?? [];
-    return {
-      run,
-      result,
-      warnings: result?.warnings.length ?? 0,
-      errors,
-      // Skipped locales with no distinct error read as one run followed by the shared reason.
-      skippedPlain: skipped.filter((item) => !item.error).map((item) => item.locale),
-      skippedWithReason: skipped.filter((item) => item.error),
-      files: exportedFiles(result),
-      // A failed run only offers details when there is a per-locale error to read.
-      hasDetails: run.status === 'completed' || errors > 0,
-    };
+    return exportSummary(this.store.exportRun(), this.#translateSummary);
   });
 
   /** Whether the import strip's details panel is open. */
   readonly importDetailsOpen = signal(false);
-
-  /**
-   * The import strip's counts and lists, or null when no import has run. A persisted completed
-   * run is only guarded for `totals` and `files`, so every other list and count defaults here.
-   */
   readonly importStrip = computed(() => {
-    const run = this.store.importRun();
-    if (!run) return null;
-    const result = run.result;
-    const totals = result?.totals;
-    const warningList = result?.warnings ?? [];
-    const errorList = result?.errors ?? [];
-    const issues = result?.issues ?? [];
-    const truncated = {
-      issues: result?.truncated?.issues ?? 0,
-      icuAutoFixes: result?.truncated?.icuAutoFixes ?? 0,
-      warnings: result?.truncated?.warnings ?? 0,
-      errors: result?.truncated?.errors ?? 0,
-    };
-    const files = (result?.files ?? []).map((file) => ({
-      path: file.path,
-      locale: file.locale,
-      imported: file.imported ?? 0,
-      created: file.created ?? 0,
-      updated: file.updated ?? 0,
-      skipped: file.skipped ?? 0,
-      failed: file.failed ?? 0,
-      didFail: file.outcome === 'failed',
-    }));
-    // Capped messages still count: the headline reads the true total, the list the kept ones.
-    const warnings = warningList.length + truncated.warnings;
-    const errors = errorList.length + truncated.errors;
-    const failed = totals?.failed ?? 0;
-    const failedFiles = files.filter((file) => file.didFail).length;
-    return {
-      run,
-      result,
-      totals: { imported: totals?.imported ?? 0, skipped: totals?.skipped ?? 0 },
-      files,
-      fileCount: files.length,
-      warningList,
-      errorList,
-      truncated,
-      warnings,
-      errors,
-      failed,
-      failedFiles,
-      // Warnings, errors, failed entries, failed files and a failed outcome all tint the strip as a warning.
-      attention: warnings + errors + failed + failedFiles + (result?.outcome === 'failed' ? 1 : 0),
-      skipped: totals?.skipped ?? 0,
-      autoFixes: result?.icuAutoFixes ?? [],
-      currentFile: basename(run.progress?.currentFile),
-      filesModified: (result?.filesModified ?? []).slice(0, FILES_CHANGED_CAP),
-      filesModifiedMore: Math.max(0, (result?.filesModified?.length ?? 0) - FILES_CHANGED_CAP),
-      // Failed entries read before skipped ones.
-      issues: [...issues.filter((item) => item.type === 'failed'), ...issues.filter((item) => item.type === 'skipped')],
-      // A transition to the same status changed nothing; one with no `from` is a new entry.
-      transitions: (result?.statusTransitions ?? [])
-        .filter((item) => item.from !== item.to)
-        .map((item) => ({
-          ...item,
-          fromToken: item.from ? STATUS_TOKENS[item.from] : undefined,
-          toToken: STATUS_TOKENS[item.to],
-        })),
-      hasDetails: run.status === 'completed' || errors > 0,
-    };
+    return importSummary(this.store.importRun(), this.#translateSummary);
   });
 
   /** Ticks at the moment a finished job's summary expires, so the download link goes with it. */
@@ -441,41 +353,15 @@ export class CollectionsManager {
   }
 
   #openExportDialog(data: ExportDialogData, returnTo?: HTMLElement): void {
-    // Captured before the lazy load: the trigger may be a menu item or a button that is gone by then.
-    const active = document.activeElement;
-    const trigger = returnTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
-    // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
-    void loadExportDialog().then((component) => {
-      const ref = this.#dialog.open(component, {
-        data,
-        panelClass: 'export-dialog-panel',
-        maxWidth: WIDE_DIALOG_MAX_WIDTH,
-        restoreFocus: false,
-      });
-      ref.afterClosed().subscribe(() => this.#restoreFocus(trigger, 'export-strip'));
-    });
-  }
-
-  /**
-   * The trigger can be busy-disabled or gone once the run starts (the Export or Import button, the
-   * Retry button), so fall back to the strip, then to the section heading.
-   */
-  #restoreFocus(trigger: HTMLElement | null, stripTestId: string): void {
-    const host = this.#host.nativeElement;
-    const usable = (element: HTMLElement | null): element is HTMLElement =>
-      !!element &&
-      element.isConnected &&
-      // Safari does not focus a clicked button, so the "active" element can be the body.
-      element !== document.body &&
-      element.tabIndex >= -1 &&
-      !(element instanceof HTMLButtonElement && element.disabled) &&
-      element.getAttribute('aria-disabled') !== 'true';
-    const target = [
-      trigger,
-      host.querySelector<HTMLElement>(`[data-testid="${stripTestId}"]`),
-      host.querySelector<HTMLElement>('#collections-heading'),
-    ].find(usable);
-    target?.focus();
+    launchRunDialog(
+      this.#dialog,
+      this.#host.nativeElement,
+      loadExportDialog,
+      data,
+      'export',
+      WIDE_DIALOG_MAX_WIDTH,
+      returnTo,
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -507,18 +393,15 @@ export class CollectionsManager {
   }
 
   #openImportDialog(data: ImportDialogData, returnTo?: HTMLElement): void {
-    const active = document.activeElement;
-    const trigger = returnTo ?? (active instanceof HTMLElement && active !== document.body ? active : null);
-    // The dialog starts the job through the store and the strip reflects it, so no result is handled here.
-    void loadImportDialog().then((component) => {
-      const ref = this.#dialog.open(component, {
-        data,
-        panelClass: 'import-dialog-panel',
-        maxWidth: WIDE_DIALOG_MAX_WIDTH,
-        restoreFocus: false,
-      });
-      ref.afterClosed().subscribe(() => this.#restoreFocus(trigger, 'import-strip'));
-    });
+    launchRunDialog(
+      this.#dialog,
+      this.#host.nativeElement,
+      loadImportDialog,
+      data,
+      'import',
+      WIDE_DIALOG_MAX_WIDTH,
+      returnTo,
+    );
   }
 
   /** Opens the create form and toasts only when it closes with a saved result. */
@@ -621,13 +504,4 @@ export class CollectionsManager {
   navigateToBrowser(collectionName: string): void {
     this.#router.navigate(['/browser', collectionName]);
   }
-}
-
-/** Files written with their entry counts, matched from the per-locale results. */
-function exportedFiles(result: ExportJobResultDto | undefined): readonly { file: string; entries?: number }[] {
-  if (!result) return [];
-  return result.filesWritten.map((file) => ({
-    file,
-    entries: result.localeResults.find((item) => item.file === file)?.entriesExported,
-  }));
 }
