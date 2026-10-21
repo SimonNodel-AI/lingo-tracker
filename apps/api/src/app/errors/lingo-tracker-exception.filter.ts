@@ -53,6 +53,8 @@ interface HttpRule {
 
 // Codes default by kind; this table holds only deviations.
 export const HTTP_BY_CODE = {
+  INVALID_IMPORT_LOCALE: { kind: 'internal', status: HTTP_BY_KIND.invalid },
+  IMPORT_SOURCE_ERROR: { kind: 'internal', status: HTTP_BY_KIND.invalid },
   BRACED_PLACEHOLDER: { kind: 'invalid', includeDetails: true },
   INVALID_COLLECTION: (error) => ({
     kind: 'invalid',

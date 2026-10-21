@@ -2,7 +2,7 @@ import type { ExportPlanDto } from '@simoncodes-ca/data-transfer';
 import { Observable, of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defaultDraft } from './export-draft';
-import { entryShape, ExportPreview } from './export-preview';
+import { ExportPreview, entryShape } from './export-preview';
 
 const plan: ExportPlanDto = {
   format: 'xliff',

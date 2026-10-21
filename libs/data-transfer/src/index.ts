@@ -14,6 +14,8 @@ export * from './lib/delete-folder.dto';
 export * from './lib/delete-resource.dto';
 export * from './lib/delete-resource-response.dto';
 export * from './lib/export.dto';
+export * from './lib/import.dto';
+export * from './lib/jobs';
 export * from './lib/lingo-tracker-collection.dto';
 export * from './lib/lingo-tracker-config.dto';
 export * from './lib/move-folder.dto';

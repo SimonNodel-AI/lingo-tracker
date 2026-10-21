@@ -345,3 +345,75 @@ lingo-tracker import --source es-corrected.json --locale es --strategy update
 ### Migrating from Another System
 
 See the [Migration Guide](../guides/migration.md) for detailed instructions on migrating from Transloco, i18next, and other translation systems.
+
+## Import from the Tracker UI
+
+The Tracker UI imports with the same strategies and options as the CLI. A live preview shows what the import will change before you run it.
+
+![The Import dialog on the Source pane, with four files checked and the live preview of the changes](../images/import-dialog.png)
+
+The dialog reads files from the server's disk, like the CLI's `--source`, and lists them for you. You can also add files from your computer. See [Upload files](#upload-files).
+
+### Open the dialog
+
+- Select **Import…** in the head of the Collections section.
+- Select **Import…** in the ⋮ menu of a collection card to import into that collection. The item is disabled on read-only collections.
+
+An import writes into one collection. Read-only collections are locked and cannot be chosen.
+
+### Settings
+
+| Section | Controls | CLI flag |
+|---------|----------|----------|
+| Source | The collection, the import folder and the files to read, each with a target locale. | `--collection`, `--source`, `--locale` |
+| Strategy | `translation-service`, `verification`, `migration` or `update`, described [above](#import-strategies). | `--strategy` |
+| Options | Create missing keys, update comments and update tags (migration only), plus Keep status from file and Warn when the base text differs under **Advanced**. | `--create-missing`, `--update-comments`, `--update-tags`, `--preserve-status`, `--validate-base` |
+
+The Source section lists the `.xliff`, `.xlf` and `.json` files in the import folder. The folder is the collection's `importFolder`, else the global `importFolder`, else `dist/lingo-import`. You can type another folder, relative to the project root. Check the files to import. You can import several files in one run. They share one strategy and one option set, and each file has its own locale.
+
+### Upload files
+
+Files you want to import may be on your own computer rather than on the server. Select **Upload files…** above the file list, or drag files onto the list. LingoTracker copies them into the folder the dialog shows, checks them, and lists them with the rest. From there they follow the usual preview and import.
+
+- Uploads go only to the collection's import folder or one of its subfolders, and always inside the project root. For any other folder the button and the drop area are disabled. A subfolder that does not exist yet is created.
+- A file that has the same name as one already in the folder (ignoring case) prompts you: **Replace** overwrites the existing file, and **Keep existing** discards the upload. Nothing is overwritten unless you choose Replace.
+- You can upload up to 10 files at a time, each up to 20 MB. The files must be `.xliff`, `.xlf` or `.json`. The dialog checks this before it sends anything, and the server checks again.
+- The server accepts one upload at a time. If another is running, try again in a moment.
+- Uploading is not available for read-only collections.
+- An upload row for a base-locale file stays unchecked unless the strategy is `migration`, as for any other file.
+
+LingoTracker infers the locale of each file:
+
+1. For XLIFF, from the `target-language` attribute of the `<file>` element.
+2. Otherwise, from a configured locale code in the file name, such as `es.xliff` or `translations-en-to-fr-ca-2025-12-13.json`.
+
+A file with no inferred locale shows a locale selector, and you must choose a locale before you can import. The base locale is only available with the `migration` strategy.
+
+### Preview
+
+The preview runs a dry run each time you change a setting. It shows the files, the counts of entries that would be imported, created, updated, skipped or fail, the status changes, the ICU auto-fixes, and the key-level issues and warnings. It does not modify any file. The dry-run summary lists the **Files That Would Be Modified**.
+
+The Import button shows the number of entries. It stays enabled when some entries would fail, because the import continues past failures, as the CLI does.
+
+### Result strip
+
+When the import finishes, a result strip appears on the Collections page:
+
+- **Details** shows the counts for each file, the status changes, the ICU auto-fixes, the failed and skipped keys with their reasons, the warnings, and the files that changed.
+- **Download summary** downloads the Markdown summary. It is available for about 30 minutes after the import ends. The server keeps it in memory only and does not write it to disk.
+- **Dismiss** removes the strip.
+- **Retry** opens the dialog again with the same request. It appears when the import failed.
+
+The import runs as a background job. The API behind it is described in the [Imports API](../api.md#imports-api) section of the API reference.
+
+### Round trip in the UI
+
+1. Export the entries that need translation to XLIFF, from the [Export dialog](./export.md#export-from-the-tracker-ui) or the CLI.
+2. Send the files to your vendor.
+3. Put the returned files in `dist/lingo-import` on the server.
+4. Open **Import…**, choose the collection, check the files, and read the preview.
+5. Select **Import**.
+
+### Remembered settings
+
+The dialog remembers its strategy and options for each project, and the import folder for each collection. The file selection is not remembered.

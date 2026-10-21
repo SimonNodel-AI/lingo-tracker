@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
+import { JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
 import { JobNotFoundError } from './job-not-found.error';
 
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 /** Finished jobs older than this are evicted on the next start. */
-export const JOB_RETENTION_MS = 30 * 60 * 1000;
+export { JOB_RETENTION_MS };
 /** Finished jobs are evicted first when a new job would exceed this count. */
 export const MAX_RETAINED_JOBS = 100;
 

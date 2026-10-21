@@ -297,6 +297,147 @@ app-run-result-strip {
   }
 }
 
+// Import strip: the projected details lay out as columns of sections, as in the comp.
+.import-details {
+  display: grid;
+  gap: var(--spacing-4) var(--spacing-6);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+
+  .details-heading {
+    margin-bottom: var(--spacing-2);
+  }
+
+  .details-foot {
+    display: flex;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .details-list li {
+    justify-content: flex-start;
+  }
+
+  // Path and locale on one line, the figures under them: tight inside a file, a clear gap
+  // between files, so each count line reads with its own path.
+  .details-list--files {
+    gap: var(--spacing-2);
+
+    li {
+      flex-wrap: wrap;
+      gap: 0 var(--spacing-2);
+    }
+
+    .figures {
+      flex-basis: 100%;
+    }
+  }
+
+  .locale-pill {
+    background: var(--color-background-muted);
+    border-radius: var(--border-radius-full);
+    color: var(--color-text-secondary);
+    font-family: var(--font-family-mono);
+    font-size: 11px;
+    font-weight: var(--font-weight-semibold);
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .figures,
+  .count {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+  }
+
+  .count {
+    margin-left: auto;
+  }
+
+  // Lowercase in running text, as the dialog preview's status changes.
+  .status-word {
+    text-transform: lowercase;
+
+    &--new {
+      color: var(--color-status-new);
+    }
+
+    &--stale {
+      color: var(--color-status-stale);
+    }
+
+    &--translated {
+      color: var(--color-status-translated);
+    }
+
+    &--verified {
+      color: var(--color-status-verified);
+    }
+  }
+
+  .arrow {
+    color: var(--color-text-tertiary);
+  }
+
+  // The reason follows its key in secondary ink; failures read in the warning tint.
+  .reason {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    min-width: 0;
+    overflow-wrap: anywhere;
+
+    &--failed {
+      color: var(--color-warning-text);
+    }
+  }
+
+  // Auto-fix text can be long: three lines, the full text sits on the title.
+  .clamp {
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    display: -webkit-box;
+    font-family: var(--font-family-mono);
+    overflow: hidden;
+  }
+
+  // Key over its text: the same tight-inside, gap-between rhythm as the files list.
+  .details-list--fixes,
+  .details-list--issues {
+    gap: var(--spacing-2);
+
+    li {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0;
+    }
+  }
+
+  .more-note {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-xs);
+    margin: var(--spacing-1) 0 0;
+  }
+
+  .summary-link {
+    align-items: center;
+    color: inherit;
+    display: inline-flex;
+    font-size: var(--font-size-xs);
+    gap: var(--spacing-1);
+    text-decoration: underline;
+
+    mat-icon {
+      font-size: 14px;
+      height: 14px;
+      width: 14px;
+    }
+  }
+}
+
+// A disabled menu item takes no pointer events, so its tooltip sits on this wrapper.
+.menu-item-tooltip {
+  display: block;
+}
+
 .bundles-stack {
   display: flex;
   flex-direction: column;

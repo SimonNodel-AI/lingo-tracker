@@ -12,8 +12,9 @@ import { catchError, type Observable, of, pipe, switchMap, tap } from 'rxjs';
 import { CollectionsApiService } from '../services/collections-api.service';
 import { resolveCollectionSettings } from './collection-settings';
 import { configLoadError, injectConfigWrite } from './config-write';
-import { withExportFeature } from './features/with-export.feature';
 import { withBundlesFeature } from './features/with-bundles.feature';
+import { withExportFeature } from './features/with-export.feature';
+import { withImportFeature } from './features/with-import.feature';
 
 /**
  * State interface for the Collections store.
@@ -163,4 +164,5 @@ export const CollectionsStore = signalStore(
   }),
   withBundlesFeature(),
   withExportFeature(),
+  withImportFeature(),
 );

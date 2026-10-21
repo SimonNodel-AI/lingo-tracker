@@ -10,12 +10,14 @@ sidebar_position: 4
 The LingoTracker API provides REST endpoints for managing translation resources, collections, and configuration.
 
 - **Base URL**: `http://localhost:3030/api`
+- **Bind address**: `127.0.0.1` (configurable via `--host` / `LINGO_TRACKER_HOST`)
 - **Default Port**: `3030` (configurable via `LINGO_TRACKER_PORT` environment variable)
 - **Cache revalidation interval**: `2000` ms (configurable via `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` environment variable)
 - **Cached collections**: `4` at most, least-recently-used evicted (configurable via `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` environment variable)
 - **Content-Type**: `application/json`
 - **Response Format**: JSON
-- **CORS**: Enabled with wildcard origin (`*`) in development
+- **CORS and Origin protection**: Only HTTP and HTTPS Origins without userinfo are allowed when the parsed Origin host and port match the request Host header, ignoring case. Different localhost ports and loopback hostnames receive 403. The Angular dev proxy preserves `Host: localhost:4200`, matching its browser Origin. Other Origins, including `null`, malformed Origins, and multiple values, receive 403 before handlers run. Requests without an Origin header pass this check. CORS uses the same rule.
+- **Host protection**: Every bind mode requires a Host header naming `localhost`, an IPv4 literal, a bracketed IPv6 literal, or an exact name from `LINGO_TRACKER_ALLOWED_HOSTS`. Ports are optional. The comma-separated list trims spaces and ignores case. Access by LAN IP needs no extra setting; access by name requires an explicit entry, such as `my-laptop.local`. Missing or disallowed Host headers receive 403.
 - **Swagger Documentation**: Available at `http://localhost:3030/api` when the server is running
 
 ## Authentication
@@ -434,6 +436,102 @@ An omitted `outputDirectory` uses the project configuration's `exportFolder`, or
 `protectedTermNotes` defaults to `true`. JSON structure defaults to `hierarchical`, and all JSON boolean fields default to `false`. An omitted or empty `basePropertyName` uses `baseValue`. JSON metadata fields apply to rich JSON exports. Export reads collection resources without changing them or their cache index.
 
 Both POST routes return `400 Bad Request` for invalid body shapes, format or structure values, empty collections, and empty or invalid statuses. Invalid or reserved `json.basePropertyName` values also return 400 with the validation message. Incompatible collection base locales also return 400. Invalid format and structure responses include `errors: [...]`. An unknown collection returns `404 Not Found` before a job starts. An unknown or expired job ID returns 404.
+
+## Imports API
+
+`GET /api/imports/sources?collection=<name>&folder=<path>` returns an `ImportSourceListingDto` with the resolved folder, `exists`, and the source files. The listing includes `.xliff`, `.xlf`, and `.json` files in that folder. It excludes hidden files, nested files, and other extensions. It sorts names without case sensitivity. Each file includes its path, name, format, size in bytes, and modification time. The listing skips unreadable or unusual files.
+
+A missing folder, including a path with a file as an intermediate component, returns `exists: false` and `files: []`. A file used as a folder returns `400 Bad Request` with `folder must be a directory`. The collection is required. An omitted folder uses the collection's `importFolder`, then the global `importFolder`, then `dist/lingo-import`. Relative paths resolve against the project root. The API returns relative paths inside the project and absolute paths outside it.
+
+The listing includes `defaultFolder`, the effective collection import folder, even when `folder` overrides it. It uses the same relative-or-absolute path form as `folder`. Folder permission errors (`EACCES` or `EPERM`) return `400 Bad Request` with `folder could not be read`.
+
+**The listing deliberately accepts all server paths.** This local-first, single-user API mirrors the CLI's access to server files. Uploads must remain inside the project root, including after symlink resolution. If you expose the API beyond localhost, you also expose this directory-listing capability.
+
+The listing infers a configured locale or the base locale from the XLIFF `target-language` attribute, then from the filename. Matching ignores case and treats `_` and `-` alike. Files can include `locale`, `localeSource` (`xliff-target-language` or `file-name`), and `localeProblem` (`base-locale` or `not-configured`). The listing returns the configured spelling of each inferred locale, or the spelling of `baseLocale`. The optional `xliffTargetLanguage` field contains the raw non-empty XLIFF attribute, without normalization. An empty `target-language=""` is treated as absent: the field is omitted and does not trigger `not-configured`.
+
+An XLIFF target matching neither the configured locales nor the base locale sets `localeProblem: "not-configured"`, regardless of filename inference. This warning takes precedence even when the filename infers the base locale. Otherwise, a returned base locale sets `localeProblem: "base-locale"`. The listing retains filename inference when available. Read-only collections still support listing.
+
+`POST /api/imports/sources?collection=<name>&folder=<path>&overwrite=true` receives `multipart/form-data` with a repeatable file field named `files`. Text fields are rejected with 400. `collection` is required; `folder` and `overwrite` are optional query parameters. The folder uses the same defaults and resolution as the listing.
+
+The shared limits are 10 files per request and 20 MB (20 × 1024 × 1024 bytes) per file. Supported extensions are `.xliff`, `.xlf`, and `.json`, without case sensitivity. The API buffers files in memory before validation. Multipart requests permit no text fields and at most 10 parts. Field values are limited to 1024 bytes and field names to 100 bytes.
+
+Names are normalized to NFC. Each name must meet these rules:
+
+- Contains no path separators, NUL, other control characters, or `<>:"|?*` characters.
+- Has no leading or trailing whitespace and no trailing dot.
+- Does not start with a dot or use a Windows reserved name before the first dot, after trimming trailing spaces and dots. Reserved names include `CON`, `PRN`, `AUX`, `NUL`, `CONIN$`, `CONOUT$`, and `COM` or `LPT` with a digit or `¹`, `²`, or `³`.
+- Uses at most 255 UTF-8 bytes and a supported extension.
+- Identifies a nonempty file and is unique within the batch after NFC normalization and case folding.
+
+The multipart parser decodes filenames as UTF-8 and preserves path separators. The service normalizes names to NFC and rejects invalid names rather than stripping paths or replacing characters. Uploads require a writable collection. Before writing files, the API validates every name and checks lexical and realpath containment within the project root. It checks the deepest existing ancestor, creates missing directories, then checks the final directory again. Symlinks resolving inside the root are permitted when the target folder meets the upload restrictions. Escaping symlinks and external configured import folders are rejected. A symlinked project root is supported.
+
+Uploads are allowed only in the collection's effective import folder or its descendants, after native realpath resolution. Sibling and ancestor folders are rejected. If the effective import folder resolves outside the project root or into a denied location, all uploads for that collection are refused. Missing directory tails and all path comparisons ignore case on macOS and Windows. Other platforms compare paths with case sensitivity.
+
+Additional deny rules apply within the allowlist. The real upload folder must differ from the project root. Its relative path must contain no segment starting with `.` or equal to `node_modules`. It must remain outside every configured collection's real translations folder and its descendants. These restrictions also apply through symlinks and with `overwrite=true`. Rejected folders return 400 with `folder is not allowed for uploads.`
+
+Existing names are compared without case sensitivity after NFC normalization. A clash returns `409 Conflict` with `message: "Files already exist"` and the clashing upload names in `errors`. Only `overwrite=true` permits replacement. Replacement keeps the existing name on disk, including its case. A target name matching an existing directory returns 400 with `"<name>" clashes with a folder.`, even with overwrite enabled.
+
+Each file is written to a hidden `.upload-<uuid>.tmp` file with exclusive creation, then atomically renamed to its target. Uploads never call the collection mutation sink because source files do not change resource files or the collection index. A successful request returns `201 Created` with the refreshed `ImportSourceListingDto` for the requested collection and folder.
+
+Only one upload can run at a time per server process. A concurrent request is rejected before multipart buffering with `429 Too Many Requests`: `{ statusCode: 429, message: 'Another upload is in progress', error: 'Too Many Requests' }`. The upload slot is released after completion, errors, or client aborts.
+
+Non-multipart requests with no files return 400 with `errors: ['files must contain at least one file.']`.
+
+Upload responses include these errors:
+
+| Status                  | Cause                                                                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `400 Bad Request`       | Missing collection, empty batch or file, invalid name or folder, duplicate batch name, more than 10 files, or wrong field name |
+| `403 Forbidden`         | Read-only collection, disallowed Origin, or disallowed Host                                                                    |
+| `404 Not Found`         | Unknown collection                                                                                                             |
+| `409 Conflict`          | Existing filenames without `overwrite=true`                                                                                    |
+| `429 Too Many Requests` | Another upload is in progress                                                                                                  |
+| `413 Payload Too Large` | A file exceeds 20 MB                                                                                                           |
+
+Multipart limit errors return sanitized `errors` arrays without internal paths: file-size errors use 413; file-count, unexpected-field, field-limit, and part-count errors use 400. Dangling folder symlinks return 400 with `folder could not be written`.
+
+Service validation errors use `message: "Invalid upload"` and an `errors` array. Folder write errors use `message: "folder could not be written"`. Write errors with `EACCES`, `EPERM`, `ENOSPC`, or `EROFS` return 400 with a per-file error. Other filesystem errors return 500. On a write error, the API stops and attempts to remove the temporary file. Files already renamed remain available. Clients must refresh the listing after an error because the request can partially succeed.
+
+`POST /api/imports/dry-run` and `POST /api/imports` accept this body:
+
+```typescript
+interface ImportRequestDto {
+  collection: string;
+  files: { path: string; locale: string; format?: 'xliff' | 'json' }[];
+  strategy?: 'translation-service' | 'verification' | 'migration' | 'update';
+  createMissing?: boolean;
+  updateComments?: boolean;
+  updateTags?: boolean;
+  preserveStatus?: boolean;
+  validateBase?: boolean;
+}
+```
+
+The request requires at least one file and one target locale per file. The API processes files in request order and permits repeated locales. An omitted strategy uses `translation-service`. `createMissing`, `updateComments`, and `updateTags` default to `true` for `migration` and `false` for the other strategies. `preserveStatus` defaults to `false`; `validateBase` defaults to `true`, matching the CLI. Explicit values take precedence, and only `migration` can import into the base locale.
+
+The optional format overrides extension detection. `POST /api/imports/dry-run` returns `201 Created` with an `ImportPlanDto`. The plan includes parsed entry counts, imported/created/updated/skipped/failed counts, totals, and status transitions. It also includes ICU auto-fixes, failed/skipped key issues, warnings, errors, and `largeFiles` for the CLI's advisory above 5 MB. Each diagnostic list stops at 50 items. `truncated` reports omitted counts for issues, auto-fixes, warnings, and errors.
+
+Before the 50-item cap, the API places failed issues before skipped issues. It preserves the original order within each group. Each issue and ICU auto-fix includes an optional `path`, the request file path that produced it. This field distinguishes two files with the same locale and appears in both plans and job results.
+
+For each plan file and job-result file, `imported = created + updated`. Run totals sum those per-file counts. A migration that only creates keys therefore reports a positive imported count.
+
+Plan files and job-result files include a required `changed` count derived from core's `filesAffected`. It counts distinct affected resource files, including entry data and metadata files, rather than entries. A zero count means that the file causes no writes. An identical-file import with the `update` strategy returns zero, even when core reports an entry as `updated`.
+
+`totals.changed` is also required and sums the per-file counts. Each file in a multi-file dry run is previewed against the current stored state, without proposed changes from earlier files. Thus, `changed` totals can count the same resource file once per request file.
+
+If a source cannot be read, detected, or parsed, its plan file contains zero counts, `sourceProblem`, and an error message. The API still checks the other files. An undetectable source uses `json` as the plan's required format placeholder until the caller supplies a format. The preview writes no files. Each file sees the collection's current state, without proposed changes from earlier preview files.
+
+`POST /api/imports` inspects every source before it returns `202 Accepted` with an `ImportJobDto`. A wrong path or undetectable format returns 400 before the API registers a job or writes resources. The job parses the sources after registration. The initial snapshot contains `status: "pending"`, the echoed request, and progress `{current: 0, total: <file count>}`. Imports run serially on their own queue, separate from export and bundle jobs.
+
+`GET /api/imports/jobs/:jobId` returns `200 OK` with the job snapshot. Status progresses from `pending` to `running`, then `completed` or `failed`. Progress includes the completed file count, total, and current file path and locale. A completed job includes per-file results and outcomes, totals, status transitions, and diagnostics. The result includes deduplicated modified paths relative to the project root.
+
+The result outcome is `failed` if a file failed, an entry failed, or the run recorded an error. Source read/parse errors mark that file failed and permit later files to run. Unexpected errors fail the job itself and set `error`. The API notifies the writable collection's mutation sink after changed files, so the collection index reloads the resources.
+
+`GET /api/imports/jobs/:jobId/summary` returns `200 OK` with `Content-Type: text/markdown`. It sets `Content-Disposition: attachment; filename="lingo-tracker-import-summary-<timestamp>.md"`. It joins each file's core summary under a run heading and includes source errors as file error sections. The API keeps summaries in memory and never writes them to disk. Pending or running jobs return `409 Conflict`.
+
+Each request `locale` must exactly match a configured collection locale or `baseLocale`, including case. The listing returns the spelling to use. The base locale remains valid for `migration` even when the configured `locales` array omits it. Other strategies still reject the base locale with `INVALID_IMPORT_LOCALE`. Unconfigured locales return 400 with the `Invalid import request` body and an `errors` list naming the file and locale.
+
+Both POST routes return 400 for invalid body shapes, empty files, invalid strategy/format values, or base-locale imports without migration. Enum errors include `errors: [...]`. Read-only collections return `403 Forbidden` for both preview and start. Unknown collections return `404 Not Found`. Jobs and summaries use export's retention: 30 minutes after completion, at most 100 retained jobs, cleared on restart. Unknown or evicted job IDs return 404 through the shared job-not-found error.
 
 ## Resources API
 

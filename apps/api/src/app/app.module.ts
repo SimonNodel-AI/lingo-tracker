@@ -16,6 +16,10 @@ import { RouteProjectPipe } from './config/route-project';
 import { LingoTrackerExceptionFilter } from './errors/lingo-tracker-exception.filter';
 import { ExportJobService } from './exports/export-job.service';
 import { ExportsController } from './exports/exports.controller';
+import { ImportJobService } from './imports/import-job.service';
+import { ImportSourceService } from './imports/import-source.service';
+import { ImportUploadService } from './imports/import-upload.service';
+import { ImportsController } from './imports/imports.controller';
 import { TranslationJobService } from './translation-job/translation-job.service';
 
 @Module({
@@ -29,6 +33,7 @@ import { TranslationJobService } from './translation-job/translation-job.service
     LocalesController,
     BundlesController,
     ExportsController,
+    ImportsController,
   ],
   providers: [
     AppService,
@@ -39,6 +44,9 @@ import { TranslationJobService } from './translation-job/translation-job.service
     TranslationJobService,
     BundleJobService,
     ExportJobService,
+    ImportJobService,
+    ImportSourceService,
+    ImportUploadService,
     Logger,
     { provide: APP_FILTER, useClass: LingoTrackerExceptionFilter },
   ],

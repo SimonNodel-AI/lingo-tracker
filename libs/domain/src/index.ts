@@ -53,7 +53,7 @@ export { hasQuotedInterpolationDelimiter, type ICUAutoFixResult, validateICUSynt
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
 export { hasUnbundlableBranchBody, icuToTransloco } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission
-export { canImportLocale, importableLocales } from './lib/import-rules';
+export { canImportLocale, importableLocales, inferImportLocale } from './lib/import-rules';
 export {
   DEFAULT_IMPORT_STRATEGY,
   honouredImportSourceStatus,

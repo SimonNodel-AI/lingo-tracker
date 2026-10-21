@@ -13,6 +13,9 @@ import type {
   ExportJsonStructureDto,
   ExportRequestDto,
   GenerateBundleRequestDto,
+  ImportFileRequestDto,
+  ImportRequestDto,
+  ImportStrategyDto,
   LingoTrackerCollectionDto,
   MoveFolderDto,
   MoveResourceDto,
@@ -205,4 +208,37 @@ export const searchQuery: Schema<SearchQuery> = object<SearchQuery>({
   query: optional(string()),
   maxResults: optional(integerString()),
   mode: optional(string()),
+});
+
+export interface ImportSourcesQuery {
+  collection: string;
+  folder?: string;
+  overwrite?: string;
+}
+export const importSourcesQuery = object<ImportSourcesQuery>({
+  collection: string(),
+  folder: optional(string()),
+  overwrite: optional(string()),
+});
+export type ImportUploadQuery = ImportSourcesQuery;
+export const importUploadQuery = object<ImportUploadQuery>({
+  collection: string(),
+  folder: optional(string()),
+  overwrite: optional(string()),
+});
+export const importRequestBody: Schema<ImportRequestDto> = object<ImportRequestDto>({
+  collection: string(),
+  files: nonEmptyArray(
+    object<ImportFileRequestDto>({
+      path: string(1),
+      locale: string(1),
+      format: optional(string() as Schema<ImportFileRequestDto['format']>),
+    }),
+  ),
+  strategy: optional(string() as Schema<ImportStrategyDto>),
+  createMissing: optional(boolean()),
+  updateComments: optional(boolean()),
+  updateTags: optional(boolean()),
+  preserveStatus: optional(boolean()),
+  validateBase: optional(boolean()),
 });

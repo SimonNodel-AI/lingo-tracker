@@ -71,6 +71,8 @@ Import and export your resource data in JSON and XLIFF 1.2 formats. Use tags to 
 
 You can also export from the Tracker UI. Choose **Export…** on the Collections page or in a collection's menu, set the format, locales and filters, and check a live preview before LingoTracker writes the files. The dialog remembers your settings for the next export. [Learn more](docs/features/export.md#export-from-the-tracker-ui).
 
+The Tracker UI imports too. Choose **Import…** on the Collections page or in a collection's menu, check the XLIFF or JSON files that are in the import folder on the server (or upload more by button or drag and drop), pick a strategy, and read a live preview of the changes before LingoTracker writes them. A result strip then offers the details and a Markdown summary download. [Learn more](docs/features/import.md#import-from-the-tracker-ui).
+
 ## Get Started
 
 ### Installation

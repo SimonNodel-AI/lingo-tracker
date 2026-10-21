@@ -1,4 +1,7 @@
+import type { IncomingMessage } from 'node:http';
+import { isIP } from 'node:net';
 import type { INestApplication } from '@nestjs/common';
+import type { CorsOptionsCallback } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { NestFactory } from '@nestjs/core';
 import { ExpressAdapter } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -7,15 +10,40 @@ import { AppModule } from './app/app.module';
 
 export const GLOBAL_PREFIX = 'api';
 const DEFAULT_PORT = 3030;
+export const DEFAULT_HOST = '127.0.0.1';
 
 interface CreateAppOptions {
   clientPath: string;
+  allowedHosts?: string;
   /** Allows provider overrides while keeping the same Express adapter and application setup. */
   createNestApp?: (adapter: ExpressAdapter) => INestApplication | Promise<INestApplication>;
 }
 
-export async function createApp({ clientPath, createNestApp }: CreateAppOptions): Promise<INestApplication> {
+export async function createApp({
+  clientPath,
+  allowedHosts = '',
+  createNestApp,
+}: CreateAppOptions): Promise<INestApplication> {
   const server = express();
+  const namedHosts = new Set(
+    allowedHosts
+      .split(',')
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean),
+  );
+
+  server.use((req, res, next) => {
+    if (isAllowedHost(req.headers.host, namedHosts) === false) {
+      res.status(403).json({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+      return;
+    }
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && isAllowedOrigin(origin, req.headers.host) === false) {
+      res.status(403).json({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+      return;
+    }
+    next();
+  });
 
   // Serve Angular static files and SPA fallback before NestJS routes
   server.use(express.static(clientPath));
@@ -29,10 +57,16 @@ export async function createApp({ clientPath, createNestApp }: CreateAppOptions)
   const adapter = new ExpressAdapter(server);
   const app = createNestApp ? await createNestApp(adapter) : await NestFactory.create(AppModule, adapter);
 
-  app.enableCors({
-    origin: '*',
-    methods: 'GET, PUT, POST, PATCH, DELETE',
-    allowedHeaders: 'Content-Type, Authorization',
+  // Let the Host middleware return a JSON 403 instead of Node's default bare 400 for a missing Host.
+  const httpServer: { requireHostHeader: boolean } = app.getHttpServer();
+  httpServer.requireHostHeader = false;
+
+  app.enableCors((req: IncomingMessage, callback: CorsOptionsCallback) => {
+    callback(null, {
+      origin: isAllowedOrigin(req.headers.origin, req.headers.host),
+      methods: 'GET, PUT, POST, PATCH, DELETE',
+      allowedHeaders: 'Content-Type, Authorization',
+    });
   });
 
   app.setGlobalPrefix(GLOBAL_PREFIX);
@@ -48,8 +82,46 @@ export async function createApp({ clientPath, createNestApp }: CreateAppOptions)
   return app;
 }
 
+function isAllowedOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (origin === undefined) return false;
+  try {
+    const url = new URL(origin);
+    const valid =
+      origin.trim() === origin &&
+      /^https?:\/\/[^/?#@\\\s,]+$/i.test(origin) &&
+      url.username === '' &&
+      url.password === '';
+    if (valid === false) return false;
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return url.host.toLowerCase() === host?.toLowerCase();
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedHost(host: string | undefined, namedHosts: ReadonlySet<string>): boolean {
+  if (host === undefined) return false;
+  const hostname = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?$/i.exec(host)?.[1]?.toLowerCase();
+  if (hostname === undefined) return false;
+  // DNS rebinding needs a DNS name. IP literals are safe; named hosts must be listed explicitly.
+  if (hostname.startsWith('[')) return isIP(hostname.slice(1, -1)) === 6;
+  return hostname === 'localhost' || isIP(hostname) === 4 || namedHosts.has(hostname);
+}
+
+function resolveFlag(argv: readonly string[], flag: string): string | undefined {
+  const index = argv.findIndex((arg) => arg === flag || arg.startsWith(`${flag}=`));
+  if (index < 0) return undefined;
+  const argument = argv[index];
+  const value = argument === flag ? argv[index + 1] : argument?.slice(flag.length + 1);
+  return value?.startsWith('--') ? undefined : value;
+}
+
 export function resolvePort(argv: readonly string[], env: NodeJS.ProcessEnv): number | string {
-  const portArgIndex = argv.indexOf('--port');
-  const portArgValue = portArgIndex !== -1 ? argv[portArgIndex + 1] : undefined;
-  return portArgValue || env.LINGO_TRACKER_PORT || DEFAULT_PORT;
+  return resolveFlag(argv, '--port') || env.LINGO_TRACKER_PORT || DEFAULT_PORT;
+}
+
+export function resolveHost(argv: readonly string[], env: NodeJS.ProcessEnv): string {
+  return resolveFlag(argv, '--host') || env.LINGO_TRACKER_HOST || DEFAULT_HOST;
 }

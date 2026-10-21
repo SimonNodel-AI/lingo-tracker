@@ -5,14 +5,16 @@
 
 import { Logger } from '@nestjs/common';
 import { join } from 'path';
-import { createApp, GLOBAL_PREFIX, resolvePort } from './create-app';
+import { createApp, GLOBAL_PREFIX, resolveHost, resolvePort } from './create-app';
 
 async function bootstrap() {
   const clientPath = join(__dirname, '..', 'tracker', 'browser');
-  const app = await createApp({ clientPath });
   const port = resolvePort(process.argv, process.env);
-  await app.listen(port);
-  Logger.log(`🚀 Application is running on: http://localhost:${port}/${GLOBAL_PREFIX}`);
+  const host = resolveHost(process.argv, process.env);
+  const app = await createApp({ clientPath, allowedHosts: process.env.LINGO_TRACKER_ALLOWED_HOSTS });
+  await app.listen(port, host);
+  const displayHost = host === '0.0.0.0' || host === '::' ? 'localhost' : host.includes(':') ? `[${host}]` : host;
+  Logger.log(`🚀 Application is running on: http://${displayHost}:${port}/${GLOBAL_PREFIX}`);
 }
 
 bootstrap();

@@ -1,7 +1,7 @@
-import { canImportLocale, DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
+import { DEFAULT_IMPORT_STRATEGY, importStrategyPolicy } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { type ProjectTerms, readProjectTerms } from '../config/project-terms';
-import { InvalidImportLocaleError } from '../errors/internal';
+import { assertImportableLocale } from './assert-importable-locale';
 import { calculateImportStatistics, calculateStatusTransitions } from './import-statistics';
 import type {
   ICUAutoFix,
@@ -62,6 +62,7 @@ export interface ImportSession {
   readonly changes: ImportChange[];
   readonly warnings: string[];
   readonly errors: string[];
+  readonly filesAffected: Set<string>;
   readonly filesModified: Set<string>;
   readonly icuAutoFixes: ICUAutoFix[];
   readonly icuAutoFixErrors: ICUAutoFixError[];
@@ -83,9 +84,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
   const defaults = importStrategyPolicy(strategy).defaults;
   const isBaseLocaleImport = options.locale === collection.baseLocale;
 
-  if (!canImportLocale(options.locale, collection.baseLocale, strategy)) {
-    throw new InvalidImportLocaleError(collection.baseLocale, strategy);
-  }
+  assertImportableLocale(collection, options.locale, strategy);
 
   const terms = readProjectTerms(collection);
   const { warnings } = terms.forGuard(isBaseLocaleImport ? 'source' : 'target');
@@ -105,6 +104,7 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
     warnings,
     errors: [],
     filesModified: new Set(),
+    filesAffected: new Set(),
     icuAutoFixes: [],
     icuAutoFixErrors: [],
   };
@@ -123,6 +123,7 @@ export function sessionResult(session: ImportSession): ImportResult {
     changes: session.changes,
     statusTransitions: calculateStatusTransitions(session.changes),
     filesModified: Array.from(session.filesModified),
+    filesAffected: Array.from(session.filesAffected),
     warnings: session.warnings,
     errors: session.errors,
     icuAutoFixes: session.icuAutoFixes,

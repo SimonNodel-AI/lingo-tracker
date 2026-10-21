@@ -60,6 +60,47 @@ describe('importResources', () => {
   const stored = (folderKey: string, key: string) =>
     openUnreportedResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
 
+  it('tracks affected files without writing in a dry run', () => {
+    seed('common', { ok: { source: 'OK', es: 'Bien' } });
+    const before = readFileSync(join(folderOf('common'), 'resource_entries.json'), 'utf8');
+    const result = importResources(collection, [{ key: 'common.ok', value: 'Aceptar' }], {
+      locale: 'es',
+      dryRun: true,
+    });
+    expect(result.filesAffected).toEqual([
+      join(folderOf('common'), 'resource_entries.json'),
+      join(folderOf('common'), 'tracker_meta.json'),
+    ]);
+    expect(result.filesModified).toEqual([]);
+    expect(readFileSync(join(folderOf('common'), 'resource_entries.json'), 'utf8')).toBe(before);
+    expect(stored('common', 'ok')?.entry['es']).toBe('Bien');
+  });
+
+  it('tracks the same affected and modified files in a real run', () => {
+    seed('common', { ok: { source: 'OK', es: 'Bien' } });
+    const result = importResources(collection, [{ key: 'common.ok', value: 'Aceptar' }], { locale: 'es' });
+    expect(result.filesAffected).toHaveLength(2);
+    expect(result.filesAffected).toEqual(result.filesModified);
+  });
+
+  it('tracks metadata-only changes and excludes unchanged folders', () => {
+    seed('common', { ok: { source: 'OK', es: 'Bien' } });
+    seed('unchanged', { ok: { source: 'OK', es: 'Bien' } });
+    const result = importResources(
+      collection,
+      [
+        { key: 'common.ok', value: 'Bien', status: 'verified' },
+        { key: 'unchanged.ok', value: 'Bien' },
+      ],
+      { locale: 'es', strategy: 'migration', dryRun: true },
+    );
+    expect(result.filesAffected).toEqual([
+      join(folderOf('common'), 'resource_entries.json'),
+      join(folderOf('common'), 'tracker_meta.json'),
+    ]);
+    expect(result.filesModified).toEqual([]);
+  });
+
   it.each([false, true])('records every rejection kind once in each channel (dryRun=%s)', (dryRun) => {
     seed('common', {
       argument: { source: 'Hello {name}' },

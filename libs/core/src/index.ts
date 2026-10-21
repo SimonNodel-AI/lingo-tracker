@@ -112,6 +112,7 @@ export { createFolder, deleteFolder } from './lib/folder';
 export { type BuildGlossaryOptions, type BuildGlossaryResult, buildGlossary } from './lib/glossary/build-glossary';
 export type {
   ImportFormat,
+  ImportSourceInspection,
   ImportResult,
   ImportRunOptions,
   ImportRunWarning,
@@ -120,7 +121,9 @@ export type {
 } from './lib/import';
 // Operations: import
 export {
+  assertImportableLocale,
   detectImportFormat,
+  inspectImportSource,
   runImport,
 } from './lib/import';
 export type {

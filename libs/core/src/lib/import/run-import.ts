@@ -31,6 +31,8 @@ export interface ImportRunWarning {
 
 export interface RunImportResult {
   readonly outcome: RunOutcome;
+  /** Number of source entries before validation. runImport always supplies it; optional for existing adapters. */
+  readonly entriesParsed?: number;
   format: ImportFormat;
   result: ImportResult;
   /** Render only when needed: a summary failure must not hide an already completed import. */
@@ -77,6 +79,7 @@ export async function runImport(collection: Collection, options: RunImportOption
   const result = importResources(collection, resources, options);
   return {
     format,
+    entriesParsed: resources.length,
     result,
     outcome: result.resourcesFailed > 0 || result.errors.length > 0 ? 'failed' : 'succeeded',
     summary: () => generateImportSummary(result, { ...options, format, source: options.source }),

@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { type AddResourceParams, addResource, type LingoTrackerConfig, openCollection } from '@simoncodes-ca/core';
+import { createApp } from '../../create-app';
 import { AppModule } from '../app.module';
 import { ConfigService } from '../config/config.service';
 
@@ -28,6 +29,7 @@ export class HttpProject {
   };
   app: INestApplication | undefined;
   private server: Server | undefined;
+  private prefix = '';
 
   configure(): void {
     this.write('.lingo-tracker.json', JSON.stringify(this.config));
@@ -52,7 +54,7 @@ export class HttpProject {
   async seed(key: string, baseValue = 'OK', extra: Partial<AddResourceParams> = {}, name = 'test-collection') {
     return addResource(this.collection(name), { key, baseValue, ...extra });
   }
-  async start(): Promise<void> {
+  async start(guarded = false): Promise<void> {
     this.configure();
     for (const entry of Object.values(this.config.collections ?? {}))
       mkdirSync(entry.translationsFolder, { recursive: true });
@@ -66,7 +68,13 @@ export class HttpProject {
       .overrideProvider(ConfigService)
       .useValue(new ProjectConfigService())
       .compile();
-    this.app = moduleRef.createNestApplication({ logger: false });
+    this.prefix = guarded ? '/api' : '';
+    this.app = guarded
+      ? await createApp({
+          clientPath: this.root,
+          createNestApp: (adapter) => moduleRef.createNestApplication(adapter, { logger: false }),
+        })
+      : moduleRef.createNestApplication({ logger: false });
     // supertest is not installed; use the existing specs' ephemeral HTTP transport.
     await this.app.listen(0);
     this.server = this.app.getHttpServer() as Server;
@@ -78,13 +86,37 @@ export class HttpProject {
   ): Promise<{ status: number; body: T }> {
     const address = this.server?.address() as AddressInfo | null;
     if (!address) throw new Error('HTTP server has no address');
-    const response = await fetch(`http://localhost:${address.port}${path}`, {
+    const response = await fetch(`http://localhost:${address.port}${this.prefix}${path}`, {
       method,
       ...(body !== undefined && { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
     });
     if (!response.headers.get('content-type')?.includes('application/json')) {
       throw new Error(`Expected a JSON HTTP response from ${path}`);
     }
+    return { status: response.status, body: (await response.json()) as T };
+  }
+  async requestMultipart<T = Record<string, unknown>>(
+    path: string,
+    files: { name: string; contents: string | Uint8Array }[],
+    field = 'files',
+    headers?: Record<string, string>,
+    fields: Record<string, string> = {},
+  ): Promise<{ status: number; body: T }> {
+    const address = this.server?.address() as AddressInfo | null;
+    if (!address) throw new Error('HTTP server has no address');
+    const body = new FormData();
+    for (const [name, value] of Object.entries(fields)) body.append(name, value);
+    for (const file of files)
+      body.append(
+        field,
+        new Blob([typeof file.contents === 'string' ? file.contents : new Uint8Array(file.contents)]),
+        file.name,
+      );
+    const response = await fetch(`http://localhost:${address.port}${this.prefix}${path}`, {
+      method: 'POST',
+      body,
+      headers,
+    });
     return { status: response.status, body: (await response.json()) as T };
   }
   async close(): Promise<void> {

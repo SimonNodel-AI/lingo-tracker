@@ -5,6 +5,42 @@ import { describe, expect, it } from 'vitest';
 import { ApiError, apiErrorMessage, provideTrackerHttpClient, toApiError } from './api-error';
 
 describe('toApiError', () => {
+  it('preserves clashing upload names as details of a conflict', () => {
+    const error = toApiError(
+      new HttpErrorResponse({
+        status: 409,
+        error: { statusCode: 409, message: 'Files already exist', error: 'Conflict', errors: ['fr.json', 'de.xlf'] },
+      }),
+    );
+    expect(error.kind).toBe('conflict');
+    expect(error.details).toEqual(['fr.json', 'de.xlf']);
+    expect(apiErrorMessage(error, 'Upload failed')).toBe('Files already exist');
+  });
+
+  it('shows the API message when an upload exceeds the file size limit', () => {
+    const error = toApiError(
+      new HttpErrorResponse({
+        status: 413,
+        error: { statusCode: 413, message: 'File too large', error: 'Payload Too Large' },
+      }),
+    );
+    expect(error.status).toBe(413);
+    expect(error.kind).toBe('other');
+    expect(apiErrorMessage(error, 'Upload failed')).toBe('File too large');
+  });
+
+  it('shows the API message when another upload is in progress', () => {
+    const error = toApiError(
+      new HttpErrorResponse({
+        status: 429,
+        error: { statusCode: 429, message: 'Another upload is in progress', error: 'Too Many Requests' },
+      }),
+    );
+    expect(error.status).toBe(429);
+    expect(error.kind).toBe('other');
+    expect(apiErrorMessage(error, 'Upload failed')).toBe('Another upload is in progress');
+  });
+
   it('maps a 404 with a JSON body to not-found with the server message', () => {
     const error = toApiError(
       new HttpErrorResponse({

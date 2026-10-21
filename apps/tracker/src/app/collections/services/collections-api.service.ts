@@ -6,10 +6,14 @@ import type {
   BundleGenerateJobDto,
   CreateBundleDto,
   CreateCollectionDto,
-  ExportRequestDto,
-  ExportPlanDto,
   ExportJobDto,
+  ExportPlanDto,
+  ExportRequestDto,
   GenerateBundleRequestDto,
+  ImportJobDto,
+  ImportPlanDto,
+  ImportRequestDto,
+  ImportSourceListingDto,
   LingoTrackerConfigDto,
   UpdateBundleDto,
   UpdateCollectionDto,
@@ -125,5 +129,43 @@ export class CollectionsApiService {
 
   getExportJob(jobId: string): Observable<ExportJobDto> {
     return this.http.get<ExportJobDto>(apiPath('GET /api/exports/jobs/:jobId', { jobId }));
+  }
+
+  listImportSources(collection: string, folder?: string): Observable<ImportSourceListingDto> {
+    return this.http.get<ImportSourceListingDto>(apiPath('GET /api/imports/sources'), {
+      params: { collection, ...(folder?.trim() ? { folder } : {}) },
+    });
+  }
+
+  uploadImportSources(
+    collection: string,
+    files: readonly File[],
+    options: { folder?: string; overwrite?: boolean } = {},
+  ): Observable<ImportSourceListingDto> {
+    const body = new FormData();
+    for (const file of files) body.append('files', file, file.name);
+    return this.http.post<ImportSourceListingDto>(apiPath('POST /api/imports/sources'), body, {
+      params: {
+        collection,
+        ...(options.folder?.trim() ? { folder: options.folder } : {}),
+        ...(options.overwrite ? { overwrite: 'true' } : {}),
+      },
+    });
+  }
+
+  dryRunImport(body: ImportRequestDto): Observable<ImportPlanDto> {
+    return this.http.post<ImportPlanDto>(apiPath('POST /api/imports/dry-run'), body);
+  }
+
+  startImport(body: ImportRequestDto): Observable<ImportJobDto> {
+    return this.http.post<ImportJobDto>(apiPath('POST /api/imports'), body);
+  }
+
+  getImportJob(jobId: string): Observable<ImportJobDto> {
+    return this.http.get<ImportJobDto>(apiPath('GET /api/imports/jobs/:jobId', { jobId }));
+  }
+
+  importSummaryUrl(jobId: string): string {
+    return apiPath('GET /api/imports/jobs/:jobId/summary', { jobId });
   }
 }

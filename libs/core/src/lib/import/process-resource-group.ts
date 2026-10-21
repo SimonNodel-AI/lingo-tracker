@@ -308,9 +308,10 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
   // Write files once for the entire group, but only when in-memory state was actually mutated.
   // Logging an 'updated' change (e.g. update strategy with unchanged value) does not imply a
   // disk write is needed — `dataModified` is the authoritative signal for that.
-  if (!options.dryRun && ctx.dataModified) {
-    for (const filePath of folder.save().written) {
-      session.filesModified.add(filePath);
+  if (ctx.dataModified) {
+    for (const filePath of folder.save({ dryRun: options.dryRun }).written) {
+      session.filesAffected.add(filePath);
+      if (!options.dryRun) session.filesModified.add(filePath);
     }
   }
 }

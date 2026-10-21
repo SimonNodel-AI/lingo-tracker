@@ -19,6 +19,7 @@ describe('import-summary', () => {
           { from: 'new', to: 'translated', count: 5 },
           { from: 'stale', to: 'translated', count: 5 },
         ],
+        filesAffected: [],
         filesModified: [
           '/test/translations/common/resource_entries.json',
           '/test/translations/common/tracker_meta.json',
@@ -69,6 +70,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [],
+        filesAffected: ['/test/translations/common/resource_entries.json'],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -90,6 +92,8 @@ describe('import-summary', () => {
       expect(summary).toContain('# Import Summary (DRY RUN)');
       expect(summary).toContain('**Resources Would Be Imported**: 5');
       expect(summary).toContain('**Resources Would Be Updated**: 5');
+      expect(summary).toContain('## Files That Would Be Modified');
+      expect(summary).toContain('/test/translations/common/resource_entries.json');
     });
 
     it('should include warnings section when warnings exist', () => {
@@ -104,6 +108,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: ['Base value mismatch for key: common.title', 'Duplicate key in import file: common.subtitle'],
         errors: [],
@@ -138,6 +143,7 @@ describe('import-summary', () => {
         resourcesFailed: 2,
         changes: [],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: ['Invalid key format: common..invalid', 'Hierarchical conflict: common'],
@@ -191,6 +197,7 @@ describe('import-summary', () => {
           },
         ],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -244,6 +251,7 @@ describe('import-summary', () => {
           },
         ],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -289,6 +297,7 @@ describe('import-summary', () => {
           },
         ],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -334,6 +343,7 @@ describe('import-summary', () => {
           },
         ],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -372,6 +382,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: files,
         warnings: warnings,
         errors: errors,
@@ -417,6 +428,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: changes,
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -450,6 +462,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -493,6 +506,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [{ from: 'translated', to: 'translated', count: 10 }],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],
@@ -525,6 +539,7 @@ describe('import-summary', () => {
         resourcesFailed: 0,
         changes: [],
         statusTransitions: [{ to: 'translated', count: 5 }],
+        filesAffected: [],
         filesModified: [],
         warnings: [],
         errors: [],

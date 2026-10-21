@@ -27,6 +27,10 @@ import { ConfigController } from '../config/config.controller';
 import { ConfigService } from '../config/config.service';
 import { ExportJobService } from '../exports/export-job.service';
 import { ExportsController } from '../exports/exports.controller';
+import { ImportJobService } from '../imports/import-job.service';
+import { ImportSourceService } from '../imports/import-source.service';
+import { ImportUploadService } from '../imports/import-upload.service';
+import { ImportsController } from '../imports/imports.controller';
 import { TranslationJobService } from '../translation-job/translation-job.service';
 import * as schemas from './dto-schemas';
 import { exactMessage } from './exact-message.test-support';
@@ -572,6 +576,9 @@ const wiring = [
   [BundlesController, 'generateBundle', RouteParamtypes.BODY, schemas.generateBundleBody],
   [ExportsController, 'dryRun', RouteParamtypes.BODY, schemas.exportRequestBody],
   [ExportsController, 'start', RouteParamtypes.BODY, schemas.exportRequestBody],
+  [ImportsController, 'start', RouteParamtypes.BODY, schemas.importRequestBody],
+  [ImportsController, 'dryRun', RouteParamtypes.BODY, schemas.importRequestBody],
+  [ImportsController, 'listSources', RouteParamtypes.QUERY, schemas.importSourcesQuery],
   [LocalesController, 'addLocale', RouteParamtypes.BODY, schemas.addLocaleBody],
   [FoldersController, 'create', RouteParamtypes.BODY, schemas.createFolderBody],
   [FoldersController, 'delete', RouteParamtypes.BODY, schemas.deleteFolderBody],
@@ -599,6 +606,9 @@ describe('HTTP schema wiring', () => {
         { provide: TranslationJobService, useValue: {} },
         { provide: BundleJobService, useValue: {} },
         { provide: ExportJobService, useValue: {} },
+        { provide: ImportJobService, useValue: {} },
+        { provide: ImportSourceService, useValue: {} },
+        { provide: ImportUploadService, useValue: {} },
       ],
     }).compile();
     for (const controller of controllers) expect(module.get(controller)).toBeDefined();

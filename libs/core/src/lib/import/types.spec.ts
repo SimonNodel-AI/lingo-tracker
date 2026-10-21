@@ -164,6 +164,7 @@ describe('import types', () => {
           { from: 'new', to: 'translated', count: 50 },
           { from: 'stale', to: 'translated', count: 50 },
         ],
+        filesAffected: [],
         filesModified: [
           '/translations/common/buttons/resource_entries.json',
           '/translations/common/buttons/tracker_meta.json',
