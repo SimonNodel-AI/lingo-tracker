@@ -20,6 +20,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { ExportFormatDto, ExportJsonStructureDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
 import { finalize } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ChipInput } from '../../shared/chip-input/chip-input';
@@ -33,9 +34,6 @@ import { CollectionsStore } from '../store/collections.store';
 import type { ExportDialogData, ExportDialogResult } from './export-dialog-data';
 import { ExportForm, type ExportSection } from './export-form';
 import { entryShape } from './export-preview';
-
-/** The CLI prompt order. */
-const STATUS_ORDER: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
 
 type FooterState = 'ready' | 'checking' | 'nothing' | 'invalid' | 'noLocales' | 'previewFailed' | 'planErrors';
 
@@ -67,7 +65,7 @@ export class ExportDialog {
   readonly store = inject(CollectionsStore);
 
   readonly TOKENS = TRACKER_TOKENS;
-  readonly STATUS_ORDER = STATUS_ORDER;
+  readonly STATUS_ORDER = exportOptionsPolicy.statusOrder;
   readonly codeMarkup = codeMarkup;
   /** Technical literal, not copy: the placeholder shown in the file name field. */
   readonly localePlaceholder = '{locale}';
@@ -100,9 +98,9 @@ export class ExportDialog {
     return errors;
   });
   readonly statusSummary = computed(() =>
-    STATUS_ORDER.filter((status) => this.model.draft().statuses.includes(status)),
+    exportOptionsPolicy.statusOrder.filter((status) => this.model.draft().statuses.includes(status)),
   );
-  readonly allStatuses = computed(() => this.statusSummary().length === STATUS_ORDER.length);
+  readonly allStatuses = computed(() => this.statusSummary().length === exportOptionsPolicy.statusOrder.length);
   readonly collectionCount = computed(() => {
     const draft = this.model.draft();
     const names = this.model.collectionNames();
@@ -224,11 +222,11 @@ export class ExportDialog {
       ? control.value.filter((existing) => existing !== status)
       : [...control.value, status];
     control.markAsTouched();
-    control.setValue(STATUS_ORDER.filter((candidate) => next.includes(candidate)));
+    control.setValue(exportOptionsPolicy.statusOrder.filter((candidate) => next.includes(candidate)));
   }
 
   selectAllStatuses(): void {
-    this.model.form.controls.statuses.setValue([...STATUS_ORDER]);
+    this.model.form.controls.statuses.setValue([...exportOptionsPolicy.statusOrder]);
   }
 
   addTag(raw: string): void {

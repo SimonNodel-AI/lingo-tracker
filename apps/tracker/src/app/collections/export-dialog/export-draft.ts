@@ -5,6 +5,7 @@ import type {
   LingoTrackerConfigDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
+import { exportOptionsPolicy, isTranslationStatus } from '@simoncodes-ca/domain';
 import { json, KeyedStorage, type StorageAdapter } from '../../shared/storage/keyed-storage';
 
 export const EXPORT_DRAFT_STORAGE_KEY = 'lingo-tracker.exportDraft';
@@ -41,24 +42,24 @@ export interface ExportContext {
 
 export function defaultDraft(config: DraftConfig = {}): ExportDraft {
   return {
-    format: 'xliff',
+    format: exportOptionsPolicy.initialFormat,
     allCollections: true,
     collections: [],
     allLocales: true,
     locales: [],
-    statuses: ['new', 'stale'],
+    statuses: [...exportOptionsPolicy.defaults.statuses],
     tags: [],
     outputDirectory: config.exportFolder || 'dist/lingo-export',
     filenamePattern: '',
-    protectedTermNotes: true,
+    protectedTermNotes: exportOptionsPolicy.defaults.protectNotes,
     json: {
-      structure: 'hierarchical',
-      rich: false,
-      includeBase: false,
-      basePropertyName: 'baseValue',
-      includeStatus: false,
-      includeComment: false,
-      includeTags: false,
+      structure: exportOptionsPolicy.defaults.structure,
+      rich: exportOptionsPolicy.defaults.rich,
+      includeBase: exportOptionsPolicy.defaults.includeBase,
+      basePropertyName: exportOptionsPolicy.defaults.basePropertyName,
+      includeStatus: exportOptionsPolicy.defaults.includeStatus,
+      includeComment: exportOptionsPolicy.defaults.includeComment,
+      includeTags: exportOptionsPolicy.defaults.includeTags,
     },
   };
 }
@@ -113,7 +114,7 @@ export function fromExportRequest(request: ExportRequestDto, config: DraftConfig
     tags: [...(request.tags ?? [])],
     outputDirectory: request.outputDirectory ?? defaults.outputDirectory,
     filenamePattern: request.filenamePattern ?? '',
-    protectedTermNotes: request.protectedTermNotes ?? true,
+    protectedTermNotes: request.protectedTermNotes ?? defaults.protectedTermNotes,
     json: {
       structure: request.json?.structure ?? defaults.json.structure,
       rich: request.json?.rich ?? defaults.json.rich,
@@ -150,7 +151,7 @@ export function readPersistedDraft(storage: StorageSource, config: DraftConfig =
       if (typeof value !== 'object' || value === null) return undefined;
       const draft = defaultDraft(config);
       // Validate each field rather than spreading untrusted storage into a typed form.
-      if ('format' in value && (value.format === 'json' || value.format === 'xliff')) draft.format = value.format;
+      if ('format' in value && exportOptionsPolicy.isFormat(value.format)) draft.format = value.format;
       for (const key of ['outputDirectory', 'filenamePattern'] as const) {
         if (key in value && typeof (value as Record<string, unknown>)[key] === 'string')
           draft[key] = (value as Record<string, string>)[key];
@@ -158,9 +159,7 @@ export function readPersistedDraft(storage: StorageSource, config: DraftConfig =
       if ('protectedTermNotes' in value && typeof value.protectedTermNotes === 'boolean')
         draft.protectedTermNotes = value.protectedTermNotes;
       if ('statuses' in value && Array.isArray(value.statuses)) {
-        const statuses = value.statuses.filter((status): status is TranslationStatus =>
-          ['new', 'stale', 'translated', 'verified'].includes(status),
-        );
+        const statuses = value.statuses.filter(isTranslationStatus);
         if (statuses.length > 0) draft.statuses = statuses;
       }
       if ('tags' in value && Array.isArray(value.tags))
@@ -171,7 +170,7 @@ export function readPersistedDraft(storage: StorageSource, config: DraftConfig =
           if (key in options && typeof (options as Record<string, unknown>)[key] === 'boolean')
             draft.json[key] = (options as Record<string, boolean>)[key];
         }
-        if ('structure' in options && (options.structure === 'flat' || options.structure === 'hierarchical'))
+        if ('structure' in options && exportOptionsPolicy.isJsonStructure(options.structure))
           draft.json.structure = options.structure;
         if ('basePropertyName' in options && typeof options.basePropertyName === 'string')
           draft.json.basePropertyName = options.basePropertyName;

@@ -1,6 +1,6 @@
 # Export options stay in the CLI
 
-Status: Accepted
+Status: Superseded by ADR-0002
 
 Date: 2026-10-15
 

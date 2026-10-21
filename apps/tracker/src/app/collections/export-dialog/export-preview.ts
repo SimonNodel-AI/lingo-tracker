@@ -1,4 +1,5 @@
 import type { ExportPlanDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
 import { DryRunPreview, type DryRunPreviewOptions } from '../shared/dry-run-preview';
 import type { ExportDraft } from './export-draft';
 
@@ -40,7 +41,9 @@ export function entryShape(
   const options = draft.json;
   const entry = {
     value: target,
-    ...(options.includeBase ? { [options.basePropertyName.trim() || 'baseValue']: baseValue } : {}),
+    ...(options.includeBase
+      ? { [options.basePropertyName.trim() || exportOptionsPolicy.defaults.basePropertyName]: baseValue }
+      : {}),
     ...(options.includeStatus ? { status: 'stale' } : {}),
     ...(options.includeComment ? { comment: 'Primary action' } : {}),
     ...(options.includeTags ? { tags: ['ui'] } : {}),
