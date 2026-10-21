@@ -86,6 +86,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["apps/tracker/**/*.ts"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "useLiteralKeys": "off"
+          }
+        }
+      }
     }
   ]
 }
