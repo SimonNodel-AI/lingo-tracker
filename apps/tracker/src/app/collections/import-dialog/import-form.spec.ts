@@ -867,10 +867,12 @@ describe('ImportForm', () => {
       const uploadSources = vi.fn(() => of(uploaded));
       const { model } = build({ uploadSources });
       settle();
-      model.saving.set(true);
+      model.toggleFile('in/es.xliff', true);
+      const subscription = model.submit(() => NEVER).subscribe();
       expect(model.canUpload()).toBe(false);
       model.uploadFiles([upload('es.xliff')]);
       expect(uploadSources).not.toHaveBeenCalled();
+      subscription.unsubscribe();
     });
   });
 });

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Logger } from '@nestjs/common';
 import type {
@@ -9,7 +9,9 @@ import type {
   writePreparedExport,
 } from '@simoncodes-ca/core';
 import type { ExportRequestDto } from '@simoncodes-ca/data-transfer';
+import { toHttpException } from '../errors/lingo-tracker-exception.filter';
 import { JobNotFoundError } from '../jobs/job-not-found.error';
+import { JobRegistry } from '../jobs/job-registry';
 import { closeExportProject, exportProject } from './export.spec-helpers';
 import { ExportJobService, JOB_RETENTION_MS, MAX_RETAINED_JOBS } from './export-job.service';
 
@@ -65,7 +67,10 @@ describe('ExportJobService', () => {
     service = new ExportJobService(logger as Logger);
     mockWrite.mockResolvedValue(result(project));
   });
-  afterEach(() => closeExportProject(project));
+  afterEach(() => {
+    jest.restoreAllMocks();
+    closeExportProject(project);
+  });
 
   it('returns a pending snapshot with the echoed request and prepared file total', () => {
     const job = start();
@@ -84,6 +89,38 @@ describe('ExportJobService', () => {
       { format: 'invalid' },
     ] as unknown as ExportRequestDto[])
       expect(() => service.startJob({ project, request: body })).toThrow();
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+
+  it('previews an output problem but rejects start with 400 before registering a job', () => {
+    writeFileSync(join(project.projectRoot, 'blocked'), 'a file');
+    const params = { project, request: { ...request, outputDirectory: 'blocked' } };
+    const registered = jest.spyOn(JobRegistry.prototype, 'start');
+    const plan = service.dryRun(params);
+    expect(plan.outputProblem).toEqual(expect.any(String));
+    let rejection: unknown;
+    try {
+      service.startJob(params);
+    } catch (error) {
+      rejection = error;
+    }
+    expect(rejection).toBeDefined();
+    const http = toHttpException(rejection);
+    expect(http.getStatus()).toBe(400);
+    expect(http.getResponse()).toEqual({ statusCode: 400, error: 'Bad Request', message: plan.outputProblem });
+    expect(registered).not.toHaveBeenCalled();
+    expect(mockWrite).not.toHaveBeenCalled();
+  });
+
+  it('prepares and maps a dry run without registering or writing', () => {
+    const registered = jest.spyOn(JobRegistry.prototype, 'start');
+    expect(service.dryRun({ project, request })).toMatchObject({
+      outputDirectory: 'dist/export',
+      entriesTotal: 2,
+      files: [{ path: 'dist/export/fr.json' }, { path: 'dist/export/es.json' }],
+    });
+    expect(mockPrepared).toHaveBeenCalledTimes(1);
+    expect(registered).not.toHaveBeenCalled();
     expect(mockWrite).not.toHaveBeenCalled();
   });
 

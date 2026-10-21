@@ -6,7 +6,7 @@ import { Observable, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { fakeDialog, fakeEnv } from '../../../testing/form-submit-env';
 import { toApiError } from '../../shared/api-error/api-error';
-import { NamedEntrySubmit, submitDialogConfigWrite } from './dialog-config-submit';
+import { NamedEntrySubmit, submitDialogConfigWrite, submitDialogJob } from './dialog-config-submit';
 
 function setup(entry: { mode: 'create' | 'edit'; name?: string } = { mode: 'create' }) {
   const env = fakeEnv();
@@ -292,5 +292,28 @@ describe('dialog Config Write submit', () => {
     write.next(null);
     expect(dialogRef.close).not.toHaveBeenCalled();
     expect(onRefusal).not.toHaveBeenCalled();
+  });
+});
+
+describe('dialog job submit', () => {
+  it.each(['success', 'failure', 'empty', 'destroy'] as const)('holds the close lock until %s', (outcome) => {
+    const env = fakeEnv();
+    const dialog = fakeDialog<{ jobId: string }>();
+    const pending = new Subject<{ jobId: string }>();
+    submitDialogJob({ dialogRef: dialog, start: pending, destroyRef: env.destroyRef });
+    expect(dialog.disableClose).toBe(true);
+    if (outcome === 'success') {
+      pending.next({ jobId: 'j' });
+      pending.complete();
+      expect(dialog.close).toHaveBeenCalledWith({ jobId: 'j' });
+    } else {
+      if (outcome === 'failure') pending.error(new Error('failed'));
+      if (outcome === 'empty') pending.complete();
+      if (outcome === 'destroy') env.destroy();
+      pending.next({ jobId: 'late' });
+      expect(dialog.close).not.toHaveBeenCalled();
+    }
+    expect(dialog.disableClose).toBe(false);
+    expect(pending.observed).toBe(false);
   });
 });

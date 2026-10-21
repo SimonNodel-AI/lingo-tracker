@@ -14,7 +14,7 @@ import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';
 import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
 import { CollectionsApiService } from '../../services/collections-api.service';
-import { BUNDLE_RUNS_STORAGE_KEY, BundleRunController } from '../bundle-run-controller';
+import { BUNDLE_RUNS_STORAGE_KEY, BundleBatchController } from '../bundle-batch-controller';
 import { type BundleRunState, readPersistedRuns } from '../bundle-runs';
 import { injectConfigWrite } from '../config-write';
 
@@ -87,7 +87,7 @@ export function withBundlesFeature<_>() {
         json(readPersistedRuns),
       );
 
-      const controller = new BundleRunController(
+      const controller = new BundleBatchController(
         {
           generate: (name, locales) => api.generateBundle(name, locales ? { locales } : {}),
           getJob: (jobId) => api.getBundleJob(jobId),

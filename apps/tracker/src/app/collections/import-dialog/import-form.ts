@@ -17,7 +17,6 @@ import {
 import { canImportLocale, findCollectionEntry, importableLocales, inferImportLocale } from '@simoncodes-ca/domain';
 import {
   catchError,
-  defer,
   EMPTY,
   finalize,
   map,
@@ -28,12 +27,13 @@ import {
   Subscription,
   switchMap,
   takeUntil,
-  throwError,
   timer,
 } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import type { StorageAdapter } from '../../shared/storage/keyed-storage';
+import { detailsElseMessage } from '../store/form-submit-attempt';
+import { JobStartAttempt } from '../store/form-submit-attempt-job';
 import { resolveCollectionSettings } from '../store/collection-settings';
 import type { ImportDialogData } from './import-dialog-data';
 import {
@@ -180,9 +180,12 @@ export class ImportForm {
     return this.form.valid;
   });
   readonly activeSection = signal<ImportSection>('source');
-  readonly saving = signal(false);
-  readonly submitAttempted = signal(false);
-  readonly submitErrors = signal<readonly string[]>([]);
+  readonly #attempt = new JobStartAttempt<ImportRequestDto>(() =>
+    this.options.translate(TRACKER_TOKENS.IMPORT.TOAST.STARTFAILED),
+  );
+  readonly saving = this.#attempt.saving;
+  readonly submitAttempted = this.#attempt.state.attempted;
+  readonly submitErrors = this.#attempt.state.errors;
   readonly sections: readonly ImportSection[] = ['source', 'strategy', 'options'];
 
   readonly listing = signal<ImportSourceListingDto | undefined>(undefined);
@@ -309,7 +312,7 @@ export class ImportForm {
     this.#changes.add(
       this.form.valueChanges.subscribe(() => {
         this.refreshSelections();
-        this.submitErrors.set([]);
+        this.#attempt.state.clear();
         this.rememberFolder();
         // A Retry request is a one-off; it must not become the remembered draft.
         if (options.storage && !data.request) persistDraft(this.form.getRawValue(), this.#folders, options.storage);
@@ -530,10 +533,8 @@ export class ImportForm {
 
   /** Show every error and move to the first section that has one. Returns whether the form is invalid. */
   revealErrors(): boolean {
-    this.submitAttempted.set(true);
     this.refreshSelections();
-    if (!this.form.invalid) return false;
-    this.form.markAllAsTouched();
+    if (this.#attempt.state.check(this.form)) return false;
     const first = this.sections.find((section) => this.sectionErrors().has(section));
     if (first) this.activeSection.set(first);
     return true;
@@ -544,26 +545,7 @@ export class ImportForm {
   }
 
   submit(start: (request: ImportRequestDto) => Observable<ImportJobDto>): Observable<ImportJobDto> {
-    return defer(() => {
-      if (this.saving()) return EMPTY;
-      const request = this.submitResult();
-      if (!request) return EMPTY;
-      this.saving.set(true);
-      this.submitErrors.set([]);
-      return defer(() => start(request)).pipe(
-        catchError((error: unknown) => {
-          const details =
-            error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
-          this.submitErrors.set(
-            details.length
-              ? details
-              : [apiErrorMessage(error, this.options.translate(TRACKER_TOKENS.IMPORT.TOAST.STARTFAILED))],
-          );
-          return throwError(() => error);
-        }),
-        finalize(() => this.saving.set(false)),
-      );
-    });
+    return this.#attempt.start(() => this.submitResult(), start);
   }
 
   destroy(): void {
@@ -708,8 +690,6 @@ export class ImportForm {
       this.uploadStatus.set('idle');
       return;
     }
-    const details =
-      error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
     const fallback = this.options.translate(
       error instanceof ApiError && error.status === TOO_MANY_REQUESTS
         ? TRACKER_TOKENS.IMPORT.DIALOG.SOURCE.UPLOADBUSY
@@ -718,9 +698,11 @@ export class ImportForm {
     this.uploadErrors.set(
       error instanceof ApiError && error.status === TOO_MANY_REQUESTS
         ? [fallback]
-        : details.length > 0
-          ? details
-          : [apiErrorMessage(error, fallback)],
+        : detailsElseMessage({
+            kind: 'message',
+            details: error instanceof ApiError ? error.details : [],
+            message: apiErrorMessage(error, fallback),
+          }),
     );
     this.uploadStatus.set('error');
     // A partial write may have changed the folder: the relist shows whatever landed.

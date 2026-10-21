@@ -3,7 +3,6 @@ import { BadRequestException } from '@nestjs/common';
 import { type OpenedProject, runImport } from '@simoncodes-ca/core';
 import type { ImportRequestDto } from '@simoncodes-ca/data-transfer';
 import { closeImportProject, importProject, writeImport } from '../imports/import.spec-helpers';
-import { MAX_PLAN_MESSAGES } from './export.mapper';
 import {
   type ImportFileRun,
   mapImportRequestToRunOptions,
@@ -11,6 +10,7 @@ import {
   mapImportRunToJobResult,
   mapImportRunToPlan,
 } from './import.mapper';
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 describe('import mapper', () => {
   let project: OpenedProject;
@@ -188,12 +188,21 @@ describe('import mapper', () => {
     });
   });
 
-  it('fails the outcome for failed entries or errors even when the recorded run outcome succeeded', async () => {
+  it('uses the recorded core outcome even when counts or diagnostics disagree', async () => {
     const file = await runFile();
     if (!file.run) throw new Error('Missing result');
     for (const changed of [{ resourcesFailed: 1 }, { errors: ['Error'] }]) {
       const run = { ...file.run, outcome: 'succeeded' as const, result: { ...file.run.result, ...changed } };
-      expect(mapImportRunToJobResult(request, [{ ...file, run }], project.projectRoot).outcome).toBe('failed');
+      expect(mapImportRunToJobResult(request, [{ ...file, run }], project.projectRoot)).toMatchObject({
+        outcome: 'succeeded',
+        files: [{ outcome: 'imported' }],
+      });
+      expect(
+        mapImportRunToJobResult(request, [{ ...file, run: { ...run, outcome: 'failed' } }], project.projectRoot),
+      ).toMatchObject({
+        outcome: 'failed',
+        files: [{ outcome: 'failed' }],
+      });
     }
   });
 
@@ -384,8 +393,7 @@ describe('import mapper', () => {
     if (!option || !file) throw new Error('Missing import options');
     for (const dryRun of [true, false]) {
       const run = await runImport(collection, { ...option, dryRun });
-      // Core keeps its CLI contract: creations are separate from resourcesImported.
-      expect(run.result.resourcesImported).toBe(0);
+      expect(run.result.resourcesImported).toBe(2);
       const runs = [{ file, format: run.format, run }];
       for (const result of [mapImportRunToPlan(dto, runs), mapImportRunToJobResult(dto, runs, project.projectRoot)]) {
         expect(result.files[0]).toMatchObject({ entries: 2, imported: 2, created: 2, updated: 0 });

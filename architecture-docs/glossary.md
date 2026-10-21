@@ -70,6 +70,14 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md), [`core-lib
 
 ---
 
+### Bundle Batch Controller
+
+The thin bundle adapter in `apps/tracker/src/app/collections/store/bundle-batch-controller.ts`, backed by [Job Run Lifecycle](#job-run-lifecycle). `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `changes` publishes run maps, started batch names, batch position and busy state. Completed and failed runs advance the batch position; even an immediate request failure counts as a start. Batch names are not persisted. The adapter supplies bundle jobs, snapshot mapping with seeded locale totals, and localized error mapping; lifecycle recovery, cancellation and persistence are shared with export and import.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
+
+---
+
 ### Bundle Collection References
 
 The explicit collection entries stored in bundle definitions. `renameBundleCollectionReferences` and `removeBundleCollectionReferences` in `libs/core/src/lib/bundle/bundle-definition-operations.ts` change them in memory as part of the [Collection Lifecycle](#collection-lifecycle). Rename refuses a target already referenced by a bundle with `CollectionRenameBundleConflictError`. Removal checks every bundle first and throws `CollectionRequiredByBundleError` when any list would become empty. Malformed collection lists are skipped and null entries are tolerated. Entries in `'All'` bundles are unchanged. The same module owns bundle-map edits for definition add, update and delete. One rebuild path preserves key order. Separate rename and removal passes share the explicit-list guard and tolerate null entries.
@@ -138,14 +146,6 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
 ---
 
-### Bundle Run Controller
-
-The plain Tracker controller in `apps/tracker/src/app/collections/store/bundle-run-controller.ts`. `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `restore()` restores persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes the run. `clear(name)` cancels that bundle’s subscription and persists dismissal (removing the key when the run map is empty), and `destroy()` cancels requests and polling. Starting or resuming a bundle replaces its previous subscription. Its three ports supply jobs, Keyed Storage, and a clock with a poll scheduler. `changes` publishes run maps, started batch names, batch position and busy state. Start/poll errors become failed runs with a localized fallback and any API rule details; storage errors never break a run. Batch names are not persisted.
-
-Explained in context: [`frontend.md`](frontend.md#bundle-runs)
-
----
-
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, warnings, tokenConstantNameOverride, content }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `content({ onLocale?, onBase? })` selects all requested locales and each collection’s base values once, on first use. It caches trees, base keys, conflicts, and warnings. `planPreparedBundle(prepared)` describes this content; generation writes it. Empty locales have zero counts and warnings but no planned file. Base-selection warnings appear once unless separate locale selections also report them. Selected locale conflicts stop generation before all writes. Base conflicts stop runs only when types or debug keys consume the base tree. Progress fires before each locale selection. The run holds all selections in memory until output completes. Preparation is the single producer of config advisories: `warnings: readonly BundleWarning[]` contains already worded messages with the `config` origin, or is empty. Generation and failed run outcomes classify these advisories into [Bundle Findings](#bundle-findings). If generation throws before returning a result, the API logs each prepared warning once.
@@ -154,7 +154,15 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle
 
 ---
 
-### Key Tree
+#### Job Start Attempt
+
+The job acceptance helper in `apps/tracker/src/app/collections/store/form-submit-attempt-job.ts`. `JobStartAttempt<TResult>` takes a failure-message callback and composes [Form Attempt State](#form-attempt-state), exposed as `state`. `start(prepare, start)` returns a lazy Observable, ignores duplicate starts, and clears previous errors after valid preparation. It owns `saving`, maps failures through `detailsElseMessage`, rethrows the original error and resets saving on completion, error or cancellation. Export and import forms keep their validation, request construction and section jumps.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
+## Key Tree
 
 The pure conversion between dot-delimited keys and nested JSON in `libs/domain/src/lib/key-tree.ts`. `buildKeyTree(entries, { leaf?, path? })` returns `{ tree, conflicts }`. Every branch has a null prototype, and traversal checks own properties. Leaves remain opaque, including rich objects. Parent leaves win over descendants in both key orders; conflicts lists each parent once, sorted. Exact duplicates use the last value. With `path`, distinct source keys that share a transformed path produce conflicts naming every source key. Callers validate key syntax before conversion.
 
@@ -168,9 +176,9 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#hierarchy-bu
 
 ### Bundle Runs
 
-The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
+The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Batch Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. The API formats core's [Bundle Findings](#bundle-findings) into the job result DTO. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots and parses persisted runs. The [Job Run Lifecycle](#job-run-lifecycle) owns starts, polling and session storage mirroring; the [Bundle Batch Controller](#bundle-batch-controller) adds batch progress; the store retains config reads/writes and projects controller snapshots into signals. The API formats core's [Bundle Findings](#bundle-findings) into the job result DTO. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -506,7 +514,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-connector-links)
 
 ### Dialog Config Submit
 
-Dialog Config Submit owns the collection or bundle write lifecycle; [Form Submit Attempt](#form-submit-attempt) composes it and adds the form's attempt state. `NamedEntrySubmit` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` accepts five submit fields: `dialog`, `entry` (mode and original name), `prepare`, `write`, and `onRefusal`. The form's `prepare(): TResult | undefined | Promise<TResult | undefined>` owns synchronous validity checks, any confirmation, explicit error resets and one result build; `undefined` aborts. The module ignores another attempt during confirmation or a write, awaits preparation, chooses create or update, and builds the rename patch. `write` groups the entity's `create(result)` and `update(name, patch, result)` calls. The module owns `saving`, the server-taken-name validator and localized refusal classification; the form renders the refusal. `submitDialogConfigWrite()` owns the cold write subscription, close lock, success close and restoration on refusal. Destruction cancels an in-flight write and prevents a write after pending preparation. Confirmation keeps the original saving and close behavior. Each form's `submit({ dialog, write })` is its single submit entry point; dialogs call it directly. `dialog-config-submit-adapters.ts` returns only `{ env, write }`, using DTO types without importing forms. The environment supplies `translate`, `destroyRef` and an injected `confirm` function. The collection form owns its removed-locale prompt. `classifyConfigRefusal()` remains with [Config Write](#config-write); Settings uses it for row errors and keeps its page-owned subscription after navigation.
+Dialog Config Submit owns the collection or bundle write lifecycle; [Form Submit Attempt](#form-submit-attempt) composes it and adds the form's attempt state. `NamedEntrySubmit` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` accepts five submit fields: `dialog`, `entry` (mode and original name), `prepare`, `write`, and `onRefusal`. The form's `prepare(): TResult | undefined | Promise<TResult | undefined>` owns synchronous validity checks, any confirmation, explicit error resets and one result build; `undefined` aborts. The module ignores another attempt during confirmation or a write, awaits preparation, chooses create or update, and builds the rename patch. `write` groups the entity's `create(result)` and `update(name, patch, result)` calls. The module owns `saving`, the server-taken-name validator and localized refusal classification; the form renders the refusal. `submitDialogConfigWrite()` owns the cold write subscription, close lock, success close and restoration on refusal. The same module supplies `submitDialogJob({ dialogRef, start, destroyRef })` for export and import: it locks closing, subscribes to the form-owned start, closes with the accepted job, unlocks on finalization and cancels on destruction. Job refusal messages stay with [Job Start Attempt](#job-start-attempt). Destruction cancels an in-flight write and prevents a write after pending preparation. Confirmation keeps the original saving and close behavior. Each form's `submit({ dialog, write })` is its single submit entry point; dialogs call it directly. `dialog-config-submit-adapters.ts` returns only `{ env, write }`, using DTO types without importing forms. The environment supplies `translate`, `destroyRef` and an injected `confirm` function. The collection form owns its removed-locale prompt. `classifyConfigRefusal()` remains with [Config Write](#config-write); Settings uses it for row errors and keeps its page-owned subscription after navigation.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -662,9 +670,38 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ---
 
+### Export Dialog Decisions
+
+The plain footer and plan presentation rules in `apps/tracker/src/app/collections/export-dialog/export-dialog-decisions.ts`. `exportFooter(input)` takes validity, preview state, the plan and busy flags; it returns the ordered footer state, submit permission and primary button token with its count. `exportPlanPresentation(plan, sectionErrors)` adds server output problems to the rail errors. `exportFixSection(formInvalid, outputProblem)` chooses the Output jump only when field validation did not already choose a section. The component binds these Angular-free functions with computed signals.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
+### Export Options Policy
+
+The shared export rules in `exportOptionsPolicy` from `libs/domain/src/lib/export-options-policy.ts`.
+Its frozen record holds shared defaults, format and JSON structure guards, and status selection order.
+Named predicates identify JSON and rich JSON.
+The applicability function also owns the base-property question rule: JSON with include-base, even without rich JSON.
+Its advisory function returns reason data for callers to render, including the rich-JSON requirement for metadata output.
+Public types describe the policy, choices, formats, JSON structures, option names, and advisory data.
+CLI and API collapse an empty base property name to undefined so core applies the default.
+The CLI flag record, API mapper, and Tracker draft, dialog, and preview consume this browser-safe policy.
+The default statuses come from `NEEDS_WORK_STATUSES`.
+CLI prompts and Tracker drafts initially select XLIFF, but CLI resolution leaves format unset and the API requires it.
+Only the CLI renders advisories, with its existing text.
+ADR-0002 supersedes ADR-0001 because export gained API and Tracker consumers.
+
+Explained in context: [ADR-0002](../docs/adr/0002-export-options-policy-in-domain.md)
+
+---
+
 ### Export Run
 
-One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the `export` scope of the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An omitted core status filter exports all statuses. The CLI defaults to `new,stale`. The shared base property name default lives in domain because core and lazy CLI metadata both consume it. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI defaults and prompt preselection are in `apps/cli/src/commands/export-cmd-flags.ts`; a prompt answer with no selected collection, locale, or status is refused.
+One export of one or more [collections](#collection) to one file per target locale. In code, `runExport(collections, options)` in `libs/core/src/lib/export/run-export.ts` is the whole run: it validates the base property name, status filter, and output directory, resolves the output path from the explicit option, configured folder, or default, uses the `export` scope of the [Collection Set](#collection-set) to choose locales (every collection's target locales, narrowed to the requested ones) and flatten resources, filters each collection's resources by status and tags for the locales it has, annotates [protected terms](#protected-term), writes the JSON or XLIFF files, and returns the totals, an outcome per locale, the [Run Outcome](#run-outcome), and the Markdown summary. An invalid or empty status filter raises `InvalidTranslationStatusError` before resources are read. An omitted core status filter exports all statuses. The CLI defaults to `new,stale`. The domain [Export Options Policy](#export-options-policy) owns shared defaults and reuses the base property name constant that core consumes. An empty `locales` list means no target remains. It calls `onStart` with the resolved path and locales before reading resources, so the CLI can print the plan. Collections with targets must share one [base locale](#base-locale); otherwise the run raises `CollectionBaseLocaleMismatchError`. The CLI flag record reads defaults and prompt preselection from the Export Options Policy. A prompt answer with no selected collection, locale, or status is refused.
+
+The API's `ExportJobService` owns preparation for both dry-run and start. Dry-run maps the prepared plan without writing. Start rejects a prepared `outputProblem` synchronously before registering a job: `POST /exports` returns HTTP 400 with `{ statusCode: 400, message: outputProblem, error: "Bad Request" }` for an unwritable output folder or a path that is a file. A valid start queues the exact prepared object for `writePreparedExport`. The Tracker blocks submission when its dry-run plan has an output problem.
 
 Explained in context: [`core-library.md`](core-library.md#export-pipeline)
 
@@ -775,9 +812,17 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 
 ---
 
+### Form Attempt State
+
+The shared attempt and refusal state in `apps/tracker/src/app/collections/store/form-submit-attempt-state.ts`. `FormAttemptState` owns `attempted`, `errors`, `check(form)`, error reveal rules, `clear`, `fail` and `clearOnEdit(form)`. It records attempts and marks invalid forms touched. [Form Submit Attempt](#form-submit-attempt) and [Job Start Attempt](#job-start-attempt) compose it; each owns its own saving lifecycle.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
 ### Form Submit Attempt
 
-The state one named-entry dialog form keeps for an attempted submit. `FormSubmitAttempt` in `apps/tracker/src/app/collections/store/form-submit-attempt.ts` is configured with the entry (mode and original name), a `prepare` step, an optional `refusalMessages` mapping, an optional `onNameConflict` hook and an error-reveal rule (`'touched'`, or `'touched-dirty-attempted'`). It owns `attempted`, `saving`, the refusal `errors` (always a list, so a single message is a one-item list), `check(form)` (records the attempt and marks every field touched when the form is invalid), `reveals(control)` and `showError(control, error?)` (the rule for when an error shows), and `clearOnEdit(form)` (messages clear on the next change). `submit({ dialog, write })` composes `NamedEntrySubmit` from [Dialog Config Submit](#dialog-config-submit) for the write lifecycle: a taken name runs `onNameConflict` and lists nothing, any other refusal becomes the mapped messages. `detailsElseMessage` is the mapping that prefers the server's rule messages over its one message. [Bundle Form](#bundle-form) reveals errors after touch, edit or attempt, lists details else message, and opens the Output section on a name conflict; [Collection Form](#collection-form) reveals after touch only and lists the message. [Settings Draft](#settings-draft) does not use it: the page saves through its own subscription, with no dialog, no name field and an outcome union rather than refusal messages.
+The named-entry submit helper in `apps/tracker/src/app/collections/store/form-submit-attempt.ts`. `FormSubmitAttempt<TResult extends { name: string }>` composes [Form Attempt State](#form-attempt-state) and `NamedEntrySubmit` from [Dialog Config Submit](#dialog-config-submit). Its existing `submit({ dialog, write })` API owns preparation, saving, name conflicts and refusal rendering. Configuration supplies the entry, prepare callback, optional refusal mapping and name-conflict hook, and error reveal rule. `detailsElseMessage` prefers string server details over the fallback message. [Bundle Form](#bundle-form) uses that mapping and opens Output on name conflict; [Collection Form](#collection-form) shows the refusal message and reveals errors after touch.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -801,9 +846,19 @@ Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`
 
 ---
 
+### Import Dialog Decisions
+
+The plain footer and plan presentation rules in `apps/tracker/src/app/collections/import-dialog/import-dialog-decisions.ts`. `importFooter(input)` takes collection, listing, upload, validity, preview and busy values; it returns the ordered footer state, submit permission and primary button token with its count. `importPlanPresentation(plan, listing)` returns ordered notes, file rows, locale counts, nontrivial status transitions, capped issues and auto-fixes with overflow counts, failures and whether every file is unreadable. `importFilesError(input)` maps a revealed file problem to its message token. The component binds these Angular-free functions with computed signals and retains drag-and-drop DOM handling.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
 ### Import Run
 
 One file import into one locale of one [collection](#collection). `runImport(collection, { source, format?, locale, ...options })` in `libs/core/src/lib/import/run-import.ts` detects the format, reads JSON or XLIFF through its adapter, emits a large-source warning before the run header, applies the resources, and returns the result with a lazy `summary()` renderer. Source failures raise `ImportSourceError` before any resource write. `importResources(collection, resources, options)` remains the entry point for callers with parsed resources. Its ordered steps open a session (strategy defaults and the collection's [Project Terms](#project-terms)), resolve Transloco references (migration only), reject unsafe incoming values and base values through [Stored Value Check](#stored-value-check), normalize placeholders, apply [Placeholder Repair](#placeholder-repair), validate, then check the translation contract through Value Admission (`import`, with `referencesResolved` for migration) and merge per [folder](#resource-folder). The session and CLI prompts share domain's `DEFAULT_IMPORT_STRATEGY` and import locale rule; the prompts use `importableLocales` for choices. The session and migration confirmations read defaults from the domain [Import Strategy Policy](#import-strategy-policy). `apps/cli/src/commands/import-cmd-flags.ts` leaves import strategy and update switches unset, and `apps/cli/src/commands/import-cmd.ts` passes omitted comment, tag, and create-missing switches as undefined, so `libs/core/src/lib/import/import-session.ts` applies the selected strategy's defaults. The CLI resolves an omitted `--preserve-status` to false before calling core. `apps/cli/src/commands/import-cmd-flags.ts` supplies this value, the default strategy, and the base-validation default to command resolution and help labels. Base-value validation stays on unless the user gives `--no-validate-base`. An `ImportSession` holds its settings, terms, changes, warnings, errors, and written files. `recordImportIssues` in `import-session.ts` is the rejection channel: each issue supplies its key, reason, and explicit diagnostic, and the operation derives the failed change and error. Validation returns one issue list, including empty-value skips without errors. The optional `diagnosticOrder` rank preserves diagnostic order independently of change order within a batch. Validation changes retain input order, while conflict diagnostics precede key errors and repeated conflict keys share one diagnostic. Missing-base and folder-read failures remain change-only outcomes. A base-locale import without the migration strategy raises `InvalidImportLocaleError`.
+
+Core owns the imported count and completed outcome. `sessionResult` derives `resourcesImported` from `resourcesCreated + resourcesUpdated`, so CLI output, Markdown summaries, and API responses share the same count. `runImport` fails when resources fail or errors exist, including in a dry run. Consumers read that outcome. `summarizeImportRuns(runs)` owns multi-file totals (`entries`, `imported`, `created`, `updated`, `skipped`, `failed`, `changed`) and fails the overall outcome when any run fails. `changed` sums distinct affected files per source, so the same destination file can count once per source. The API adds only source failures, which have no core run, to the overall failure decision.
 
 Explained in context: [`core-library.md`](core-library.md#import-pipeline)
 
@@ -831,9 +886,21 @@ Explained in context: [`frontend.md`](frontend.md), [`api.md`](api.md#polling-fl
 
 ### Job Registry
 
-The API's in-memory runner for background jobs. Each `JobRegistry` instance owns a serial queue, UUID-keyed jobs, lifecycle timestamps, DTO snapshots, and eviction of finished jobs after 30 minutes or when a new job would exceed 100 retained jobs. Queued and running jobs remain until they finish, even above the cap. `BundleJobService` and `TranslationJobService` each have their own instance. Preconditions run synchronously before registration, and a failed run does not stop later jobs in that instance. For bundle jobs, preparation provides config advisories before registration; the job service logs their messages only if generation throws, while successful results carry them through the API mapper. Start returns the initial pending DTO snapshot. Lookup returns a fresh snapshot or raises API-local `JobNotFoundError` with kind `not-found`; an optional owner check hides another collection's job with the same 404 body as an unknown or evicted ID.
+The API's in-memory runner for background jobs. Each `JobRegistry` instance owns a serial queue, UUID-keyed jobs, lifecycle timestamps, DTO snapshots, and eviction of finished jobs after 30 minutes or when a new job would exceed 100 retained jobs. Queued and running jobs remain until they finish, even above the cap. `BundleJobService`, `TranslationJobService`, `ExportJobService` and `ImportJobService` each have their own instance. Preconditions run synchronously before registration. Export preparation and dry-run belong to its job service; a prepared output problem rejects `POST /exports` with HTTP 400 and its message, without registering a job. Import start inspects every source before registration, while preview keeps source failures as plan entries. Each import job retains one lazy summary renderer, omitted from its HTTP DTO and evicted with the job. A failed run does not stop later jobs in that instance. For bundle jobs, preparation provides config advisories before registration; the job service logs their messages only if generation throws, while successful results carry them through the API mapper. Start returns the initial pending DTO snapshot. Lookup returns a fresh snapshot or raises API-local `JobNotFoundError` with kind `not-found`; an optional owner check hides another collection's job with the same 404 body as an unknown or evicted ID.
 
 Explained in context: [`api.md`](api.md#translation-job-system)
+
+---
+
+### Job Run Lifecycle
+
+The neutral Tracker module in `apps/tracker/src/app/collections/store/job-run-lifecycle.ts`. `JobRunLifecycle<Request, Job, Run>` owns runs keyed by id, publishes run maps through `changes`, and takes a job adapter, [Keyed Storage](#keyed-storage) and a `JobTime` clock/poll scheduler. One 500 ms interval serves bundle, export and import jobs. The adapter supplies start/get calls, job identity, completion detection, snapshot mapping and failure mapping. The neutral `job-run-error.ts` helper preserves server messages and string rule details with a localized fallback.
+
+`start` persists a running seed immediately and turns request errors into failed runs. `startAccepted` publishes temporary busy state, persists only accepted jobs and returns request errors to the dialog, restoring its previous result on rejection or cancellation. The one-key `JobRunController` adapter uses this second policy for export/import and keeps their original single-object storage shape. Each run kind supplies its persisted-run reader and unchanged storage key; `injectJobRun` shares feature subscription and destruction wiring without adding store methods.
+
+`restore()` reads persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes that run, including a later polling failure. Starting or resuming replaces the key's previous subscription. `clear(id)` cancels only that key and persists dismissal; clearing the last run removes the storage key. `destroy()` cancels requests and polling. Storage errors are contained by Keyed Storage. Bundle batches stay outside the lifecycle and are never persisted.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
 ---
 
@@ -1356,9 +1423,25 @@ Core's `RunOutcome` is `succeeded` or `failed`. Its producers are `runExport`, `
 
 Move fails when its result contains errors. The [Normalization Pipeline](core-library.md#normalization-pipeline) defines normalize's refused and completed result arms and their outcome rules.
 
-Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
+Export ignores errors and hierarchical conflicts in a dry run. Import counts failed resources and errors even in a dry run. Core owns this decision; CLI and API consumers use the recorded outcome, and core totals combine outcomes across import runs. Bundle generation reports outcomes per bundle and fails the whole run on a thrown bundle error or failed type generation.
 
 Explained in context: [`core-library.md`](core-library.md), [`cli.md`](cli.md#errors-and-exit-codes)
+
+---
+
+### Run Result Strip
+
+The shared Tracker presentation component in `apps/tracker/src/app/shared/components/run-result-strip/`. Its `RunResultView` union separates running progress, completed clauses and warning counts, and failed errors and retry labels. The component takes three inputs: `view`, `detailsOpen` and `detailsId`. It emits `retry`, `dismiss` and `detailsToggle`. Callers project the details body and own its open state. A [Run Strip Summary](#run-strip-summary) supplies the translated view.
+
+Explained in context: [`frontend.md`](frontend.md#run-strip-summaries-and-the-run-result-strip)
+
+---
+
+### Run Strip Summary
+
+The plain Tracker presentation derivation for one bundle, export or import run. The modules in `apps/tracker/src/app/collections/run-strip-summary/` return an explicitly typed `{ view, details }` object for the [Run Result Strip](#run-result-strip). Each function takes run state and a translation callback. The bundle function also takes the output pattern, bundle name and base locale. Shared helpers select status headlines and gate details. Import helpers count capped messages, calculate attention and order failed issues before skipped issues. Missing persisted fields receive defaults. These functions do not start jobs or change run state.
+
+Explained in context: [`frontend.md`](frontend.md#run-strip-summaries-and-the-run-result-strip)
 
 ---
 

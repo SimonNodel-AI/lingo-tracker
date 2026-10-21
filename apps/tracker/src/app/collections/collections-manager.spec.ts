@@ -25,7 +25,7 @@ import { NotificationService } from '../shared/notification';
 import { CollectionsManager } from './collections-manager';
 import { CollectionsApiService } from './services/collections-api.service';
 import { CollectionsStore } from './store/collections.store';
-import { IMPORT_RUN_STORAGE_KEY } from './store/import-run-controller';
+import { IMPORT_RUN_STORAGE_KEY } from './store/import-runs';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'dist/export',
@@ -629,6 +629,31 @@ describe('CollectionsManager', () => {
 
         expect(document.activeElement).toBe(trigger);
       });
+    });
+
+    it('updates running progress and current-item copy after a language switch', async () => {
+      const transloco = spectator.inject(TranslocoService);
+      startWith({ status: 'running', progress: { current: 1, total: 2, currentFile: 'dist/de.xlf' } });
+      expect(strip()?.textContent).toContain('1 of 2 locales');
+
+      transloco.setTranslation(
+        {
+          'export.run.exporting': 'Export en cours…',
+          'export.run.writing': 'Écriture',
+          'export.run.localesProgressX': '{{ current }} sur {{ total }} langues',
+        },
+        'fr',
+      );
+      transloco.setActiveLang('fr');
+      await fixture.whenStable();
+      spectator.detectComponentChanges();
+
+      const content = strip()?.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(content).toContain('Export en cours…');
+      expect(content).toContain('Écriture');
+      expect(content).toContain('dist/de.xlf');
+      expect(content).toContain('1 sur 2 langues');
+      expect(content).not.toContain('1 of 2 locales');
     });
 
     it('re-translates the strip when the language changes', async () => {

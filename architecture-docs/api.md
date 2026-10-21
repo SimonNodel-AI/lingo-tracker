@@ -102,6 +102,26 @@ The controller opens a project for dry runs and generation jobs. Both use its `s
 | `POST` | `/bundles/:name/generate` | Fire-and-forget: start a generation job for a saved bundle (404 `BundleNotFoundError` when missing). Optional `locales` must be a subset of the project locales (400 otherwise). | `GenerateBundleRequestDto` | `BundleGenerateJobDto` (202 Accepted) |
 | `GET` | `/bundles/jobs/:jobId` | Poll a bundle generation job by ID | — | `BundleGenerateJobDto` |
 
+### Export and import jobs
+
+Export and import controllers handle HTTP validation, route parameters, statuses and download headers. Each job service owns request mapping, preparation, dry-run mapping and job registration. Each has its own serial [Job Registry](glossary.md#job-registry).
+
+| Method | Path | Purpose | Response DTO |
+|--------|------|---------|--------------|
+| `POST` | `/exports/dry-run` | Prepare an export without writing; report output problems in the plan | `ExportPlanDto` (201) |
+| `POST` | `/exports` | Prepare and check output preconditions, then queue the prepared export | `ExportJobDto` (202 Accepted) |
+| `GET` | `/exports/jobs/:jobId` | Poll an export job | `ExportJobDto` |
+| `POST` | `/imports/dry-run` | Preview each source without writing; source failures remain plan entries | `ImportPlanDto` (201) |
+| `POST` | `/imports` | Validate every source before queuing the import | `ImportJobDto` (202 Accepted) |
+| `GET` | `/imports/jobs/:jobId` | Poll an import job | `ImportJobDto` |
+| `GET` | `/imports/jobs/:jobId/summary` | Download the lazy Markdown summary; 409 while pending or running | Markdown attachment |
+
+`ExportJobService` uses one preparation path for dry-run and start. Start passes the exact prepared object to `writePreparedExport`. Preconditions run synchronously before registration, as they do for bundles. When preparation reports `outputProblem` (an unwritable output folder or a path that is a file), `POST /exports` now rejects with HTTP 400 and registers no job. `BadRequestException` passes through the existing exception filter with the body `{ statusCode: 400, message: outputProblem, error: "Bad Request" }`. Dry-run still returns the problem in its plan. The Tracker already prevents submission when that field is present. A write failure after registration still fails the job.
+
+`ImportJobService` shares request preparation, format resolution and one per-file `runImport` operation between preview and start, with the dry-run flag selecting whether writes occur. Source inspection detects the format; an explicit format overrides detection and permits an unknown extension. Existing endpoint differences remain: start rejects source inspection failures before registration, while preview retains source problems as zero-count file entries. Preview uses the explicit format, else extension detection, else `json` when detection fails. Both retain request-level validation. The API bridges real import writes and partial write failures to the collection's reindex sink; dry-run never reindexes. One lazy summary renderer per job preserves file order and partial results without writing summary files. Summary state is omitted from job DTOs and evicted with the job.
+
+Both plan mappers read their diagnostic cap from `mappers/plan-limits.ts`.
+
 ---
 
 ## Component Diagram

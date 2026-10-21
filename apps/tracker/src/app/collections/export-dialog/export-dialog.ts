@@ -9,7 +9,6 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -20,7 +19,7 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import type { ExportFormatDto, ExportJsonStructureDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
-import { finalize } from 'rxjs';
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { ChipInput } from '../../shared/chip-input/chip-input';
 import { codeMarkup } from '../../shared/code-markup';
@@ -30,14 +29,11 @@ import { STATUS_PRESENTATION } from '../../shared/translation-status/translation
 import { splitAfterSeparators } from '../../shared/utils/split-after-separators';
 import { SegmentedControl, type SegmentOption } from '../bundle-form-dialog/segmented-control';
 import { CollectionsStore } from '../store/collections.store';
+import { submitDialogJob } from '../store/dialog-config-submit';
 import type { ExportDialogData, ExportDialogResult } from './export-dialog-data';
+import { exportFooter, exportPlanPresentation, exportFixSection } from './export-dialog-decisions';
 import { ExportForm, type ExportSection } from './export-form';
 import { entryShape } from './export-preview';
-
-/** The CLI prompt order. */
-const STATUS_ORDER: readonly TranslationStatus[] = ['new', 'stale', 'translated', 'verified'];
-
-type FooterState = 'ready' | 'checking' | 'nothing' | 'invalid' | 'noLocales' | 'previewFailed' | 'planErrors';
 
 @Component({
   selector: 'app-export-dialog',
@@ -67,7 +63,7 @@ export class ExportDialog {
   readonly store = inject(CollectionsStore);
 
   readonly TOKENS = TRACKER_TOKENS;
-  readonly STATUS_ORDER = STATUS_ORDER;
+  readonly STATUS_ORDER = exportOptionsPolicy.statusOrder;
   readonly codeMarkup = codeMarkup;
   /** Technical literal, not copy: the placeholder shown in the file name field. */
   readonly localePlaceholder = '{locale}';
@@ -94,15 +90,11 @@ export class ExportDialog {
 
   readonly fileSuffix = computed(() => (this.model.draft().format === 'json' ? '.json' : '.xliff'));
   /** Sections with a visible error, plus Output when the server says the folder is unusable. */
-  readonly railErrors = computed<ReadonlySet<string>>(() => {
-    const errors = new Set<string>(this.model.sectionErrors());
-    if (this.plan()?.outputProblem) errors.add('output');
-    return errors;
-  });
+  readonly railErrors = computed(() => exportPlanPresentation(this.plan(), this.model.sectionErrors()).railErrors);
   readonly statusSummary = computed(() =>
-    STATUS_ORDER.filter((status) => this.model.draft().statuses.includes(status)),
+    exportOptionsPolicy.statusOrder.filter((status) => this.model.draft().statuses.includes(status)),
   );
-  readonly allStatuses = computed(() => this.statusSummary().length === STATUS_ORDER.length);
+  readonly allStatuses = computed(() => this.statusSummary().length === exportOptionsPolicy.statusOrder.length);
   readonly collectionCount = computed(() => {
     const draft = this.model.draft();
     const names = this.model.collectionNames();
@@ -152,26 +144,17 @@ export class ExportDialog {
   });
   readonly shape = computed(() => entryShape(this.model.draft(), this.plan()?.exampleKey));
 
-  readonly footerState = computed<FooterState>(() => {
-    if (this.noTargetLocales()) return 'noLocales';
-    if (!this.model.valid()) return 'invalid';
-    const preview = this.model.preview;
-    if (preview.stale() || preview.status() === 'loading' || preview.status() === 'waiting') return 'checking';
-    const plan = this.plan();
-    if (preview.status() === 'error') return 'previewFailed';
-    if (!plan) return 'checking';
-    if (plan.outputProblem) return 'invalid';
-    if (plan.errors.length > 0) return 'planErrors';
-    return plan.files.length === 0 || plan.entriesTotal === 0 ? 'nothing' : 'ready';
-  });
-  readonly canSubmit = computed(() => this.footerState() === 'ready' && !this.saving() && !this.store.isExporting());
-  readonly primary = computed(() => {
-    const plan = this.plan();
-    const overwrites = plan?.overwriteCount ?? 0;
-    return overwrites > 0
-      ? { token: TRACKER_TOKENS.EXPORT.DIALOG.FOOTER.EXPORTOVERWRITEX, count: overwrites }
-      : { token: TRACKER_TOKENS.EXPORT.DIALOG.FOOTER.EXPORTX, count: plan?.files.length ?? 0 };
-  });
+  readonly footer = computed(() =>
+    exportFooter({
+      noTargetLocales: this.noTargetLocales(),
+      valid: this.model.valid(),
+      stale: this.model.preview.stale(),
+      status: this.model.preview.status(),
+      plan: this.plan(),
+      saving: this.saving(),
+      running: this.store.isExporting(),
+    }),
+  );
 
   constructor() {
     // The config can arrive after the dialog opens; reseed and reconcile once it does.
@@ -195,7 +178,8 @@ export class ExportDialog {
 
   /** The footer's invalid state is actionable: show the errors and jump to the first marked section. */
   fixSections(): void {
-    if (!this.model.revealErrors() && this.plan()?.outputProblem) this.activate('output');
+    const section = exportFixSection(this.model.revealErrors(), !!this.plan()?.outputProblem);
+    if (section) this.activate(section);
   }
 
   togglePreview(): void {
@@ -224,11 +208,11 @@ export class ExportDialog {
       ? control.value.filter((existing) => existing !== status)
       : [...control.value, status];
     control.markAsTouched();
-    control.setValue(STATUS_ORDER.filter((candidate) => next.includes(candidate)));
+    control.setValue(exportOptionsPolicy.statusOrder.filter((candidate) => next.includes(candidate)));
   }
 
   selectAllStatuses(): void {
-    this.model.form.controls.statuses.setValue([...STATUS_ORDER]);
+    this.model.form.controls.statuses.setValue([...exportOptionsPolicy.statusOrder]);
   }
 
   addTag(raw: string): void {
@@ -247,17 +231,11 @@ export class ExportDialog {
   }
 
   onSubmit(): void {
-    if (!this.canSubmit()) return;
-    // A start request in flight must not be orphaned by Esc or a backdrop click.
-    this.#dialogRef.disableClose = true;
-    this.model
-      .submit((request) => this.store.startExport(request))
-      .pipe(
-        finalize(() => {
-          this.#dialogRef.disableClose = false;
-        }),
-        takeUntilDestroyed(this.#destroyRef),
-      )
-      .subscribe({ next: (job) => this.#dialogRef.close(job), error: () => undefined });
+    if (!this.footer().canSubmit) return;
+    submitDialogJob({
+      dialogRef: this.#dialogRef,
+      start: this.model.submit((request) => this.store.startExport(request)),
+      destroyRef: this.#destroyRef,
+    });
   }
 }

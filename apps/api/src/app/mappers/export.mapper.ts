@@ -9,8 +9,8 @@ import {
   type PreparedExportRun,
 } from '@simoncodes-ca/core';
 import type { ExportJobResultDto, ExportPlanDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
-
-export const MAX_PLAN_MESSAGES = 50;
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 /** Applies CLI defaults and opens the selected collections for reading. */
 export function mapExportRequestToRunOptions(
@@ -18,9 +18,9 @@ export function mapExportRequestToRunOptions(
   project: OpenedProject,
 ): { collections: Collection[]; options: ExportRunOptions } {
   const errors: string[] = [];
-  if (dto.format !== 'json' && dto.format !== 'xliff') errors.push('format must be xliff or json.');
+  if (!exportOptionsPolicy.isFormat(dto.format)) errors.push('format must be xliff or json.');
   const structure = dto.json?.structure;
-  if (structure !== undefined && structure !== 'flat' && structure !== 'hierarchical') {
+  if (structure !== undefined && !exportOptionsPolicy.isJsonStructure(structure)) {
     errors.push('json.structure must be hierarchical or flat.');
   }
   if (errors.length > 0) {
@@ -32,21 +32,21 @@ export function mapExportRequestToRunOptions(
     collections: names.map((name) => openProjectCollection(project, name)),
     options: {
       format: dto.format,
-      status: dto.statuses ?? ['new', 'stale'],
+      status: dto.statuses ?? [...exportOptionsPolicy.defaults.statuses],
       locales: dto.locales === undefined ? undefined : [...dto.locales],
       tags: dto.tags === undefined ? undefined : [...dto.tags],
       outputDirectory: dto.outputDirectory,
       filenamePattern: dto.filenamePattern,
-      augmentProtectedTerms: dto.protectedTermNotes !== false,
+      augmentProtectedTerms: (dto.protectedTermNotes ?? exportOptionsPolicy.defaults.protectNotes) !== false,
       exportFolder: project.sourceConfig.exportFolder,
       cwd: project.projectRoot,
-      jsonStructure: structure ?? 'hierarchical',
-      richJson: dto.json?.rich ?? false,
-      includeBase: dto.json?.includeBase ?? false,
+      jsonStructure: structure ?? exportOptionsPolicy.defaults.structure,
+      richJson: dto.json?.rich ?? exportOptionsPolicy.defaults.rich,
+      includeBase: dto.json?.includeBase ?? exportOptionsPolicy.defaults.includeBase,
       basePropertyName: dto.json?.basePropertyName || undefined,
-      includeStatus: dto.json?.includeStatus ?? false,
-      includeComment: dto.json?.includeComment ?? false,
-      includeTags: dto.json?.includeTags ?? false,
+      includeStatus: dto.json?.includeStatus ?? exportOptionsPolicy.defaults.includeStatus,
+      includeComment: dto.json?.includeComment ?? exportOptionsPolicy.defaults.includeComment,
+      includeTags: dto.json?.includeTags ?? exportOptionsPolicy.defaults.includeTags,
     },
   };
 }

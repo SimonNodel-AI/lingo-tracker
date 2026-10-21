@@ -1,8 +1,8 @@
 import type { ExportJobDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
-import { JOB_POLL_INTERVAL_MS, JobRunController, type JobRunState } from './job-run-controller';
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
+import type { JobRunState } from './job-run-controller';
 
 export const EXPORT_RUN_STORAGE_KEY = 'lingo-tracker.exportRun';
-export const EXPORT_JOB_POLL_INTERVAL_MS = JOB_POLL_INTERVAL_MS;
 export type ExportRunState = JobRunState<ExportRequestDto, ExportJobDto>;
 
 /** Absent or corrupt storage is ignored, as with persisted bundle runs. */
@@ -13,13 +13,10 @@ export function readPersistedExportRun(raw: string | null | undefined): ExportRu
     if (!['running', 'completed', 'failed'].includes(String(run.status))) return undefined;
     const request = run.request;
     if (typeof request !== 'object' || request === null || !('format' in request)) return undefined;
-    if (request.format !== 'json' && request.format !== 'xliff') return undefined;
+    if (!exportOptionsPolicy.isFormat(request.format)) return undefined;
     if ('jobId' in run && typeof run.jobId !== 'string') return undefined;
     return run as ExportRunState;
   } catch {
     return undefined;
   }
 }
-
-/** Typed export run with shared persistence and polling behavior. */
-export class ExportRunController extends JobRunController<ExportRequestDto, ExportJobDto> {}

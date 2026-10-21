@@ -167,61 +167,21 @@
       </div>
 
       @if (exportStrip(); as strip) {
-        @let result = strip.result;
-        @let filesClause = TOKENS.EXPORT.RUN.FILESX | transloco: { count: result?.filesWritten?.length ?? 0 };
-        @let entriesClause = TOKENS.EXPORT.RUN.ENTRIESX | transloco: { count: result?.entriesExported ?? 0 };
-        @let warningsClause = TOKENS.EXPORT.RUN.WARNINGSX | transloco: { count: strip.warnings };
+        @let result = strip.details.result;
         <app-run-result-strip
           data-testid="export-strip"
+          [view]="strip.view"
           tabindex="-1"
-          [status]="strip.run.status"
-          [headline]="
-            (strip.run.status === 'running'
-              ? TOKENS.EXPORT.RUN.EXPORTING
-              : strip.run.status === 'completed'
-                ? TOKENS.EXPORT.RUN.EXPORTED
-                : TOKENS.EXPORT.RUN.FAILED) | transloco
-          "
-          [currentItemLabel]="TOKENS.EXPORT.RUN.WRITING | transloco"
-          [currentItem]="strip.run.progress?.currentFile"
-          [progress]="strip.run.progress"
-          [progressLabel]="
-            strip.run.progress && strip.run.progress.total > 0
-              ? (TOKENS.EXPORT.RUN.LOCALESPROGRESSX
-                | transloco: { current: strip.run.progress.current, total: strip.run.progress.total })
-              : undefined
-          "
-          [clauses]="
-            result
-              ? [
-                  filesClause,
-                  entriesClause,
-                  { text: result.format.toUpperCase(), kind: 'text' },
-                  { text: result.outputDirectory, kind: 'mono' },
-                  ...(strip.warnings > 0 ? [warningsClause] : []),
-                ]
-              : []
-          "
-          [warningsCount]="strip.warnings"
-          [error]="strip.run.error"
-          [retryLabel]="strip.run.status === 'failed' ? (TOKENS.COMMON.ACTIONS.RETRY | transloco) : undefined"
           [detailsOpen]="exportDetailsOpen()"
           detailsId="export-run-details"
-          [detailsLabel]="
-            strip.run.status !== 'running' && strip.hasDetails ? (TOKENS.EXPORT.RUN.DETAILS | transloco) : undefined
-          "
-          [detailsAriaLabel]="TOKENS.EXPORT.RUN.DETAILSARIALABEL | transloco"
-          [dismissAriaLabel]="
-            strip.run.status !== 'running' ? (TOKENS.EXPORT.RUN.DISMISSARIALABEL | transloco) : undefined
-          "
           (detailsToggle)="exportDetailsOpen.set(!exportDetailsOpen())"
           (dismiss)="dismissExport()"
           (retry)="retryExport()"
         >
-          @if (strip.files.length > 0) {
+          @if (strip.details.files.length > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.FILESWRITTEN | transloco }}</h4>
             <ul class="details-list">
-              @for (item of strip.files; track item.file) {
+              @for (item of strip.details.files; track item.file) {
                 <li>
                   <code class="mono">@for (part of splitMono(item.file); track $index) {<span>{{ part }}</span><wbr />}</code>
                   @if (item.entries !== undefined) {
@@ -231,17 +191,17 @@
               }
             </ul>
           }
-          @if (strip.skippedPlain.length + strip.skippedWithReason.length > 0) {
+          @if (strip.details.skippedPlain.length + strip.details.skippedWithReason.length > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.SKIPPEDLOCALES | transloco }}</h4>
             <ul class="details-list details-list--skipped">
-              @if (strip.skippedPlain.length > 0) {
+              @if (strip.details.skippedPlain.length > 0) {
                 <li class="skipped-run">
                   <span>
-                    <code class="mono">@for (locale of strip.skippedPlain; track locale) {<span>{{ locale }}</span>@if (!$last) { · }<wbr />}</code>&ngsp;<span class="skipped-reason">{{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPED | transloco }}</span>
+                    <code class="mono">@for (locale of strip.details.skippedPlain; track locale) {<span>{{ locale }}</span>@if (!$last) { · }<wbr />}</code>&ngsp;<span class="skipped-reason">{{ TOKENS.EXPORT.DIALOG.PREVIEW.SKIPPED | transloco }}</span>
                   </span>
                 </li>
               }
-              @for (item of strip.skippedWithReason; track item.locale) {
+              @for (item of strip.details.skippedWithReason; track item.locale) {
                 <li>
                   <code class="mono">{{ item.locale }}</code>
                   <span class="skipped-reason">{{ item.error }}</span>
@@ -249,7 +209,7 @@
               }
             </ul>
           }
-          @if (strip.warnings > 0) {
+          @if (strip.details.warnings > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.WARNINGSHEADING | transloco }}</h4>
             <ul class="details-list details-list--warnings">
               @for (warning of result?.warnings; track $index) {
@@ -257,7 +217,7 @@
               }
             </ul>
           }
-          @if (strip.errors > 0) {
+          @if (strip.details.errors > 0) {
             <h4 class="details-heading">{{ TOKENS.EXPORT.RUN.ERRORSHEADING | transloco }}</h4>
             <ul class="details-list details-list--errors">
               @for (error of result?.errors; track $index) {
@@ -269,64 +229,24 @@
       }
 
       @if (importStrip(); as strip) {
-        @let result = strip.result;
+        @let result = strip.details.result;
         <app-run-result-strip
           data-testid="import-strip"
+          [view]="strip.view"
           tabindex="-1"
-          [status]="strip.run.status"
-          [headline]="
-            (strip.run.status === 'running'
-              ? TOKENS.IMPORT.RUN.IMPORTING
-              : strip.run.status === 'completed'
-                ? TOKENS.IMPORT.RUN.IMPORTED
-                : TOKENS.IMPORT.RUN.FAILED) | transloco
-          "
-          [currentItemLabel]="TOKENS.IMPORT.RUN.READING | transloco"
-          [currentItem]="strip.currentFile"
-          [attr.title]="strip.run.status === 'running' ? strip.run.progress?.currentFile : null"
-          [progress]="strip.run.progress"
-          [progressLabel]="
-            strip.run.progress && strip.run.progress.total > 0
-              ? (TOKENS.IMPORT.RUN.FILESPROGRESSX
-                | transloco: { current: strip.run.progress.current, total: strip.run.progress.total })
-              : undefined
-          "
-          [clauses]="
-            result
-              ? [
-                  TOKENS.IMPORT.RUN.ENTRIESX | transloco: { count: strip.totals.imported },
-                  TOKENS.IMPORT.RUN.FILESX | transloco: { count: strip.fileCount },
-                  ...(strip.failedFiles > 0
-                    ? [TOKENS.IMPORT.RUN.FILESFAILEDX | transloco: { count: strip.failedFiles }]
-                    : []),
-                  ...(strip.failed > 0 ? [TOKENS.IMPORT.RUN.FAILEDX | transloco: { count: strip.failed }] : []),
-                  ...(strip.skipped > 0 ? [TOKENS.IMPORT.RUN.SKIPPEDX | transloco: { count: strip.skipped }] : []),
-                  ...(strip.warnings > 0 ? [TOKENS.IMPORT.RUN.WARNINGSX | transloco: { count: strip.warnings }] : []),
-                ]
-              : []
-          "
-          [warningsCount]="strip.attention"
-          [error]="strip.run.error"
-          [retryLabel]="strip.run.status === 'failed' ? (TOKENS.COMMON.ACTIONS.RETRY | transloco) : undefined"
+          [attr.title]="strip.details.run.status === 'running' ? strip.details.run.progress?.currentFile : null"
           [detailsOpen]="importDetailsOpen()"
           detailsId="import-run-details"
-          [detailsLabel]="
-            strip.run.status !== 'running' && strip.hasDetails ? (TOKENS.IMPORT.RUN.DETAILS | transloco) : undefined
-          "
-          [detailsAriaLabel]="TOKENS.IMPORT.RUN.DETAILSARIALABEL | transloco"
-          [dismissAriaLabel]="
-            strip.run.status !== 'running' ? (TOKENS.IMPORT.RUN.DISMISSARIALABEL | transloco) : undefined
-          "
           (detailsToggle)="importDetailsOpen.set(!importDetailsOpen())"
           (dismiss)="dismissImport()"
           (retry)="retryImport()"
         >
           <div class="import-details">
-            @if (strip.files.length > 0) {
+            @if (strip.details.files.length > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.FILESHEADING | transloco }}</h4>
                 <ul class="details-list details-list--files">
-                  @for (file of strip.files; track $index) {
+                  @for (file of strip.details.files; track $index) {
                     <li>
                       <code class="mono">@for (part of splitMono(file.path); track $index) {<span>{{ part }}</span><wbr />}</code>
                       <span class="locale-pill">{{ file.locale }}</span>
@@ -350,11 +270,11 @@
                 </ul>
               </section>
             }
-            @if (strip.transitions.length > 0) {
+            @if (strip.details.transitions.length > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.STATUSHEADING | transloco }}</h4>
                 <ul class="details-list details-list--status">
-                  @for (item of strip.transitions; track $index) {
+                  @for (item of strip.details.transitions; track $index) {
                     <li>
                       @if (item.fromToken; as fromToken) {
                         <span class="status-word" [class]="'status-word--' + item.from">{{ fromToken | transloco }}</span>
@@ -369,76 +289,76 @@
                 </ul>
               </section>
             }
-            @if (strip.autoFixes.length > 0) {
+            @if (strip.details.autoFixes.length > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.AUTOFIXESHEADING | transloco }}</h4>
                 <ul class="details-list details-list--fixes">
-                  @for (fix of strip.autoFixes; track $index) {
+                  @for (fix of strip.details.autoFixes; track $index) {
                     <li>
                       <code class="mono">{{ fix.key }}</code>
                       <span class="reason clamp" [title]="fix.originalValue + ' → ' + fix.fixedValue">{{ fix.originalValue }} → {{ fix.fixedValue }}</span>
                     </li>
                   }
                 </ul>
-                @if (strip.truncated.icuAutoFixes > 0) {
-                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.icuAutoFixes } }}</p>
+                @if (strip.details.truncated.icuAutoFixes > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.details.truncated.icuAutoFixes } }}</p>
                 }
               </section>
             }
-            @if (strip.issues.length > 0) {
+            @if (strip.details.issues.length > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.ISSUESHEADING | transloco }}</h4>
                 <ul class="details-list details-list--issues">
-                  @for (issue of strip.issues; track $index) {
+                  @for (issue of strip.details.issues; track $index) {
                     <li>
                       <code class="mono">{{ issue.key }}</code>
                       <span class="reason" [class.reason--failed]="issue.type === 'failed'">{{ issue.reason }}</span>
                     </li>
                   }
                 </ul>
-                @if (strip.truncated.issues > 0) {
-                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.issues } }}</p>
+                @if (strip.details.truncated.issues > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.details.truncated.issues } }}</p>
                 }
               </section>
             }
-            @if (strip.warnings > 0) {
+            @if (strip.details.warnings > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.WARNINGSHEADING | transloco }}</h4>
                 <ul class="details-list details-list--warnings">
-                  @for (warning of strip.warningList; track $index) {
+                  @for (warning of strip.details.warningList; track $index) {
                     <li><span [title]="warning">{{ warning }}</span></li>
                   }
                 </ul>
-                @if (strip.truncated.warnings > 0) {
-                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.warnings } }}</p>
+                @if (strip.details.truncated.warnings > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.details.truncated.warnings } }}</p>
                 }
               </section>
             }
-            @if (strip.errors > 0) {
+            @if (strip.details.errors > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.ERRORSHEADING | transloco }}</h4>
                 <ul class="details-list details-list--errors">
-                  @for (error of strip.errorList; track $index) {
+                  @for (error of strip.details.errorList; track $index) {
                     <li><span [title]="error">{{ error }}</span></li>
                   }
                 </ul>
-                @if (strip.truncated.errors > 0) {
-                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.truncated.errors } }}</p>
+                @if (strip.details.truncated.errors > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.details.truncated.errors } }}</p>
                 }
               </section>
             }
-            @if (strip.filesModified.length > 0) {
+            @if (strip.details.filesModified.length > 0) {
               <section>
                 <h4 class="details-heading">{{ TOKENS.IMPORT.RUN.FILESCHANGED | transloco }}</h4>
                 <ul class="details-list">
-                  @for (file of strip.filesModified; track file) {
+                  @for (file of strip.details.filesModified; track file) {
                     <li>
                       <code class="mono">@for (part of splitMono(file); track $index) {<span>{{ part }}</span><wbr />}</code>
                     </li>
                   }
                 </ul>
-                @if (strip.filesModifiedMore > 0) {
-                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.filesModifiedMore } }}</p>
+                @if (strip.details.filesModifiedMore > 0) {
+                  <p class="more-note">{{ TOKENS.IMPORT.RUN.MOREINSUMMARYX | transloco: { count: strip.details.filesModifiedMore } }}</p>
                 }
               </section>
             }

@@ -1,20 +1,13 @@
-import { computed, DestroyRef, inject } from '@angular/core';
+import { computed, inject } from '@angular/core';
 import { TranslocoService } from '@jsverse/transloco';
 import { patchState, signalStoreFeature, withComputed, withHooks, withMethods, withState } from '@ngrx/signals';
 import { type ImportRequestDto, JOB_RETENTION_MS } from '@simoncodes-ca/data-transfer';
-import { timer } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
-import { SESSION_STORAGE } from '../../../shared/storage/browser-storage';
-import { json, KeyedStorage } from '../../../shared/storage/keyed-storage';
 import { CollectionsApiService } from '../../services/collections-api.service';
-import {
-  IMPORT_RUN_STORAGE_KEY,
-  ImportRunController,
-  type ImportRunState,
-  readPersistedImportRun,
-} from '../import-run-controller';
+import { IMPORT_RUN_STORAGE_KEY, type ImportRunState, readPersistedImportRun } from '../import-runs';
+import { injectJobRun } from './inject-job-run';
 
-export type { ImportRunState } from '../import-run-controller';
+export type { ImportRunState } from '../import-runs';
 
 export function withImportFeature() {
   return signalStoreFeature(
@@ -23,21 +16,17 @@ export function withImportFeature() {
     withMethods((store) => {
       const api = inject(CollectionsApiService);
       const transloco = inject(TranslocoService);
-      const controller = new ImportRunController(
+      const controller = injectJobRun(
         {
           start: (request) => api.startImport(request),
           getJob: (id) => api.getImportJob(id),
           // Used only after a job was accepted; a start failure stays with the dialog.
           failureMessage: () => transloco.translate(TRACKER_TOKENS.IMPORT.TOAST.STARTFAILED),
         },
-        new KeyedStorage(inject(SESSION_STORAGE), IMPORT_RUN_STORAGE_KEY, json(readPersistedImportRun)),
-        { now: () => new Date().toISOString(), poll: (ms) => timer(ms, ms) },
+        IMPORT_RUN_STORAGE_KEY,
+        readPersistedImportRun,
+        (importRun) => patchState(store, { importRun }),
       );
-      const subscription = controller.changes.subscribe((importRun) => patchState(store, { importRun }));
-      inject(DestroyRef).onDestroy(() => {
-        subscription.unsubscribe();
-        controller.destroy();
-      });
       return {
         /** Evaluate at read time so expiry does not depend on a signal changing. */
         isImportSummaryAvailable(now = Date.now()): boolean {

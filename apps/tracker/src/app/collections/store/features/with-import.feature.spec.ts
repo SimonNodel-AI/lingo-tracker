@@ -9,7 +9,7 @@ import { getTranslocoTestingModule } from '../../../../testing/transloco-testing
 import { ApiError } from '../../../shared/api-error/api-error';
 import { CollectionsApiService } from '../../services/collections-api.service';
 import { CollectionsStore } from '../collections.store';
-import { IMPORT_RUN_STORAGE_KEY, readPersistedImportRun } from '../import-run-controller';
+import { IMPORT_RUN_STORAGE_KEY, readPersistedImportRun } from '../import-runs';
 
 const request: ImportRequestDto = { collection: 'main', files: [{ path: 'in/fr.xliff', locale: 'fr' }] };
 const running: ImportJobDto = { jobId: 'job', request, status: 'running', progress: { current: 0, total: 1 } };

@@ -401,7 +401,7 @@ Core trims create and rename names. An omitted name or a trimmed name equal to t
 
 `POST /api/exports/dry-run` returns `201 Created` with an `ExportPlanDto` with relative file paths, entry counts, skipped locales, and `overwriteCount`. The dry run never creates the output folder or writes files. The plan includes `outputProblem` when the output folder cannot be used. The response caps each diagnostic list (`warnings`, `errors`, and `hierarchicalConflicts`) at 50 messages.
 
-`POST /api/exports` prepares the export before it returns `202 Accepted` with an `ExportJobDto`. The initial snapshot contains `status: "pending"`, the request, and progress `{current: 0, total: <planned file count>}`. Exports run one at a time. A second request joins the queue.
+`POST /api/exports` prepares the export and checks the output folder before it returns `202 Accepted` with an `ExportJobDto`. An unusable output folder (not writable, or a path that is a file) returns `400 Bad Request` with the dry run's `outputProblem` as `message`, and no job is registered. The initial snapshot contains `status: "pending"`, the request, and progress `{current: 0, total: <planned file count>}`. Exports run one at a time. A second request joins the queue.
 
 `GET /api/exports/jobs/:jobId` returns the job snapshot with `200 OK`. Status progresses from `pending` to `running`, then `completed` or `failed`. Progress includes `current`, `total`, and the current file name during a write. A completed job includes `result` with relative file paths, entry counts, locale results, warnings, errors, and the export outcome. A failed job includes `error`. Jobs remain in memory for 30 minutes after completion, with a limit of 100 retained jobs. A server restart clears them.
 
@@ -435,7 +435,7 @@ An omitted `outputDirectory` uses the project configuration's `exportFolder`, or
 
 `protectedTermNotes` defaults to `true`. JSON structure defaults to `hierarchical`, and all JSON boolean fields default to `false`. An omitted or empty `basePropertyName` uses `baseValue`. JSON metadata fields apply to rich JSON exports. Export reads collection resources without changing them or their cache index.
 
-Both POST routes return `400 Bad Request` for invalid body shapes, format or structure values, empty collections, and empty or invalid statuses. Invalid or reserved `json.basePropertyName` values also return 400 with the validation message. Incompatible collection base locales also return 400. Invalid format and structure responses include `errors: [...]`. An unknown collection returns `404 Not Found` before a job starts. An unknown or expired job ID returns 404.
+Both POST routes return `400 Bad Request` for invalid body shapes, format or structure values, empty collections, and empty or invalid statuses. Invalid or reserved `json.basePropertyName` values also return 400 with the validation message. Incompatible collection base locales also return 400. Invalid format and structure responses include `errors: [...]`. `POST /api/exports` also returns `400 Bad Request` for an unusable output folder (not writable, or a path that is a file), with the dry run's `outputProblem` as `message` and no job registered. An unknown collection returns `404 Not Found` before a job starts. An unknown or expired job ID returns 404.
 
 ## Imports API
 

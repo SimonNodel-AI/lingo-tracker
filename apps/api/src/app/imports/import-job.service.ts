@@ -31,9 +31,9 @@ interface ImportState {
   request: ImportRequestDto;
   progress: ImportJobProgressDto;
   result?: ImportJobResultDto;
-  summaries: readonly (() => string)[];
+  summary: () => string;
 }
-type ImportSnapshot = ImportJobDto & { readonly summaries: readonly (() => string)[] };
+type ImportSnapshot = ImportJobDto & { readonly summary: () => string };
 
 /** One serial import queue, with source preflight before a pending job can be returned. */
 @Injectable()
@@ -41,13 +41,13 @@ export class ImportJobService {
   readonly #logger: Logger;
   readonly #jobs = new JobRegistry<
     ImportState,
-    Pick<ImportSnapshot, 'request' | 'status' | 'progress' | 'result' | 'summaries'>
+    Pick<ImportSnapshot, 'request' | 'status' | 'progress' | 'result' | 'summary'>
   >(
     (state, status) => ({
       status,
       request: state.request,
       progress: { ...state.progress },
-      summaries: state.summaries,
+      summary: state.summary,
       ...(state.result && { result: state.result }),
     }),
     { jobName: 'Import' },
@@ -57,29 +57,28 @@ export class ImportJobService {
   }
 
   startJob({ project, request }: StartImportJobParams): ImportJobDto {
-    const { collection, options } = mapImportRequestToRunOptions(request, project);
-    const formats = options.map((option) => this.inspect(option));
-    const total = options.length;
+    const { collection, files } = this.prepare({ project, request }, false);
+    const total = files.length;
     return this.toDto(
       this.#jobs.start({
-        initial: { request, progress: { current: 0, total }, summaries: [] },
+        initial: { request, progress: { current: 0, total }, summary: () => '' },
         execute: async (_id, update) => {
           const runs: ImportFileRun[] = [];
-          const summaries: (() => string)[] = [];
-          for (const [index, option] of options.entries()) {
-            const file = request.files[index];
-            const format = formats[index];
-            if (!file || !format) throw new Error('Missing import file');
+          for (const [index, { option, file, format }] of files.entries()) {
             update({ progress: { current: index, total, currentFile: file.path, currentLocale: file.locale } });
-            // Keep the caller's path in the core summary while resolving it against project cwd.
-            const completed = await this.runFile(collection, { ...option, source: file.path }, file, format);
+            const completed = await this.runFile(collection, option, file, format);
             runs.push(completed);
-            summaries.push(
-              completed.run?.summary ??
-                (() =>
-                  `## ${file.path}\n\n**Locale**: ${file.locale}\n\n**Source error**: ${completed.sourceProblem}\n`),
-            );
-            update({ progress: { current: index + 1, total }, summaries: [...summaries] });
+            update({
+              progress: { current: index + 1, total },
+              summary: () =>
+                runs
+                  .map(({ file: source, run, sourceProblem }) =>
+                    run
+                      ? run.summary()
+                      : `## ${source.path}\n\n**Locale**: ${source.locale}\n\n**Source error**: ${sourceProblem}\n`,
+                  )
+                  .join('\n\n---\n\n'),
+            });
           }
           update({ result: mapImportRunToJobResult(request, runs, project.projectRoot) });
         },
@@ -89,18 +88,10 @@ export class ImportJobService {
   }
 
   async dryRun({ project, request }: StartImportJobParams): Promise<ImportPlanDto> {
-    const { collection, options } = mapImportRequestToRunOptions(request, project);
+    const { collection, files } = this.prepare({ project, request }, true);
     const runs: ImportFileRun[] = [];
-    for (const [index, option] of options.entries()) {
-      const file = request.files[index];
-      if (!file) throw new Error('Missing import file');
-      let format = option.format;
-      try {
-        format ??= detectImportFormat(option.source);
-      } catch {
-        // The plan requires a format even when detection fails; runImport supplies the sourceProblem.
-      }
-      runs.push(await this.runFile(collection, { ...option, source: file.path, dryRun: true }, file, format ?? 'json'));
+    for (const { option, file, format } of files) {
+      runs.push(await this.runFile(collection, option, file, format));
     }
     return mapImportRunToPlan(request, runs);
   }
@@ -113,15 +104,27 @@ export class ImportJobService {
     const job = this.#jobs.get(id);
     if (job.status === 'pending' || job.status === 'running')
       throw new ConflictException('Import job is still running');
-    return `# Import run: ${job.request.collection}\n\n${job.summaries.map((summary) => summary()).join('\n\n---\n\n')}`;
+    return `# Import run: ${job.request.collection}\n\n${job.summary()}`;
   }
 
   private toDto(snapshot: ImportSnapshot): ImportJobDto {
-    const { summaries: _summaries, ...dto } = snapshot;
+    const { summary: _summary, ...dto } = snapshot;
     return dto;
   }
 
-  private inspect(option: RunImportOptions): 'json' | 'xliff' {
+  private prepare({ project, request }: StartImportJobParams, dryRun: boolean) {
+    const { collection, options } = mapImportRequestToRunOptions(request, project);
+    const files = options.map((option, index) => {
+      const file = request.files[index];
+      if (!file) throw new Error('Missing import file');
+      const format = this.resolveFormat(option, dryRun);
+      // Keep the caller's path in the core summary while resolving it against project cwd.
+      return { file, format, option: { ...option, source: file.path, dryRun } };
+    });
+    return { collection, files };
+  }
+
+  private resolveFormat(option: RunImportOptions, dryRun: boolean): 'json' | 'xliff' {
     try {
       const inspected = inspectImportSource(option.source, option.cwd ?? process.cwd());
       return option.format ?? inspected.format;
@@ -134,6 +137,9 @@ export class ImportJobService {
         error.stage === 'format'
       )
         return option.format;
+      // Preview source failures remain plan entries; start must reject them before registration.
+      // The plan requires a format even when detection fails; runImport supplies the sourceProblem.
+      if (dryRun) return option.format ?? tryDetectImportFormat(option.source) ?? 'json';
       throw error;
     }
   }
@@ -166,5 +172,13 @@ export class ImportJobService {
       collection.onMutation({ kind: 'reindex', translationsFolder: collection.translationsFolder });
     }
     return { file, format: run.format, run, large };
+  }
+}
+
+function tryDetectImportFormat(source: string): 'json' | 'xliff' | undefined {
+  try {
+    return detectImportFormat(source);
+  } catch {
+    return undefined;
   }
 }

@@ -119,6 +119,7 @@ describe('domain public surface', () => {
       'effectiveTags',
       'entryChange',
       'escapeRegExp',
+      'exportOptionsPolicy',
       'findBundleDefinition',
       'findCollectionEntry',
       'findPreferredTermFindings',

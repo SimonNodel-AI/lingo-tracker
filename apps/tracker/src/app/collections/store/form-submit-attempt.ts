@@ -1,5 +1,5 @@
-import { type Signal, signal } from '@angular/core';
 import type { AbstractControl, ValidationErrors } from '@angular/forms';
+import type { Signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import {
   type NamedEntryRefusal,
@@ -7,9 +7,8 @@ import {
   type NamedEntrySubmitConfig,
   type NamedEntryWrite,
 } from './dialog-config-submit';
-
-/** When a form shows a control's error: after it was touched, or also once edited or submitted. */
-export type ErrorReveal = 'touched' | 'touched-dirty-attempted';
+import { FormAttemptState, type FormAttemptStateConfig } from './form-submit-attempt-state';
+export type { ErrorReveal, FormAttemptStateConfig } from './form-submit-attempt-state';
 
 /** What a form renders for a refusal that did not belong to the name field. */
 export type MessageRefusal = Extract<NamedEntryRefusal, { kind: 'message' }>;
@@ -20,7 +19,9 @@ export function detailsElseMessage(refusal: MessageRefusal): readonly string[] {
   return details.length > 0 ? details : [refusal.message];
 }
 
-export interface FormSubmitAttemptConfig<TResult extends { name: string }> extends NamedEntrySubmitConfig {
+export interface FormSubmitAttemptConfig<TResult extends { name: string }>
+  extends NamedEntrySubmitConfig,
+    FormAttemptStateConfig {
   entry: { mode: 'create' | 'edit'; name?: string };
   /** Validates (via `check`), confirms and builds the result once; `undefined` aborts the attempt. */
   prepare: () => TResult | undefined | Promise<TResult | undefined>;
@@ -28,69 +29,45 @@ export interface FormSubmitAttemptConfig<TResult extends { name: string }> exten
   refusalMessages?: (refusal: MessageRefusal) => readonly string[];
   /** Runs when the server refused the editable name as taken; the name field already shows it. */
   onNameConflict?: () => void;
-  /** Defaults to `'touched'`. */
-  reveal?: ErrorReveal;
-  /** Whether `check` lets the form through; defaults to any status but invalid (so a pending form passes). */
-  accepts?: (form: AbstractControl) => boolean;
 }
 
-/**
- * Form Submit Attempt: the state one named-entry form keeps for an attempted submit. It owns
- * whether a submit was attempted, the in-flight flag, the refusal messages (always a list, cleared
- * on the next edit), marking every field touched, and the rule for when a control's error shows.
- * It composes `NamedEntrySubmit` for the write lifecycle; the form keeps its fields and rendering.
- */
+/** Named-entry attempt state composed with the dialog write lifecycle. */
 export class FormSubmitAttempt<TResult extends { name: string }> {
   readonly #config: FormSubmitAttemptConfig<TResult>;
+  readonly #state: FormAttemptState;
   readonly #entrySubmit: NamedEntrySubmit<TResult>;
-  readonly #attempted = signal(false);
-  readonly #errors = signal<readonly string[]>([]);
-
-  /** True once a submit was attempted; never reset. */
-  readonly attempted: Signal<boolean> = this.#attempted.asReadonly();
-  /** What stopped the last attempt, as a list. Cleared on the next edit. */
-  readonly errors: Signal<readonly string[]> = this.#errors.asReadonly();
-  /** True from submit until the server has answered. */
+  readonly attempted: Signal<boolean>;
+  readonly errors: Signal<readonly string[]>;
   readonly saving: Signal<boolean>;
   readonly nameValidator: (control: AbstractControl) => ValidationErrors | null;
 
   constructor(config: FormSubmitAttemptConfig<TResult>) {
     this.#config = config;
+    this.#state = new FormAttemptState(config);
     this.#entrySubmit = new NamedEntrySubmit(config);
+    this.attempted = this.#state.attempted;
+    this.errors = this.#state.errors;
     this.saving = this.#entrySubmit.saving;
     this.nameValidator = this.#entrySubmit.nameValidator;
   }
 
-  /** Records the attempt. True when the form may be submitted; otherwise marks every field so its error shows. */
   check(form: AbstractControl): boolean {
-    this.#attempted.set(true);
-    if (this.#config.accepts ? this.#config.accepts(form) : !form.invalid) return true;
-    form.markAllAsTouched();
-    return false;
+    return this.#state.check(form);
   }
-
-  /** Whether the form shows this control's errors yet. */
   reveals(control: AbstractControl): boolean {
-    if (control.touched) return true;
-    return this.#config.reveal === 'touched-dirty-attempted' && (control.dirty || this.#attempted());
+    return this.#state.reveals(control);
   }
-
   showError(control: AbstractControl, error?: string): boolean {
-    if (!this.reveals(control)) return false;
-    return error ? control.hasError(error) : control.invalid;
+    return this.#state.showError(control, error);
   }
-
   fail(messages: readonly string[]): void {
-    this.#errors.set(messages);
+    this.#state.fail(messages);
   }
-
   clear(): void {
-    this.#errors.set([]);
+    this.#state.clear();
   }
-
-  /** Clears the messages whenever `form` changes; the caller releases the subscription. */
   clearOnEdit(form: AbstractControl): Subscription {
-    return form.valueChanges.subscribe(() => this.clear());
+    return this.#state.clearOnEdit(form);
   }
 
   /** Ignored while a write is in flight. */

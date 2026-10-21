@@ -570,8 +570,8 @@
 
   <!-- Announces only when the number of entries that would fail changes. -->
   <span class="sr-only" aria-live="polite" data-testid="will-fail-live">
-    @if (willFail() > 0) {
-      {{ TOKENS.IMPORT.DIALOG.FOOTER.WILLFAILX | transloco: { count: willFail() } }}
+    @if (presentation().willFail > 0) {
+      {{ TOKENS.IMPORT.DIALOG.FOOTER.WILLFAILX | transloco: { count: presentation().willFail } }}
     }
   </span>
 
@@ -586,13 +586,13 @@
   <!-- ───────────── Footer ───────────── -->
   <footer class="dialog-footer">
     <div class="footer-meta" role="status" data-testid="footer-meta">
-      @switch (footerState()) {
+      @switch (footer().footerState) {
         @case ('ready') {
           <mat-icon aria-hidden="true">check_circle</mat-icon>
           <span class="num">
             {{ TOKENS.IMPORT.DIALOG.FOOTER.FILESENTRIESX | transloco: { files: plan()?.files?.length ?? 0, entries: plan()?.totals?.imported ?? 0 } }}
-            @if (willFail() > 0) {
-              · <span class="warn">{{ TOKENS.IMPORT.DIALOG.FOOTER.WILLFAILX | transloco: { count: willFail() } }}</span>
+            @if (presentation().willFail > 0) {
+              · <span class="warn">{{ TOKENS.IMPORT.DIALOG.FOOTER.WILLFAILX | transloco: { count: presentation().willFail } }}</span>
             }
           </span>
         }
@@ -638,8 +638,8 @@
     <button mat-button type="button" data-testid="cancel" (click)="onCancel()" [disabled]="saving()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
-    <button mat-flat-button color="primary" type="submit" form="import-form" data-testid="submit" [disabled]="!canSubmit()">
-      {{ primary().token | transloco: { count: primary().count } }}
+    <button mat-flat-button color="primary" type="submit" form="import-form" data-testid="submit" [disabled]="!footer().canSubmit">
+      {{ footer().primary.token | transloco: { count: footer().primary.count } }}
     </button>
   </footer>
 </div>
@@ -653,7 +653,7 @@
       <h4><mat-icon aria-hidden="true">description</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.FILES | transloco }}</h4>
       @if (plan(); as current) {
         <ul class="tree" data-testid="preview-files">
-          @for (file of planFiles(); track file.path) {
+          @for (file of presentation().planFiles; track file.path) {
             <li class="plan-file" [attr.data-testid]="'plan-file-' + file.name">
               <span class="plan-file-line">
                 <mat-icon aria-hidden="true">description</mat-icon>
@@ -671,7 +671,7 @@
             </li>
           }
         </ul>
-        <p class="preview-caption num">{{ TOKENS.IMPORT.DIALOG.PREVIEW.FILESLOCALESX | transloco: { files: planFiles().length, locales: localeCount() } }}</p>
+        <p class="preview-caption num">{{ TOKENS.IMPORT.DIALOG.PREVIEW.FILESLOCALESX | transloco: { files: presentation().planFiles.length, locales: presentation().localeCount } }}</p>
       } @else {
         <p class="preview-note">—</p>
       }
@@ -717,9 +717,9 @@
     @if (plan(); as current) {
       <section class="preview-block">
         <h4><mat-icon aria-hidden="true">swap_horiz</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.STATUSCHANGES | transloco }}</h4>
-        @if (statusChanges().length > 0) {
+        @if (presentation().statusChanges.length > 0) {
           <ul class="transitions" data-testid="status-changes">
-            @for (transition of statusChanges(); track $index) {
+            @for (transition of presentation().statusChanges; track $index) {
               <li>
                 <span class="transition-path">
                   @if (transition.from; as from) {
@@ -739,20 +739,20 @@
         }
       </section>
 
-      @if (autoFixCount() > 0) {
+      @if (presentation().autoFixCount > 0) {
         <section class="preview-block">
           <h4><mat-icon aria-hidden="true">auto_fix_high</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.AUTOFIXES | transloco }}</h4>
-          <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.AUTOFIXESX | transloco: { count: autoFixCount() } }}</p>
+          <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.AUTOFIXESX | transloco: { count: presentation().autoFixCount } }}</p>
           <ul class="fixes" data-testid="auto-fixes">
-            @for (fix of shownAutoFixes(); track $index) {
+            @for (fix of presentation().shownAutoFixes; track $index) {
               <li [attr.title]="fix.originalValue + ' → ' + fix.fixedValue">
                 <span class="fix-key">{{ fix.key }} · {{ fix.locale }}</span>
                 <span class="fix-change">{{ fix.originalValue }} → <b>{{ fix.fixedValue }}</b></span>
               </li>
             }
           </ul>
-          @if (moreAutoFixes() > 0) {
-            <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.ANDMOREX | transloco: { count: moreAutoFixes() } }}</p>
+          @if (presentation().moreAutoFixes > 0) {
+            <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.ANDMOREX | transloco: { count: presentation().moreAutoFixes } }}</p>
           }
         </section>
       }
@@ -761,24 +761,24 @@
         <section class="preview-block">
           <h4><mat-icon aria-hidden="true">report</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.ISSUES | transloco }}</h4>
           <ul class="fixes" data-testid="issues">
-            @for (issue of shownIssues(); track $index) {
+            @for (issue of presentation().shownIssues; track $index) {
               <li [attr.title]="issue.reason">
                 <span class="fix-key">{{ issue.key }} · {{ issue.locale }}</span>
                 <span class="issue-reason">{{ issue.reason }}</span>
               </li>
             }
           </ul>
-          @if (moreIssues() > 0) {
-            <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.ANDMOREX | transloco: { count: moreIssues() } }}</p>
+          @if (presentation().moreIssues > 0) {
+            <p class="preview-note">{{ TOKENS.IMPORT.DIALOG.PREVIEW.ANDMOREX | transloco: { count: presentation().moreIssues } }}</p>
           }
         </section>
       }
 
-      @if (notes().length > 0) {
+      @if (presentation().notes.length > 0) {
         <section class="preview-block">
           <h4><mat-icon aria-hidden="true">info</mat-icon>{{ TOKENS.IMPORT.DIALOG.PREVIEW.NOTES | transloco }}</h4>
           <ul class="notes" data-testid="preview-notes">
-            @for (note of notes(); track $index) {
+            @for (note of presentation().notes; track $index) {
               @if (note.token) {
                 <li>{{ note.token | transloco: note.params }}</li>
               } @else {
