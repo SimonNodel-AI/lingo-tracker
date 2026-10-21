@@ -9,7 +9,6 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
@@ -20,27 +19,25 @@ import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { TranslocoPipe, TranslocoService } from '@jsverse/transloco';
 import { IMPORT_UPLOAD_EXTENSIONS, type ImportStrategyDto } from '@simoncodes-ca/data-transfer';
-import { finalize } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
 import { codeMarkup } from '../../shared/code-markup';
 import { LOCAL_STORAGE } from '../../shared/storage/browser-storage';
 import { STATUS_PRESENTATION } from '../../shared/translation-status/translation-status-presentation';
 import { splitAfterSeparators } from '../../shared/utils/split-after-separators';
 import { CollectionsStore } from '../store/collections.store';
+import { submitDialogJob } from '../store/dialog-config-submit';
 import { formatModified } from './format-modified';
 import type { ImportDialogData, ImportDialogResult } from './import-dialog-data';
+import {
+  BYTES_PER_MB,
+  DISPLAY_DECIMALS,
+  ISSUE_ROWS,
+  importFooter,
+  importPlanPresentation,
+  importFilesError,
+} from './import-dialog-decisions';
 import { changedAdvancedCount, changedOptionCount, effectiveOptions } from './import-draft';
-import { type FilesProblem, ImportForm, type ImportSection } from './import-form';
-
-type FooterState =
-  | 'ready'
-  | 'checking'
-  | 'nothing'
-  | 'noFiles'
-  | 'invalid'
-  | 'readOnly'
-  | 'previewFailed'
-  | 'planErrors';
+import { ImportForm, type ImportSection } from './import-form';
 
 interface StrategyCard {
   readonly value: ImportStrategyDto;
@@ -71,20 +68,9 @@ const STRATEGY_CARDS: readonly StrategyCard[] = [
   },
 ];
 
-const PROBLEM_MESSAGES: Readonly<Record<FilesProblem, string>> = {
-  filesRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
-  // Only a replayed request can repeat a path; the checklist cannot, so the generic file message serves.
-  duplicatePath: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
-  localeRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.LOCALEREQUIRED,
-  baseLocaleNeedsMigration: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.BASELOCALENEEDSMIGRATION,
-};
-
 /** Rows listed beyond this stay in the well's scroll area; the stagger stops here. */
 const STAGGER_ROWS = 12;
-const ISSUE_ROWS = 5;
 const BYTES_PER_KB = 1024;
-const BYTES_PER_MB = BYTES_PER_KB * 1024;
-const DISPLAY_DECIMALS = 1;
 
 function sizeLabel(bytes: number): string {
   // Technical units, not copy.
@@ -217,94 +203,34 @@ export class ImportDialog {
       ? TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.COLLECTIONREQUIRED
       : undefined;
   });
-  readonly filesError = computed(() => {
-    const problem = this.model.problem();
-    const control = this.model.form.controls.files;
-    return problem &&
-      control.invalid &&
-      (control.touched || this.model.submitAttempted() || this.model.hasObsoleteLocale())
-      ? PROBLEM_MESSAGES[problem]
-      : undefined;
-  });
+  readonly filesError = computed(() =>
+    importFilesError({
+      problem: this.model.problem(),
+      invalid: this.model.form.controls.files.invalid,
+      touched: this.model.form.controls.files.touched,
+      attempted: this.model.submitAttempted(),
+      obsoleteLocale: this.model.hasObsoleteLocale(),
+    }),
+  );
 
-  readonly notes = computed(() => {
-    const plan = this.plan();
-    if (!plan) return [];
-    const sizes = new Map((this.model.listing()?.files ?? []).map((file) => [file.path, file.sizeBytes]));
-    const large = plan.largeFiles.map((path) => ({
-      token: TRACKER_TOKENS.IMPORT.DIALOG.PREVIEW.LARGEFILEX,
-      params: { size: ((sizes.get(path) ?? 0) / BYTES_PER_MB).toFixed(DISPLAY_DECIMALS) },
-      text: undefined,
-    }));
-    const plain = [...plan.errors, ...plan.warnings].map((text) => ({ token: undefined, params: undefined, text }));
-    return [...plain, ...large];
-  });
-  /** No-op transitions (`translated → translated`) say nothing; `—` → x rows stay. */
-  readonly statusChanges = computed(() =>
-    (this.plan()?.statusTransitions ?? []).filter((transition) => transition.from !== transition.to),
-  );
-  readonly planFiles = computed(() =>
-    (this.plan()?.files ?? []).map((file) => ({
-      ...file,
-      name: file.path.slice(file.path.lastIndexOf('/') + 1),
-      parts: splitAfterSeparators(file.path.slice(file.path.lastIndexOf('/') + 1)),
-    })),
-  );
-  readonly localeCount = computed(() => new Set(this.planFiles().map((file) => file.locale)).size);
-  readonly shownIssues = computed(() => (this.plan()?.issues ?? []).slice(0, ISSUE_ROWS));
-  readonly moreIssues = computed(
-    () => (this.plan()?.issues.length ?? 0) + (this.plan()?.truncated.issues ?? 0) - this.shownIssues().length,
-  );
-  readonly autoFixCount = computed(
-    () => (this.plan()?.icuAutoFixes.length ?? 0) + (this.plan()?.truncated.icuAutoFixes ?? 0),
-  );
-  readonly shownAutoFixes = computed(() => (this.plan()?.icuAutoFixes ?? []).slice(0, ISSUE_ROWS));
-  readonly moreAutoFixes = computed(() => this.autoFixCount() - this.shownAutoFixes().length);
-  readonly willFail = computed(() => this.plan()?.totals.failed ?? 0);
-  readonly everyFileUnreadable = computed(() => {
-    const files = this.plan()?.files ?? [];
-    return files.length > 0 && files.every((file) => file.sourceProblem !== undefined);
-  });
+  readonly presentation = computed(() => importPlanPresentation(this.plan(), this.model.listing()));
 
-  readonly footerState = computed<FooterState>(() => {
-    const model = this.model;
-    if (model.readOnly()) return 'readOnly';
-    if (!model.settings()) return 'invalid';
-    // The file list is about to change: wait for the upload rather than offer an import of the old one.
-    if (model.uploadStatus() === 'uploading') return 'checking';
-    if (model.listingStatus() !== 'error' && model.checkedCount() === 0) return 'noFiles';
-    if (!model.valid() || model.listingStatus() === 'error') return 'invalid';
-    const preview = model.preview;
-    if (
-      model.listingStatus() === 'loading' ||
-      preview.stale() ||
-      preview.status() === 'loading' ||
-      preview.status() === 'waiting'
-    )
-      return 'checking';
-    if (preview.status() === 'error') return 'previewFailed';
-    const plan = this.plan();
-    if (!plan) return 'checking';
-    if (this.everyFileUnreadable()) return 'planErrors';
-    return plan.totals.changed === 0 && plan.totals.imported === 0 ? 'nothing' : 'ready';
-  });
-  readonly canSubmit = computed(
-    () =>
-      ['ready', 'checking', 'previewFailed'].includes(this.footerState()) &&
-      this.model.listingStatus() === 'ready' &&
-      this.model.uploadStatus() !== 'uploading' &&
-      !this.saving() &&
-      !this.store.isImporting(),
+  readonly footer = computed(() =>
+    importFooter({
+      readOnly: this.model.readOnly(),
+      settings: !!this.model.settings(),
+      uploadStatus: this.model.uploadStatus(),
+      listingStatus: this.model.listingStatus(),
+      checkedCount: this.model.checkedCount(),
+      everyFileUnreadable: this.presentation().everyFileUnreadable,
+      valid: this.model.valid(),
+      stale: this.model.preview.stale(),
+      status: this.model.preview.status(),
+      plan: this.plan(),
+      saving: this.saving(),
+      running: this.store.isImporting(),
+    }),
   );
-  /** The previous count stays on the button while a new preview loads. */
-  readonly primary = computed(() => {
-    const state = this.footerState();
-    const plan = this.plan();
-    if (state === 'previewFailed') return { token: TRACKER_TOKENS.IMPORT.DIALOG.FOOTER.IMPORTANYWAY, count: 0 };
-    if ((state === 'ready' || state === 'checking') && plan)
-      return { token: TRACKER_TOKENS.IMPORT.DIALOG.FOOTER.IMPORTX, count: plan.totals.imported };
-    return { token: TRACKER_TOKENS.IMPORT.DIALOG.FOOTER.IMPORT, count: 0 };
-  });
 
   constructor() {
     // The config can arrive after the dialog opens; reseed and reconcile once it does.
@@ -431,17 +357,11 @@ export class ImportDialog {
   }
 
   onSubmit(): void {
-    if (!this.canSubmit()) return;
-    // A start request in flight must not be orphaned by Esc or a backdrop click.
-    this.#dialogRef.disableClose = true;
-    this.model
-      .submit((request) => this.store.startImport(request))
-      .pipe(
-        finalize(() => {
-          this.#dialogRef.disableClose = false;
-        }),
-        takeUntilDestroyed(this.#destroyRef),
-      )
-      .subscribe({ next: (job) => this.#dialogRef.close(job), error: () => undefined });
+    if (!this.footer().canSubmit) return;
+    submitDialogJob({
+      dialogRef: this.#dialogRef,
+      start: this.model.submit((request) => this.store.startImport(request)),
+      destroyRef: this.#destroyRef,
+    });
   }
 }

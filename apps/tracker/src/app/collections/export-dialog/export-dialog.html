@@ -585,7 +585,7 @@
   <!-- ───────────── Footer ───────────── -->
   <footer class="dialog-footer">
     <div class="footer-meta" role="status" data-testid="footer-meta">
-      @switch (footerState()) {
+      @switch (footer().footerState) {
         @case ('ready') {
           <mat-icon aria-hidden="true">check_circle</mat-icon>
           <span class="num">
@@ -643,8 +643,8 @@
     <button mat-button type="button" data-testid="cancel" (click)="onCancel()" [disabled]="saving()">
       {{ TOKENS.COMMON.ACTIONS.CANCEL | transloco }}
     </button>
-    <button mat-flat-button color="primary" type="submit" form="export-form" data-testid="submit" [disabled]="!canSubmit()">
-      {{ primary().token | transloco: { count: primary().count } }}
+    <button mat-flat-button color="primary" type="submit" form="export-form" data-testid="submit" [disabled]="!footer().canSubmit">
+      {{ footer().primary.token | transloco: { count: footer().primary.count } }}
     </button>
   </footer>
 </div>

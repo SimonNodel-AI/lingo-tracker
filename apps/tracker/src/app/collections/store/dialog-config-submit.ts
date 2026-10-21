@@ -1,7 +1,7 @@
 import { type DestroyRef, signal, type WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import type { AbstractControl, FormControl, ValidationErrors } from '@angular/forms';
-import type { Observable } from 'rxjs';
+import { finalize, type Observable } from 'rxjs';
 import { apiErrorMessage } from '../../shared/api-error/api-error';
 import type { ConfirmationSpec } from '../../shared/confirm';
 import { type ConfigRefusal, classifyConfigRefusal } from './config-write';
@@ -143,4 +143,21 @@ export class NamedEntrySubmit<TResult extends { name: string }> {
       this.#checking = false;
     }
   }
+}
+
+/** Job starts own their refusal messages; the dialog owns the close lock until finalization. */
+export function submitDialogJob<TResult>(options: {
+  dialogRef: DialogCloser<TResult>;
+  start: Observable<TResult>;
+  destroyRef: DestroyRef;
+}): void {
+  options.dialogRef.disableClose = true;
+  options.start
+    .pipe(
+      finalize(() => {
+        options.dialogRef.disableClose = false;
+      }),
+      takeUntilDestroyed(options.destroyRef),
+    )
+    .subscribe({ next: (job) => options.dialogRef.close(job), error: () => undefined });
 }

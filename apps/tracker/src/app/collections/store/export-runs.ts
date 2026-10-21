@@ -1,4 +1,5 @@
 import type { ExportJobDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
+import { exportOptionsPolicy } from '@simoncodes-ca/domain';
 import { type JobRunState } from './job-run-controller';
 
 export const EXPORT_RUN_STORAGE_KEY = 'lingo-tracker.exportRun';
@@ -12,7 +13,7 @@ export function readPersistedExportRun(raw: string | null | undefined): ExportRu
     if (!['running', 'completed', 'failed'].includes(String(run.status))) return undefined;
     const request = run.request;
     if (typeof request !== 'object' || request === null || !('format' in request)) return undefined;
-    if (request.format !== 'json' && request.format !== 'xliff') return undefined;
+    if (!exportOptionsPolicy.isFormat(request.format)) return undefined;
     if ('jobId' in run && typeof run.jobId !== 'string') return undefined;
     return run as ExportRunState;
   } catch {
