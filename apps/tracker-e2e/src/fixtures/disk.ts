@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 export interface CollectionConfig {
   translationsFolder: string;
@@ -17,6 +17,7 @@ export interface ProjectConfig {
   exportFolder: string;
   importFolder: string;
   collections: Record<string, CollectionConfig>;
+  protectedTermsFile?: string;
   [key: string]: unknown;
 }
 
@@ -34,4 +35,14 @@ export function readEntries(folder: string): Promise<Record<string, unknown>> {
 
 export function readMeta(folder: string): Promise<Record<string, unknown>> {
   return readJson(join(folder, 'tracker_meta.json'));
+}
+
+/** Core resolves an optional config pointer, otherwise this default filename, against the project root. */
+export async function protectedTermsPath(projectRoot: string): Promise<string> {
+  const config = await readConfig(projectRoot);
+  return resolve(projectRoot, config.protectedTermsFile ?? '.lingo-tracker-protected-terms.json');
+}
+
+export async function readProtectedTerms(projectRoot: string): Promise<string[]> {
+  return readJson(await protectedTermsPath(projectRoot));
 }

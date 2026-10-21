@@ -84,7 +84,7 @@
     <section class="collections-col" aria-labelledby="collections-heading">
       <div class="section-head">
         <div class="section-title">
-          <h2 id="collections-heading" tabindex="-1">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h2>
+          <h2 data-testid="collections-title" id="collections-heading" tabindex="-1">{{ TOKENS.COLLECTIONS.TITLE | transloco }}</h2>
           <span class="section-count num">{{ store.collectionEntries().length }}</span>
         </div>
 
@@ -393,6 +393,7 @@
           @for (card of cards(); track card.name; let i = $index) {
             <article
               class="collection-card"
+              [attr.data-testid]="'collection-card-' + card.name"
               [class.collection-card--readonly]="card.readOnly"
               [class.linked]="isCollectionLinked(card.name)"
               [attr.data-collection]="card.name"
