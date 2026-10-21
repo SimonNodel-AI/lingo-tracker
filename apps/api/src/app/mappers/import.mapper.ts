@@ -22,7 +22,7 @@ import {
   isImportStrategy,
   TRANSLATION_STATUSES,
 } from '@simoncodes-ca/domain';
-import { MAX_PLAN_MESSAGES } from './export.mapper';
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 /** A source failure has no core result, but still occupies its ordered file slot. */
 export interface ImportFileRun {

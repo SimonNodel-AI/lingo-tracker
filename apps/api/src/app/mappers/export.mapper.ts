@@ -10,8 +10,7 @@ import {
 } from '@simoncodes-ca/core';
 import type { ExportJobResultDto, ExportPlanDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { exportOptionsPolicy } from '@simoncodes-ca/domain';
-
-export const MAX_PLAN_MESSAGES = 50;
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 /** Applies CLI defaults and opens the selected collections for reading. */
 export function mapExportRequestToRunOptions(

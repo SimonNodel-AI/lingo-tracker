@@ -1,13 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { type OpenedProject, prepareExportRun, writePreparedExport } from '@simoncodes-ca/core';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { type OpenedProject, type PreparedExportRun, prepareExportRun, writePreparedExport } from '@simoncodes-ca/core';
 import type {
   ExportJobDto,
   ExportJobProgressDto,
   ExportJobResultDto,
+  ExportPlanDto,
   ExportRequestDto,
 } from '@simoncodes-ca/data-transfer';
 import { JobRegistry } from '../jobs/job-registry';
-import { mapExportRequestToRunOptions, mapExportRunResultToJobResult } from '../mappers/export.mapper';
+import {
+  mapExportRequestToRunOptions,
+  mapExportRunResultToJobResult,
+  mapPreparedExportToPlanDto,
+} from '../mappers/export.mapper';
 
 export { JOB_RETENTION_MS, MAX_RETAINED_JOBS } from '../jobs/job-registry';
 
@@ -40,9 +45,18 @@ export class ExportJobService {
     this.#logger = logger;
   }
 
+  dryRun(params: StartExportJobParams): ExportPlanDto {
+    return mapPreparedExportToPlanDto(this.prepare(params), params.project.projectRoot);
+  }
+
+  private prepare({ project, request }: StartExportJobParams): PreparedExportRun {
+    const { collections, options } = mapExportRequestToRunOptions(request, project);
+    return prepareExportRun(collections, options);
+  }
+
   startJob(params: StartExportJobParams): ExportJobDto {
-    const { collections, options } = mapExportRequestToRunOptions(params.request, params.project);
-    const prepared = prepareExportRun(collections, options);
+    const prepared = this.prepare(params);
+    if (prepared.outputProblem !== undefined) throw new BadRequestException(prepared.outputProblem);
     const total = prepared.files.length;
     return this.#jobs.start({
       initial: { request: params.request, progress: { current: 0, total } },
