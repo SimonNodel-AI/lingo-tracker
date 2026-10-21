@@ -72,10 +72,10 @@ export class ImportJobService {
               progress: { current: index + 1, total },
               summary: () =>
                 runs
-                  .map(({ file, run, sourceProblem }) =>
+                  .map(({ file: source, run, sourceProblem }) =>
                     run
                       ? run.summary()
-                      : `## ${file.path}\n\n**Locale**: ${file.locale}\n\n**Source error**: ${sourceProblem}\n`,
+                      : `## ${source.path}\n\n**Locale**: ${source.locale}\n\n**Source error**: ${sourceProblem}\n`,
                   )
                   .join('\n\n---\n\n'),
             });

@@ -1,5 +1,5 @@
 import type { ImportJobDto, ImportRequestDto } from '@simoncodes-ca/data-transfer';
-import { type JobRunState } from './job-run-controller';
+import type { JobRunState } from './job-run-controller';
 
 export const IMPORT_RUN_STORAGE_KEY = 'lingo-tracker.importRun';
 export type ImportRunState = JobRunState<ImportRequestDto, ImportJobDto>;

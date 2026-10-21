@@ -1,6 +1,6 @@
 import type { ExportJobDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { exportOptionsPolicy } from '@simoncodes-ca/domain';
-import { type JobRunState } from './job-run-controller';
+import type { JobRunState } from './job-run-controller';
 
 export const EXPORT_RUN_STORAGE_KEY = 'lingo-tracker.exportRun';
 export type ExportRunState = JobRunState<ExportRequestDto, ExportJobDto>;
