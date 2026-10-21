@@ -1,4 +1,4 @@
-import { type ImportResult, type ImportRunOptions, runImport } from '@simoncodes-ca/core';
+import { type ImportResult, type ImportRunOptions, type RunImportResult, runImport } from '@simoncodes-ca/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { cliErrorWording } from '../runner/cli-error-wording';
@@ -71,7 +71,7 @@ export const importCommand = defineCommand<ImportCommandOptions>()({
     return reportRun({
       summary: { kind: 'import', text: run.summary, directory: summaryDirectory },
       printBody: () => displayResults(result, runOptions),
-      printCompletion: () => displayCompletion(result, runOptions),
+      printCompletion: () => displayCompletion(run, runOptions),
       warnings: result.warnings,
       errors: result.errors,
       outcome: run.outcome,
@@ -122,14 +122,14 @@ function displayResults(result: ImportResult, options: ImportRunOptions): void {
   }
 }
 
-function displayCompletion(result: ImportResult, options: ImportRunOptions): void {
+function displayCompletion({ result, outcome }: RunImportResult, options: ImportRunOptions): void {
   CommandOutput.log('─'.repeat(50));
 
   // Summary message
   CommandOutput.log('');
   if (options.dryRun) {
     ConsoleFormatter.success('Dry run complete. No changes were made.');
-  } else if (result.resourcesFailed > 0 || result.errors.length > 0) {
+  } else if (outcome === 'failed') {
     ConsoleFormatter.warning('Import completed with errors.');
   } else if (result.warnings.length > 0) {
     ConsoleFormatter.success('Import completed with warnings.');

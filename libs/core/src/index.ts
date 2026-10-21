@@ -116,6 +116,7 @@ export type {
   ImportResult,
   ImportRunOptions,
   ImportRunWarning,
+  ImportRunTotals,
   RunImportOptions,
   RunImportResult,
 } from './lib/import';
@@ -125,6 +126,7 @@ export {
   detectImportFormat,
   inspectImportSource,
   runImport,
+  summarizeImportRuns,
 } from './lib/import';
 export type {
   CollectionNormalizeResult,

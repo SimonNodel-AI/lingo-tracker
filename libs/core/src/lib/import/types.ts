@@ -148,8 +148,8 @@ export interface ImportResult {
   locale: string;
   /** Target collection */
   collection: string;
-  /** Number of resources imported successfully */
-  resourcesImported: number;
+  /** Created + updated resources, derived by core in both real and dry runs. */
+  readonly resourcesImported: number;
   /** Number of resources created */
   resourcesCreated: number;
   /** Number of resources updated */

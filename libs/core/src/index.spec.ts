@@ -136,6 +136,7 @@ describe('core public surface', () => {
         'runImport',
         'runValidate',
         'searchResources',
+        'summarizeImportRuns',
         'translateExistingResource',
         'updateBundleDefinition',
         'updateCollection',

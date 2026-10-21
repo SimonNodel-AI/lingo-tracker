@@ -46,6 +46,18 @@ describe('import-cmd (real project)', () => {
       expect(result.stderr.split(message)).toHaveLength(2);
     }
   });
+  it('prints created migration resources as imported and includes them in the Markdown summary', async () => {
+    project.write('imports/fr.json', {
+      'new.first': { value: 'Premier', baseValue: 'First' },
+      'new.second': { value: 'Deuxième', baseValue: 'Second' },
+    });
+    const result = await run({ ...flags, strategy: 'migration' });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(/Resources Imported:\s+2/);
+    expect(result.stdout).toMatch(/Resources Created:\s+2/);
+    expect(result.stdout).toMatch(/Resources Updated:\s+0/);
+    expect(project.read(summaries()[0])).toContain('**Resources Imported**: 2');
+  });
   it('should load configuration from .lingo-tracker.json', async () => {
     const result = await run();
     expect(result.exitCode).toBe(0);

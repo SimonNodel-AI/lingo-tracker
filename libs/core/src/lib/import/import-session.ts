@@ -118,7 +118,6 @@ export function sessionResult(session: ImportSession): ImportResult {
     strategy: session.options.strategy,
     locale: session.options.locale,
     collection: session.collection.name,
-    resourcesImported: statistics.resourcesUpdated,
     ...statistics,
     changes: session.changes,
     statusTransitions: calculateStatusTransitions(session.changes),

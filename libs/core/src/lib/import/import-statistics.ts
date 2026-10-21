@@ -36,6 +36,7 @@ import type { ImportChange, StatusTransition } from './types';
  * ```
  */
 export function calculateImportStatistics(changes: ImportChange[]): {
+  readonly resourcesImported: number;
   resourcesCreated: number;
   resourcesUpdated: number;
   resourcesSkipped: number;
@@ -47,6 +48,7 @@ export function calculateImportStatistics(changes: ImportChange[]): {
   const resourcesFailed = changes.filter((c) => c.type === 'failed').length;
 
   return {
+    resourcesImported: resourcesCreated + resourcesUpdated,
     resourcesCreated,
     resourcesUpdated,
     resourcesSkipped,

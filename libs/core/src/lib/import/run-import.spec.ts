@@ -5,6 +5,7 @@ import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { type Collection, openCollection } from '../config/open-collection';
 import { ImportSourceError, InvalidImportLocaleError } from '../errors/internal';
 import { runImport } from './run-import';
+import { summarizeImportRuns } from './summarize-import-runs';
 
 describe('runImport', () => {
   const root = useTempDir('run-import-');
@@ -43,6 +44,80 @@ describe('runImport', () => {
     expect(run.result.resourcesCreated).toBe(1);
     expect(run.summary()).toContain('**Source File**: source.json');
     expect(readdirSync(collection.translationsFolder)).toContain('common');
+  });
+
+  it('defines imported as created plus updated for creates-only, updates-only and mixed runs', async () => {
+    for (const dryRun of [true, false]) {
+      for (const [created, updated] of [
+        [2, 0],
+        [0, 2],
+        [1, 1],
+      ]) {
+        const prefix = `counts${dryRun}${created}`;
+        const resources = Object.fromEntries(
+          Array.from({ length: created + updated }, (_, index) => [`${prefix}.key${index}`, `Value ${index}`]),
+        );
+        seedResources(
+          collection,
+          Object.fromEntries(
+            Object.keys(resources)
+              .slice(created)
+              .map((key) => [key, { source: 'Old' }]),
+          ),
+        );
+        writeFileSync(join(directory, 'counts.json'), JSON.stringify(resources));
+        const run = await runImport(collection, {
+          source: 'counts.json',
+          cwd: directory,
+          locale: 'en',
+          strategy: 'migration',
+          dryRun,
+        });
+        expect(run.result).toMatchObject({
+          resourcesCreated: created,
+          resourcesUpdated: updated,
+          resourcesImported: 2,
+        });
+        expect(run.summary()).toContain(`**Resources ${dryRun ? 'Would Be ' : ''}Imported**: 2`);
+        expect(run.outcome).toBe('succeeded');
+      }
+    }
+  });
+
+  it('totals runs in source order and preserves the core outcome in dry runs', async () => {
+    expect(summarizeImportRuns([])).toEqual({
+      totals: { entries: 0, imported: 0, created: 0, updated: 0, skipped: 0, failed: 0, changed: 0 },
+      outcome: 'succeeded',
+    });
+    seedResources(collection, { 'common.ok': { source: 'OK' } });
+    writeFileSync(join(directory, 'counts.json'), JSON.stringify({ 'common.ok': 'Okay', 'common.new': 'New' }));
+    const options = {
+      source: 'counts.json',
+      cwd: directory,
+      locale: 'en',
+      strategy: 'migration',
+      dryRun: true,
+    } as const;
+    const first = await runImport(collection, options);
+    const second = await runImport(collection, options);
+    writeFileSync(join(directory, 'counts.json'), JSON.stringify({ 'bad key': 'Bad', empty: '' }));
+    const failed = await runImport(collection, options);
+    const summary = summarizeImportRuns([first, second, failed]);
+    expect(summary).toEqual({
+      totals: {
+        entries: 6,
+        imported: 4,
+        created: 2,
+        updated: 2,
+        skipped: 1,
+        failed: 1,
+        changed: new Set(first.result.filesAffected).size + new Set(second.result.filesAffected).size,
+      },
+      outcome: 'failed',
+    });
+    expect(summarizeImportRuns([first, second]).outcome).toBe('succeeded');
+    expect(summarizeImportRuns([{ ...first, outcome: 'failed' }]).outcome).toBe('failed');
+    expect(summarizeImportRuns([{ ...failed, outcome: 'succeeded' }]).outcome).toBe('succeeded');
   });
 
   it('detects XLIFF and imports its resources', async () => {
