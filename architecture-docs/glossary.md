@@ -70,6 +70,14 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md), [`core-lib
 
 ---
 
+### Bundle Batch Controller
+
+The thin bundle adapter in `apps/tracker/src/app/collections/store/bundle-batch-controller.ts`, backed by [Job Run Lifecycle](#job-run-lifecycle). `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `changes` publishes run maps, started batch names, batch position and busy state. Completed and failed runs advance the batch position; even an immediate request failure counts as a start. Batch names are not persisted. The adapter supplies bundle jobs, snapshot mapping with seeded locale totals, and localized error mapping; lifecycle recovery, cancellation and persistence are shared with export and import.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
+
+---
+
 ### Bundle Collection References
 
 The explicit collection entries stored in bundle definitions. `renameBundleCollectionReferences` and `removeBundleCollectionReferences` in `libs/core/src/lib/bundle/bundle-definition-operations.ts` change them in memory as part of the [Collection Lifecycle](#collection-lifecycle). Rename refuses a target already referenced by a bundle with `CollectionRenameBundleConflictError`. Removal checks every bundle first and throws `CollectionRequiredByBundleError` when any list would become empty. Malformed collection lists are skipped and null entries are tolerated. Entries in `'All'` bundles are unchanged. The same module owns bundle-map edits for definition add, update and delete. One rebuild path preserves key order. Separate rename and removal passes share the explicit-list guard and tolerate null entries.
@@ -138,14 +146,6 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md)
 
 ---
 
-### Bundle Run Controller
-
-The plain Tracker controller in `apps/tracker/src/app/collections/store/bundle-run-controller.ts`. `start(name, locales?, defaultLocaleCount?)` ignores a running bundle and replaces a finished result. `startAll(names, defaultLocaleCount?)` skips running bundles and keeps an active batch. `restore()` restores persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes the run. `clear(name)` cancels that bundle’s subscription and persists dismissal (removing the key when the run map is empty), and `destroy()` cancels requests and polling. Starting or resuming a bundle replaces its previous subscription. Its three ports supply jobs, Keyed Storage, and a clock with a poll scheduler. `changes` publishes run maps, started batch names, batch position and busy state. Start/poll errors become failed runs with a localized fallback and any API rule details; storage errors never break a run. Batch names are not persisted.
-
-Explained in context: [`frontend.md`](frontend.md#bundle-runs)
-
----
-
 ### Bundle Run Preparation
 
 The core step shared by a dry-run plan and generation. `prepareBundleRun` in `libs/core/src/lib/bundle/prepare-bundle-run.ts` takes `source: 'supplied'` with a definition for a full Bundle Definition and locale check, or `source: 'saved'` with a name for the existing lookup and locale check. Both modes resolve settings (including the token constant name) and return `{ bundleKey, cwd, definition, settings, locales, collections, warnings, tokenConstantNameOverride, content }`. Core trims the key for a supplied definition. A saved definition uses the caller’s name unchanged. The root is resolved when preparation runs; collections and generated files use that same root. Collections open on first use. A saved bundle with a deleted collection keeps running with a warning. The job service prepares synchronously before queueing. `generatePreparedBundle` takes the prepared run and per-run progress or debug options. `content({ onLocale?, onBase? })` selects all requested locales and each collection’s base values once, on first use. It caches trees, base keys, conflicts, and warnings. `planPreparedBundle(prepared)` describes this content; generation writes it. Empty locales have zero counts and warnings but no planned file. Base-selection warnings appear once unless separate locale selections also report them. Selected locale conflicts stop generation before all writes. Base conflicts stop runs only when types or debug keys consume the base tree. Progress fires before each locale selection. The run holds all selections in memory until output completes. Preparation is the single producer of config advisories: `warnings: readonly BundleWarning[]` contains already worded messages with the `config` origin, or is empty. Generation and failed run outcomes classify these advisories into [Bundle Findings](#bundle-findings). If generation throws before returning a result, the API logs each prepared warning once.
@@ -168,9 +168,9 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#hierarchy-bu
 
 ### Bundle Runs
 
-The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Run Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
+The Tracker state for bundle generation: each bundle run and the names started by the latest "Generate all" request. The Bundle Batch Controller records those names in `bundleBatch`; `withBundlesFeature` exposes `batchTotal`, `batchPosition`, and `isBatchRunning`. A bundle already running is excluded from the batch. Completed and failed runs advance its position.
 
-The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots, formats errors, and parses persisted runs. The [Bundle Run Controller](#bundle-run-controller) owns API job calls, polling, session storage mirroring and batch progress; the store retains config reads/writes and projects controller snapshots into signals. The API formats core's [Bundle Findings](#bundle-findings) into the job result DTO. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
+The pure `apps/tracker/src/app/collections/store/bundle-runs.ts` module maps job snapshots and parses persisted runs. The [Job Run Lifecycle](#job-run-lifecycle) owns starts, polling and session storage mirroring; the [Bundle Batch Controller](#bundle-batch-controller) adds batch progress; the store retains config reads/writes and projects controller snapshots into signals. The API formats core's [Bundle Findings](#bundle-findings) into the job result DTO. Warning strings are opaque text: the card counts and shows them, and persistence keeps their content unchanged. Run state survives a reload, but the batch does not. A restored run disappears when the API no longer knows its job.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
@@ -855,6 +855,18 @@ Explained in context: [`frontend.md`](frontend.md), [`api.md`](api.md#polling-fl
 The API's in-memory runner for background jobs. Each `JobRegistry` instance owns a serial queue, UUID-keyed jobs, lifecycle timestamps, DTO snapshots, and eviction of finished jobs after 30 minutes or when a new job would exceed 100 retained jobs. Queued and running jobs remain until they finish, even above the cap. `BundleJobService` and `TranslationJobService` each have their own instance. Preconditions run synchronously before registration, and a failed run does not stop later jobs in that instance. For bundle jobs, preparation provides config advisories before registration; the job service logs their messages only if generation throws, while successful results carry them through the API mapper. Start returns the initial pending DTO snapshot. Lookup returns a fresh snapshot or raises API-local `JobNotFoundError` with kind `not-found`; an optional owner check hides another collection's job with the same 404 body as an unknown or evicted ID.
 
 Explained in context: [`api.md`](api.md#translation-job-system)
+
+---
+
+### Job Run Lifecycle
+
+The neutral Tracker module in `apps/tracker/src/app/collections/store/job-run-lifecycle.ts`. `JobRunLifecycle<Request, Job, Run>` owns runs keyed by id, publishes run maps through `changes`, and takes a job adapter, [Keyed Storage](#keyed-storage) and a `JobTime` clock/poll scheduler. One 500 ms interval serves bundle, export and import jobs. The adapter supplies start/get calls, job identity, completion detection, snapshot mapping and failure mapping. The neutral `job-run-error.ts` helper preserves server messages and string rule details with a localized fallback.
+
+`start` persists a running seed immediately and turns request errors into failed runs. `startAccepted` publishes temporary busy state, persists only accepted jobs and returns request errors to the dialog, restoring its previous result on rejection or cancellation. The one-key `JobRunController` adapter uses this second policy for export/import and keeps their original single-object storage shape. Each run kind supplies its persisted-run reader and unchanged storage key; `injectJobRun` shares feature subscription and destruction wiring without adding store methods.
+
+`restore()` reads persisted runs, immediately queries active jobs and polls them to completion; a failed resumed request removes that run, including a later polling failure. Starting or resuming replaces the key's previous subscription. `clear(id)` cancels only that key and persists dismissal; clearing the last run removes the storage key. `destroy()` cancels requests and polling. Storage errors are contained by Keyed Storage. Bundle batches stay outside the lifecycle and are never persisted.
+
+Explained in context: [`frontend.md`](frontend.md#bundle-runs)
 
 ---
 

@@ -1,5 +1,5 @@
 import type { ImportJobDto, ImportRequestDto } from '@simoncodes-ca/data-transfer';
-import { JobRunController, type JobRunState } from './job-run-controller';
+import { type JobRunState } from './job-run-controller';
 
 export const IMPORT_RUN_STORAGE_KEY = 'lingo-tracker.importRun';
 export type ImportRunState = JobRunState<ImportRequestDto, ImportJobDto>;
@@ -48,6 +48,3 @@ export function readPersistedImportRun(raw: string | null | undefined): ImportRu
     return undefined;
   }
 }
-
-/** Typed import run with shared persistence and polling behavior. */
-export class ImportRunController extends JobRunController<ImportRequestDto, ImportJobDto> {}

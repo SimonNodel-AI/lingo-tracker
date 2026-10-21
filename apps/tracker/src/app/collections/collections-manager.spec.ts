@@ -25,7 +25,7 @@ import { NotificationService } from '../shared/notification';
 import { CollectionsManager } from './collections-manager';
 import { CollectionsApiService } from './services/collections-api.service';
 import { CollectionsStore } from './store/collections.store';
-import { IMPORT_RUN_STORAGE_KEY } from './store/import-run-controller';
+import { IMPORT_RUN_STORAGE_KEY } from './store/import-runs';
 
 const config: LingoTrackerConfigDto = {
   exportFolder: 'dist/export',

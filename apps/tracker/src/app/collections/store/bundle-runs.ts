@@ -3,7 +3,6 @@ import type {
   BundleGenerateJobProgressDto,
   BundleGenerateJobResultDto,
 } from '@simoncodes-ca/data-transfer';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 
 /** Client-side lifecycle of a bundle generation run. */
 export type BundleRunStatus = 'idle' | 'running' | 'completed' | 'failed';
@@ -40,18 +39,6 @@ export function readPersistedRuns(raw: string | null | undefined): Record<string
   } catch {
     return {};
   }
-}
-
-/**
- * The message for a failed bundle run. An invalid bundle definition carries every rule
- * message as `details`; they are appended (`Invalid bundle definition: a; b`) so the
- * reason is readable.
- */
-export function toBundleErrorMessage(error: unknown, fallback: string): string {
-  const message = apiErrorMessage(error, fallback);
-  const details =
-    error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
-  return details.length > 0 ? `${message}: ${details.join('; ')}` : message;
 }
 
 export function isJobFinished(job: BundleGenerateJobDto): boolean {

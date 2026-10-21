@@ -1,19 +1,7 @@
-import {
-  BehaviorSubject,
-  catchError,
-  defer,
-  EMPTY,
-  finalize,
-  type Observable,
-  of,
-  Subscription,
-  tap,
-  throwError,
-} from 'rxjs';
+import { map, type Observable } from 'rxjs';
 import type { KeyedStorage } from '../../shared/storage/keyed-storage';
-import type { BundleTime } from './bundle-run-controller';
-import { toBundleErrorMessage } from './bundle-runs';
-import { followJob } from './job-polling';
+import { toJobErrorMessage } from './job-run-error';
+import { JobRunLifecycle, type JobTime } from './job-run-lifecycle';
 
 export interface JobSnapshot<Request> {
   readonly jobId: string;
@@ -35,132 +23,74 @@ export interface JobRunState<Request, Job extends JobSnapshot<Request>> {
   finishedAt?: string;
 }
 
-export const JOB_POLL_INTERVAL_MS = 500;
-
 export interface Jobs<Request, Job> {
   start(request: Request): Observable<Job>;
   getJob(id: string): Observable<Job>;
   failureMessage(): string;
 }
 
-/** One job run; request failures remain observable to the submitting dialog. */
+/** Adapts a request-bearing job to the one-key lifecycle, preserving its single-run wire format. */
 export class JobRunController<Request, Job extends JobSnapshot<Request>> {
-  private readonly state = new BehaviorSubject<JobRunState<Request, Job> | null>(null);
-  readonly changes = this.state.asObservable();
-  private subscription = new Subscription();
+  private readonly lifecycle;
+  readonly changes;
 
   constructor(
-    private readonly jobs: Jobs<Request, Job>,
-    private readonly storage: Pick<KeyedStorage<JobRunState<Request, Job>>, 'read' | 'write' | 'remove'>,
-    private readonly time: BundleTime,
-  ) {}
-
-  private publish(run: JobRunState<Request, Job>): void {
-    this.state.next(run);
-    this.storage.write(run);
-  }
-
-  private fail(error: unknown, request: Request): void {
-    this.publish({
-      ...this.state.value,
-      request,
-      status: 'failed',
-      error: toBundleErrorMessage(error, this.jobs.failureMessage()),
-      finishedAt: this.time.now(),
-    });
-  }
-
-  private follow(initial: Observable<Job>, resumed: boolean): void {
-    this.subscription.unsubscribe();
-    this.subscription = new Subscription();
-    this.subscription.add(
-      followJob(initial, {
-        getJob: (id) => this.jobs.getJob(id),
+    jobs: Jobs<Request, Job>,
+    storage: Pick<KeyedStorage<JobRunState<Request, Job>>, 'read' | 'write' | 'remove'>,
+    time: JobTime,
+  ) {
+    this.lifecycle = new JobRunLifecycle<Request, Job, JobRunState<Request, Job>>(
+      {
+        start: (_id, request) => jobs.start(request),
+        getJob: (id) => jobs.getJob(id),
         jobId: (job) => job.jobId,
         isFinished: (job) => job.status === 'completed' || job.status === 'failed',
-        poll: (ms) => this.time.poll(ms),
-        intervalMs: JOB_POLL_INTERVAL_MS,
-      })
-        .pipe(
-          tap((job) =>
-            this.publish({
-              status: job.status === 'pending' ? 'running' : job.status,
-              jobId: job.jobId,
-              request: job.request,
-              progress: job.progress,
-              result: job.result,
-              error: job.error,
-              finishedAt:
-                job.status === 'completed' || job.status === 'failed'
-                  ? (job.completedAt ?? this.time.now())
-                  : undefined,
-            }),
-          ),
-          catchError((error: unknown) => {
-            const run = this.state.value;
-            if (resumed) this.clear();
-            else if (run) this.fail(error, run.request);
-            return EMPTY;
-          }),
-        )
-        .subscribe(),
+        map: (job, _previous, now) => ({
+          status: job.status === 'pending' ? 'running' : job.status,
+          jobId: job.jobId,
+          request: job.request,
+          progress: job.progress,
+          result: job.result,
+          error: job.error,
+          finishedAt: job.status === 'completed' || job.status === 'failed' ? (job.completedAt ?? now) : undefined,
+        }),
+        fail: (error, run, now) => ({
+          ...run,
+          status: 'failed',
+          error: toJobErrorMessage(error, jobs.failureMessage()),
+          finishedAt: now,
+        }),
+      },
+      {
+        read: () => {
+          const run = storage.read();
+          return run ? { run } : undefined;
+        },
+        write: (runs) => {
+          const run = runs['run'];
+          if (run) storage.write(run);
+          else storage.remove();
+        },
+        remove: () => storage.remove(),
+      },
+      time,
     );
+    this.changes = this.lifecycle.changes.pipe(map((runs) => runs['run'] ?? null));
   }
 
   start(request: Request): Observable<Job> {
-    return defer(() => {
-      if (this.state.value?.status === 'running') return EMPTY;
-      const previous = this.state.value;
-      const pending: JobRunState<Request, Job> = { status: 'running', request };
-      let accepted = false;
-      const restorePrevious = (): void => {
-        if (!accepted && this.state.value === pending) this.state.next(previous);
-      };
-      // The busy state belongs to the dialog until the server accepts a job.
-      // Keep the previous persisted run intact during the start request.
-      this.state.next(pending);
-      return defer(() => this.jobs.start(request)).pipe(
-        tap((job) => {
-          accepted = true;
-          this.follow(of(job), false);
-        }),
-        catchError((error: unknown) => {
-          restorePrevious();
-          return throwError(() => error);
-        }),
-        finalize(restorePrevious),
-      );
-    });
+    return this.lifecycle.startAccepted('run', request, { status: 'running', request });
   }
-
   retry(): Request | undefined {
-    return this.state.value?.request;
+    return this.lifecycle.runs['run']?.request;
   }
-
   clear(): void {
-    this.subscription.unsubscribe();
-    this.state.next(null);
-    this.storage.remove();
+    this.lifecycle.clear('run');
   }
-
   restore(): void {
-    const run = this.storage.read();
-    if (!run) return;
-    this.subscription.unsubscribe();
-    this.state.next(run);
-    if (run.status === 'running') {
-      const id = run.jobId;
-      if (id)
-        this.follow(
-          defer(() => this.jobs.getJob(id)),
-          true,
-        );
-      else this.clear();
-    }
+    this.lifecycle.restore(true);
   }
-
   destroy(): void {
-    this.subscription.unsubscribe();
-    this.state.complete();
+    this.lifecycle.destroy();
   }
 }
