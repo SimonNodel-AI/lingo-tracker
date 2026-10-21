@@ -412,11 +412,7 @@ describe('toUpdateDto and editedLocales', () => {
   const untouched = locales(['', 'translated'], ['', 'verified']);
 
   it.each<[string, LocaleDraft[], Record<string, { value: string; status: string }> | undefined]>([
-    [
-      'a locale with a value is written with its status',
-      locales(['Oui', 'translated'], ['', 'verified']),
-      { fr: { value: 'Oui', status: 'translated' } },
-    ],
+    ['an unchanged locale with a value is left alone', locales(['Oui', 'translated'], ['', 'verified']), undefined],
     [
       'a status-only change is written even without a value',
       locales(['', 'stale'], ['', 'verified']),
@@ -438,6 +434,31 @@ describe('toUpdateDto and editedLocales', () => {
 
     expect(toUpdateDto(edited, original).locales).toEqual(expected);
     expect(editedLocales(edited, original).map((t) => t.locale)).toEqual(Object.keys(expected ?? {}));
+  });
+
+  it('should omit untouched translations when only the base value changes', () => {
+    const edited = draft({ baseValue: 'Proceed', translations: locales(['Oui', 'translated'], ['Ja', 'verified']) });
+
+    expect(editedLocales(edited, original)).toEqual([]);
+    expect(toUpdateDto(edited, original)).not.toHaveProperty('locales');
+  });
+
+  it('should send a changed translation value with its draft status', () => {
+    const edited = draft({ translations: locales(['Oui!', 'translated'], ['Ja', 'verified']) });
+
+    expect(toUpdateDto(edited, original).locales).toEqual({ fr: { value: 'Oui!', status: 'translated' } });
+  });
+
+  it('editing the value of a verified translation keeps verified', () => {
+    const edited = draft({ translations: locales(['Oui', 'translated'], ['Ja!', 'verified']) });
+
+    expect(toUpdateDto(edited, original).locales).toEqual({ de: { value: 'Ja!', status: 'verified' } });
+  });
+
+  it('should send an explicit status when it moves without a value change', () => {
+    const edited = draft({ translations: locales(['Oui', 'verified'], ['Ja', 'verified']) });
+
+    expect(toUpdateDto(edited, original).locales).toEqual({ fr: { value: 'Oui', status: 'verified' } });
   });
 
   it('should name the entry by its original full key and always send the tags', () => {
