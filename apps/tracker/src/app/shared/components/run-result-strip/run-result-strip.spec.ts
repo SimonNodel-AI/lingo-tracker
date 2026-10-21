@@ -6,6 +6,37 @@ import {
 } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunResultStrip } from './run-result-strip';
+import type { RunResultView } from './run-result-view';
+
+type RunningView = Extract<RunResultView, { status: 'running' }>;
+type CompletedView = Extract<RunResultView, { status: 'completed' }>;
+type FailedView = Extract<RunResultView, { status: 'failed' }>;
+
+const runningView = (fields: Partial<Omit<RunningView, 'status'>> = {}): RunningView => ({
+  headline: 'Exporting…',
+  currentItemLabel: 'Writing',
+  currentItem: 'de.xliff',
+  progress: { current: 2, total: 4 },
+  progressLabel: '2 of 4 locales',
+  ...fields,
+  status: 'running',
+});
+const completedView = (fields: Partial<Omit<CompletedView, 'status'>> = {}): CompletedView => ({
+  headline: 'Exported',
+  clauses: ['4 files', '612 entries'],
+  detailsLabel: 'Details',
+  detailsAriaLabel: 'Details of export',
+  dismissAriaLabel: 'Dismiss export result',
+  ...fields,
+  status: 'completed',
+});
+const failedView = (fields: Partial<Omit<FailedView, 'status'>> = {}): FailedView => ({
+  headline: 'Export failed',
+  error: "Output directory '/srv/locked' is not writable.",
+  retryLabel: 'Retry',
+  ...fields,
+  status: 'failed',
+});
 
 describe('RunResultStrip', () => {
   let spectator: Spectator<RunResultStrip>;
@@ -17,18 +48,17 @@ describe('RunResultStrip', () => {
     spectator.click(selector);
   };
 
+  const setStrip = (view: RunResultView, controls: { detailsOpen?: boolean; detailsId?: string } = {}): void => {
+    spectator.setInput({ view, detailsOpen: controls.detailsOpen ?? false, detailsId: controls.detailsId });
+  };
+
   beforeEach(() => {
-    spectator = createComponent({ props: { status: 'running', headline: 'Exporting…' } });
+    spectator = createComponent({ props: { view: { status: 'running', headline: 'Exporting…' } } });
   });
 
   describe('running', () => {
     beforeEach(() => {
-      spectator.setInput({
-        currentItemLabel: 'Writing',
-        currentItem: 'de.xliff',
-        progress: { current: 2, total: 4 },
-        progressLabel: '2 of 4 locales',
-      });
+      setStrip(runningView());
       spectator.detectChanges();
     });
 
@@ -49,14 +79,14 @@ describe('RunResultStrip', () => {
     });
 
     it('omits the current item and progress clause when they are not given', () => {
-      spectator.setInput({ currentItem: undefined, progressLabel: undefined, progress: undefined });
+      setStrip(runningView({ currentItem: undefined, progressLabel: undefined, progress: undefined }));
 
       expect(spectator.queryAll('.fig').length).toBe(1);
       expect(spectator.query<HTMLElement>('.bar i')?.style.width).toBe('0%');
     });
 
     it('clamps the bar at 100%', () => {
-      spectator.setInput({ progress: { current: 9, total: 4 } });
+      setStrip(runningView({ progress: { current: 9, total: 4 } }));
 
       expect(spectator.query<HTMLElement>('.bar i')?.style.width).toBe('100%');
     });
@@ -64,15 +94,7 @@ describe('RunResultStrip', () => {
 
   describe('completed', () => {
     beforeEach(() => {
-      spectator.setInput({
-        status: 'completed',
-        headline: 'Exported',
-        clauses: ['4 files', '612 entries'],
-        detailsId: 'details-1',
-        detailsLabel: 'Details',
-        detailsAriaLabel: 'Details of export',
-        dismissAriaLabel: 'Dismiss export result',
-      });
+      setStrip(completedView(), { detailsId: 'details-1' });
       spectator.detectChanges();
     });
 
@@ -90,7 +112,7 @@ describe('RunResultStrip', () => {
     });
 
     it('switches to the warning tint and glyph when there are warnings', () => {
-      spectator.setInput({ warningsCount: 2, clauses: ['4 files', '2 warnings'] });
+      setStrip(completedView({ warningsCount: 2, clauses: ['4 files', '2 warnings'] }));
 
       expect(strip()?.classList.contains('result--ok')).toBe(true);
       expect(strip()?.classList.contains('result--warn')).toBe(true);
@@ -123,7 +145,7 @@ describe('RunResultStrip', () => {
     });
 
     it('reflects detailsOpen on the strip, the toggle and the panel id', () => {
-      spectator.setInput({ detailsOpen: true });
+      setStrip(completedView(), { detailsOpen: true, detailsId: 'details-1' });
 
       expect(strip()?.classList.contains('result--open')).toBe(true);
       expect(spectator.query('.details-toggle')?.getAttribute('aria-expanded')).toBe('true');
@@ -137,12 +159,7 @@ describe('RunResultStrip', () => {
 
   describe('failed', () => {
     beforeEach(() => {
-      spectator.setInput({
-        status: 'failed',
-        headline: 'Export failed',
-        error: "Output directory '/srv/locked' is not writable.",
-        retryLabel: 'Retry',
-      });
+      setStrip(failedView());
       spectator.detectChanges();
     });
 
@@ -164,7 +181,7 @@ describe('RunResultStrip', () => {
     });
 
     it('omits the prose clause when there is no error', () => {
-      spectator.setInput({ error: undefined });
+      setStrip(failedView({ error: undefined }));
 
       expect(spectator.query('.fig--prose')).toBeNull();
     });
@@ -180,7 +197,7 @@ describe('RunResultStrip', () => {
       const detailsToggle = vi.fn();
       spectator.output('dismiss').subscribe(dismiss);
       spectator.output('detailsToggle').subscribe(detailsToggle);
-      spectator.setInput({ detailsLabel: 'Details', detailsId: 'fail-details', dismissAriaLabel: 'Dismiss' });
+      setStrip(failedView({ detailsLabel: 'Details', dismissAriaLabel: 'Dismiss' }), { detailsId: 'fail-details' });
 
       expect(spectator.query('.details-toggle')?.getAttribute('aria-controls')).toBe('fail-details');
       click('.details-toggle');
@@ -191,7 +208,7 @@ describe('RunResultStrip', () => {
     });
 
     it('shows the projected panel on failure only when details are open', () => {
-      spectator.setInput({ detailsLabel: 'Details', detailsId: 'fail-details', detailsOpen: true });
+      setStrip(failedView({ detailsLabel: 'Details' }), { detailsId: 'fail-details', detailsOpen: true });
 
       expect(spectator.query('.result-details')?.getAttribute('id')).toBe('fail-details');
       expect(strip()?.getAttribute('role')).toBe('alert');
@@ -200,11 +217,14 @@ describe('RunResultStrip', () => {
 
   describe('typed clauses', () => {
     beforeEach(() => {
-      spectator.setInput({
-        status: 'completed',
-        headline: 'Exported',
-        clauses: ['3 files', { text: 'XLIFF', kind: 'text' }, { text: 'dist/lingo-export_v2.1', kind: 'mono' }],
-      });
+      setStrip(
+        completedView({
+          clauses: ['3 files', { text: 'XLIFF', kind: 'text' }, { text: 'dist/lingo-export_v2.1', kind: 'mono' }],
+          detailsLabel: undefined,
+          detailsAriaLabel: undefined,
+          dismissAriaLabel: undefined,
+        }),
+      );
       spectator.detectChanges();
     });
 
@@ -234,7 +254,7 @@ describe('RunResultStrip', () => {
   describe('minimal configuration', () => {
     it('renders no unnamed buttons for any status', () => {
       for (const status of ['running', 'completed', 'failed'] as const) {
-        spectator.setInput({ status, headline: 'Working' });
+        setStrip({ status, headline: 'Working' });
 
         expect(spectator.queryAll('button').length).toBe(0);
         expect(spectator.query('.result-controls')).toBeNull();
@@ -249,7 +269,7 @@ describe('RunResultStrip details projection', () => {
   const createHost = createHostFactory({ component: RunResultStrip });
 
   const template = (open: boolean): string => `
-    <app-run-result-strip status="completed" headline="Exported" detailsLabel="Details" detailsId="d" [detailsOpen]="${open}">
+    <app-run-result-strip [view]="{ status: 'completed', headline: 'Exported', detailsLabel: 'Details' }" detailsId="d" [detailsOpen]="${open}">
       <p class="projected">Files written</p>
     </app-run-result-strip>`;
 
