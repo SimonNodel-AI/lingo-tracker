@@ -324,15 +324,15 @@ export function toCreateDto(draft: ResourceEntryDraft): CreateResourceDto {
 }
 
 /**
- * The locales an edit writes: those with a value, and those whose status moved.
+ * The locales an edit writes: those whose non-empty value changed or whose status moved.
  * An emptied locale with its status untouched is left alone.
  */
 export function editedLocales(draft: ResourceEntryDraft, original: ResourceSummaryDto): LocaleDraft[] {
   return draft.translations.filter((translation) => {
-    const hasValue = translation.value.trim().length > 0;
-    const statusChanged =
-      translation.status !== (summaryTarget(original, translation.locale)?.status ?? DEFAULT_MISSING_METADATA_STATUS);
-    return hasValue || statusChanged;
+    const previous = summaryTarget(original, translation.locale);
+    const valueChanged = translation.value.trim().length > 0 && translation.value !== (previous?.value ?? '');
+    const statusChanged = translation.status !== (previous?.status ?? DEFAULT_MISSING_METADATA_STATUS);
+    return valueChanged || statusChanged;
   });
 }
 
@@ -340,7 +340,9 @@ export function editedLocales(draft: ResourceEntryDraft, original: ResourceSumma
  * The update request. The key is the entry's full key where it lives now (the
  * `original` it started from). A change of folder, the collection root included,
  * travels as `moveTo` (the destination folder; '' for the root). Tags are always
- * sent, so removing the last one clears them.
+ * sent, so removing the last one clears them. Only changed locales are sent,
+ * each with the draft's status. Untouched locales are omitted so Core can mark
+ * them stale when the base value changes.
  */
 export function toUpdateDto(draft: ResourceEntryDraft, original: ResourceSummaryDto): UpdateResourceDto {
   const dto: UpdateResourceDto = {
