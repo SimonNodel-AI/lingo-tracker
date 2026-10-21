@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
 import { toApiError } from '../../../shared/api-error/api-error';
 import { CollectionsApiService } from '../../services/collections-api.service';
-import { BUNDLE_JOB_POLL_INTERVAL_MS, BUNDLE_RUNS_STORAGE_KEY } from '../bundle-run-controller';
+import { BUNDLE_RUNS_STORAGE_KEY } from '../bundle-batch-controller';
+import { JOB_POLL_INTERVAL_MS } from '../job-run-lifecycle';
 import { CollectionsStore } from '../collections.store';
 
 describe('withBundlesFeature', () => {
@@ -207,12 +208,12 @@ describe('withBundlesFeature', () => {
       store.generateBundle('tracker', ['en', 'fr']);
       expect(api.generateBundle).toHaveBeenCalledWith('tracker', { locales: ['en', 'fr'] });
 
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
       expect(api.getBundleJob).toHaveBeenCalledTimes(1);
       expect(store.bundleRuns()['tracker']?.status).toBe('running');
       expect(store.bundleRuns()['tracker']?.progress).toEqual({ current: 1, total: 2 });
 
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
       expect(api.getBundleJob).toHaveBeenCalledTimes(2);
       const run = store.bundleRuns()['tracker'];
       expect(run?.status).toBe('completed');
@@ -222,7 +223,7 @@ describe('withBundlesFeature', () => {
       expect(store.isAnyBundleRunning()).toBe(false);
 
       // Polling stops once finished.
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS * 3);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS * 3);
       expect(api.getBundleJob).toHaveBeenCalledTimes(2);
     });
 
@@ -248,7 +249,7 @@ describe('withBundlesFeature', () => {
       );
 
       store.generateBundle('tracker');
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
 
       const run = store.bundleRuns()['tracker'];
       expect(run?.status).toBe('failed');
@@ -334,7 +335,7 @@ describe('withBundlesFeature', () => {
       expect(store.batchPosition()).toBe(1);
       expect(store.isBatchRunning()).toBe(true);
 
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
 
       expect(store.batchPosition()).toBe(1);
       expect(store.isBatchRunning()).toBe(false);
@@ -363,7 +364,7 @@ describe('withBundlesFeature', () => {
       expect(store.batchTotal()).toBe(2);
       expect(store.isBatchRunning()).toBe(true);
 
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
       expect(store.batchPosition()).toBe(2);
       expect(store.isBatchRunning()).toBe(true);
       store.generateAllBundles();
@@ -374,7 +375,7 @@ describe('withBundlesFeature', () => {
       expect(store.isBatchRunning()).toBe(true);
 
       api.getBundleJob.mockReturnValue(of({ ...runningJob, status: 'failed', error: 'Failed' }));
-      vi.advanceTimersByTime(BUNDLE_JOB_POLL_INTERVAL_MS);
+      vi.advanceTimersByTime(JOB_POLL_INTERVAL_MS);
       expect(store.batchPosition()).toBe(2);
       expect(store.isBatchRunning()).toBe(false);
     });

@@ -1,7 +1,8 @@
+import { toJobErrorMessage } from './job-run-error';
 import type { BundleGenerateJobDto } from '@simoncodes-ca/data-transfer';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../../shared/api-error/api-error';
-import { type BundleRunState, mapJobToRun, readPersistedRuns, toBundleErrorMessage } from './bundle-runs';
+import { type BundleRunState, mapJobToRun, readPersistedRuns } from './bundle-runs';
 
 const finishedAt = '2026-09-15T10:00:02.000Z';
 const job: BundleGenerateJobDto = {
@@ -163,7 +164,7 @@ describe('toBundleErrorMessage', () => {
 
   for (const entry of cases) {
     it(entry.name, () => {
-      expect(toBundleErrorMessage(entry.error, 'Generate failed')).toBe(entry.expected);
+      expect(toJobErrorMessage(entry.error, 'Generate failed')).toBe(entry.expected);
     });
   }
 });
