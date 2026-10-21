@@ -33,6 +33,7 @@ pnpm run test:core
 pnpm run test:domain
 pnpm run test:tracker
 pnpm nx e2e cli-e2e  # smoke tests the built CLI (builds cli first)
+pnpm nx e2e tracker-e2e  # Playwright suite against the built API + Tracker (builds both first)
 
 # Run a single test file (path relative to the project root)
 pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts   # core, domain, tracker (@nx/vitest)
@@ -57,7 +58,18 @@ Use the `/lingo-tracker` skill for detecting hardcoded strings, creating transla
 
 ### Browser / UI Testing
 
-Use the `/playwright-cli` skill for browser automation, UI testing, screenshots, and interacting with the running Tracker UI. Do NOT use the Playwright MCP plugin or invoke Playwright directly.
+Use the `/playwright-cli` skill for ad-hoc browser automation, screenshots, and interacting with the running Tracker UI. Do NOT use the Playwright MCP plugin for this. Automated UI tests belong in `apps/tracker-e2e`.
+
+### Tracker E2E (`apps/tracker-e2e`)
+
+Playwright, Chromium only. Specs are `src/**/*.e2e.ts`; import `test`/`expect` from `src/fixtures`.
+
+- **System under test**: each worker spawns the built `dist/apps/api/main.js` (which serves `dist/apps/tracker/browser`) on a free port, with a temporary project folder as cwd. Never run e2e against the dev server: its cwd is the workspace root.
+- **Data**: the `project` fixture gives each test its own collection and restores `.lingo-tracker.json` afterwards. Seed through the running API, not by importing core. Assert on disk with the read-only `disk` helpers.
+- **Mocking**: real backend by default. Use `page.route` only for error, latency and network-failure states. A network guard stubs Google Fonts and fails the test on any other non-localhost request. Machine translation is not covered.
+- **Locators**: `getByTestId` for app-specific elements, `getByRole` with English names for standard widgets. No CSS or `.mat-*` selectors, no `waitForTimeout`. Add a `data-testid` only when a test needs it.
+- **Page objects** (`src/pages/`): locators and multi-step actions, no assertions; exposed as fixtures.
+- **CI** (`.github/workflows/tracker-e2e.yml`): runs automatically on PRs to `main`, and on PRs to `develop` only when a maintainer adds the `run-e2e` label. `pr.yml` excludes `tracker-e2e`.
 
 ### Other Commands
 

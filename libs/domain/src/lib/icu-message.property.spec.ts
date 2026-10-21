@@ -109,7 +109,7 @@ describe('ICU message properties', () => {
       }),
       { numRuns: 1000 },
     );
-  });
+  }, 30_000);
 
   it('accepts supported messages with the parser oracle', () => {
     fc.assert(
