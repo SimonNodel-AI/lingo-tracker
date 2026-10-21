@@ -1,8 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
-import { type OpenedProject, prepareExportRun } from '@simoncodes-ca/core';
+import type { OpenedProject } from '@simoncodes-ca/core';
 import type { ExportJobDto, ExportPlanDto, ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { RouteProject } from '../config/route-project';
-import { mapExportRequestToRunOptions, mapPreparedExportToPlanDto } from '../mappers/export.mapper';
 import { exportRequestBody } from '../validation/dto-schemas';
 import { ValidBody } from '../validation/valid-body';
 import { ExportJobService } from './export-job.service';
@@ -17,8 +16,7 @@ export class ExportsController {
 
   @Post('dry-run')
   dryRun(@ValidBody(exportRequestBody) body: ExportRequestDto, @RouteProject() project: OpenedProject): ExportPlanDto {
-    const { collections, options } = mapExportRequestToRunOptions(body, project);
-    return mapPreparedExportToPlanDto(prepareExportRun(collections, options), project.projectRoot);
+    return this.#jobs.dryRun({ project, request: body });
   }
 
   @Post()

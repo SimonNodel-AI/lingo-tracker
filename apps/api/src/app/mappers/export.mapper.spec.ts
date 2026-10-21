@@ -5,11 +5,11 @@ import { internalErrors } from '@simoncodes-ca/core/testing';
 import type { ExportRequestDto } from '@simoncodes-ca/data-transfer';
 import { closeExportProject, exportProject } from '../exports/export.spec-helpers';
 import {
-  MAX_PLAN_MESSAGES,
   mapExportRequestToRunOptions,
   mapExportRunResultToJobResult,
   mapPreparedExportToPlanDto,
 } from './export.mapper';
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 describe('export mapper', () => {
   let project: OpenedProject;

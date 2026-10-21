@@ -177,6 +177,44 @@ describe('ImportJobService (real core)', () => {
     expect(() => start()).toThrow('read-only');
   });
 
+  it('preserves preview source diagnostics and start preconditions for unresolved formats', async () => {
+    writeImport(project, 'vendor.data');
+    const files: ImportRequestDto['files'] = [
+      { path: 'vendor.data', locale: 'fr' },
+      { path: 'missing.xlf', locale: 'fr' },
+    ];
+    const plan = await service.dryRun({ project, request: { ...request, files } });
+    expect(plan.files).toMatchObject([
+      { format: 'json', entries: 0, sourceProblem: expect.stringContaining('Cannot auto-detect format') },
+      { format: 'xliff', entries: 0, sourceProblem: expect.any(String) },
+    ]);
+    const registered = jest.spyOn(JobRegistry.prototype, 'start');
+    for (const file of files) expect(() => start({ ...request, files: [file] })).toThrow();
+    expect(registered).not.toHaveBeenCalled();
+    const explicit: ImportRequestDto = {
+      ...request,
+      files: [{ path: 'vendor.data', locale: 'fr', format: 'json' }],
+    };
+    expect((await service.dryRun({ project, request: explicit })).files[0]).toMatchObject({
+      format: 'json',
+      entries: 1,
+      imported: 1,
+    });
+    const job = start(explicit);
+    await flushImportJobs();
+    expect(service.getJob(job.jobId).result?.outcome).toBe('succeeded');
+  });
+
+  it('does not reindex during dry-run even when it reports planned mutations', async () => {
+    const onMutation = jest.fn();
+    project = { ...project, onMutation };
+    expect((await service.dryRun({ project, request })).totals.changed).toBeGreaterThan(0);
+    expect(onMutation).not.toHaveBeenCalled();
+    start();
+    await flushImportJobs();
+    expect(onMutation).toHaveBeenCalledWith({ kind: 'reindex', translationsFolder: expect.any(String) });
+  });
+
   it('uses the core large-file advisory for plans, including parse failures', async () => {
     writeImport(project, 'fr.json', `${'{"hello":"Bonjour"}'}${' '.repeat(5 * 1024 * 1024)}`);
     const plan = await service.dryRun({ project, request });

@@ -3,7 +3,6 @@ import { BadRequestException } from '@nestjs/common';
 import { type OpenedProject, runImport } from '@simoncodes-ca/core';
 import type { ImportRequestDto } from '@simoncodes-ca/data-transfer';
 import { closeImportProject, importProject, writeImport } from '../imports/import.spec-helpers';
-import { MAX_PLAN_MESSAGES } from './export.mapper';
 import {
   type ImportFileRun,
   mapImportRequestToRunOptions,
@@ -11,6 +10,7 @@ import {
   mapImportRunToJobResult,
   mapImportRunToPlan,
 } from './import.mapper';
+import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 describe('import mapper', () => {
   let project: OpenedProject;

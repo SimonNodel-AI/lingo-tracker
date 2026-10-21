@@ -1,5 +1,8 @@
+import { chmodSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type { ExportJobDto, ExportPlanDto } from '@simoncodes-ca/data-transfer';
 import { CollectionIndex } from '../cache/collection-index.service';
+import { JobRegistry } from '../jobs/job-registry';
 import { HttpProject } from '../testing/http-project';
 
 describe('ExportsController HTTP (real project)', () => {
@@ -12,7 +15,10 @@ describe('ExportsController HTTP (real project)', () => {
     await project.start();
     await project.seed('hello');
   });
-  afterEach(async () => project.close());
+  afterEach(async () => {
+    jest.restoreAllMocks();
+    await project.close();
+  });
 
   it('returns relative paths and overwriteCount without creating the output folder', async () => {
     const body = { format: 'json', collections: ['test-collection'], filenamePattern: '{locale}' };
@@ -79,6 +85,31 @@ describe('ExportsController HTTP (real project)', () => {
   it('returns 400 for invalid status filters before registering a job', async () => {
     for (const statuses of [[], ['unknown']]) expect((await start({ format: 'json', statuses })).status).toBe(400);
   });
+
+  (process.getuid?.() === 0 ? it.skip : it)(
+    'returns 400 for an unusable output folder at POST without registering a job',
+    async () => {
+      project.write('blocked-output', 'a file');
+      const output = join(project.root, 'read-only-output');
+      mkdirSync(output);
+      chmodSync(output, 0o555);
+      const registered = jest.spyOn(JobRegistry.prototype, 'start');
+      try {
+        for (const outputDirectory of ['blocked-output', 'read-only-output']) {
+          const body = { format: 'json', outputDirectory };
+          const preview = await plan(body);
+          expect(preview.body.outputProblem).toEqual(expect.any(String));
+          expect(await start(body)).toEqual({
+            status: 400,
+            body: { statusCode: 400, error: 'Bad Request', message: preview.body.outputProblem },
+          });
+        }
+        expect(registered).not.toHaveBeenCalled();
+      } finally {
+        chmodSync(output, 0o755);
+      }
+    },
+  );
 
   it('answers 202 with a pending snapshot, a sized progress bar and the echoed request', async () => {
     const body = { format: 'json', collections: ['test-collection'], filenamePattern: '{locale}' };
