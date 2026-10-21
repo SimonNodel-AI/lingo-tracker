@@ -108,7 +108,7 @@ describe('import session', () => {
         strategy: 'verification',
         locale: 'es',
         collection: 'main',
-        resourcesImported: 1,
+        resourcesImported: 2,
         resourcesCreated: 1,
         resourcesUpdated: 1,
         resourcesSkipped: 1,
@@ -121,6 +121,22 @@ describe('import session', () => {
           { from: undefined, to: 'verified', count: 1 },
           { from: 'translated', to: 'verified', count: 1 },
         ],
+      });
+    });
+
+    it('counts created and updated resources as imported', () => {
+      const session = openImportSession(collection, { locale: 'es' });
+      session.changes.push(
+        { key: 'common.new', type: 'created', newValue: 'Nuevo', newStatus: 'translated' },
+        { key: 'common.updated', type: 'updated', newStatus: 'translated' },
+        { key: 'common.changed', type: 'value-changed', newValue: 'Cambio', newStatus: 'translated' },
+        { key: 'common.skip', type: 'skipped', reason: 'missing' },
+        { key: 'common.fail', type: 'failed', reason: 'bad' },
+      );
+      expect(sessionResult(session)).toMatchObject({
+        resourcesImported: 3,
+        resourcesCreated: 1,
+        resourcesUpdated: 2,
       });
     });
 

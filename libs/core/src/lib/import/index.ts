@@ -9,6 +9,8 @@ export { parseJsonImport } from './parse-json-import';
 export { parseXliffImport } from './parse-xliff-import';
 export type { ImportRunWarning, RunImportOptions, RunImportResult } from './run-import';
 export { runImport } from './run-import';
+export type { ImportRunTotals } from './summarize-import-runs';
+export { summarizeImportRuns } from './summarize-import-runs';
 export type {
   ICUAutoFix,
   ICUAutoFixError,

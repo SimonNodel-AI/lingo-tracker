@@ -7,6 +7,7 @@ import {
   openProjectCollection,
   type RunImportOptions,
   type RunImportResult,
+  summarizeImportRuns,
 } from '@simoncodes-ca/core';
 import type {
   ImportFileRequestDto,
@@ -80,7 +81,7 @@ export function mapImportResultToPlanFile(file: ImportFileRun): ImportPlanFileDt
     locale: file.file.locale,
     format: file.format,
     entries: file.run?.entriesParsed ?? 0,
-    imported: (result?.resourcesCreated ?? 0) + (result?.resourcesUpdated ?? 0),
+    imported: result?.resourcesImported ?? 0,
     created: result?.resourcesCreated ?? 0,
     updated: result?.resourcesUpdated ?? 0,
     skipped: result?.resourcesSkipped ?? 0,
@@ -99,9 +100,16 @@ export function mapImportResultToPlanFile(file: ImportFileRun): ImportPlanFileDt
 }
 
 export function mapImportRunToPlan(request: ImportRequestDto, runs: readonly ImportFileRun[]): ImportPlanDto {
+  const { totals } = summarizeImportRuns(runs.flatMap(({ run }) => (run ? [run] : [])));
+  return buildImportPlan(request, runs, totals);
+}
+
+function buildImportPlan(
+  request: ImportRequestDto,
+  runs: readonly ImportFileRun[],
+  totals: ImportPlanDto['totals'],
+): ImportPlanDto {
   const files = runs.map(mapImportResultToPlanFile);
-  const totals = { entries: 0, imported: 0, created: 0, updated: 0, skipped: 0, failed: 0, changed: 0 };
-  for (const file of files) for (const key of Object.keys(totals) as (keyof typeof totals)[]) totals[key] += file[key];
   const statusTransitions: ImportPlanDto['statusTransitions'][number][] = [];
   for (const file of files)
     for (const transition of file.statusTransitions) {
@@ -160,16 +168,12 @@ export function mapImportRunToJobResult(
   runs: readonly ImportFileRun[],
   projectRoot: string,
 ): ImportJobResultDto {
-  const plan = mapImportRunToPlan(request, runs);
+  const summary = summarizeImportRuns(runs.flatMap(({ run }) => (run ? [run] : [])));
+  const plan = buildImportPlan(request, runs, summary.totals);
   const files = runs.map((file) => ({
     ...mapImportResultToPlanFile(file),
     outcome:
-      file.sourceProblem !== undefined ||
-      file.run?.outcome === 'failed' ||
-      (file.run?.result.resourcesFailed ?? 0) > 0 ||
-      (file.run?.result.errors.length ?? 0) > 0
-        ? ('failed' as const)
-        : ('imported' as const),
+      file.sourceProblem !== undefined || file.run?.outcome === 'failed' ? ('failed' as const) : ('imported' as const),
     filesModified: [
       ...new Set(file.run?.result.filesModified.map((path) => relative(projectRoot, resolve(projectRoot, path))) ?? []),
     ],
@@ -186,6 +190,6 @@ export function mapImportRunToJobResult(
     errors: plan.errors,
     truncated: plan.truncated,
     filesModified: [...new Set(files.flatMap((file) => file.filesModified))],
-    outcome: files.some((file) => file.outcome === 'failed') ? 'failed' : 'succeeded',
+    outcome: runs.some((file) => file.sourceProblem !== undefined) ? 'failed' : summary.outcome,
   };
 }

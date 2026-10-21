@@ -163,6 +163,8 @@ describe('import-statistics', () => {
 
       const stats = calculateImportStatistics(changes);
 
+      expect(stats.resourcesImported).toBe(3);
+      expect(stats.resourcesImported).toBe(stats.resourcesCreated + stats.resourcesUpdated);
       expect(stats.resourcesCreated).toBe(1);
       expect(stats.resourcesUpdated).toBe(2);
       expect(stats.resourcesSkipped).toBe(1);
