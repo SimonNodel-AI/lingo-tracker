@@ -6,10 +6,10 @@ import type {
   ExportRequestDto,
   LingoTrackerConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { catchError, defer, EMPTY, finalize, type Observable, Subscription, throwError } from 'rxjs';
+import { type Observable, Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../i18n-types/tracker-resources';
-import { ApiError, apiErrorMessage } from '../../shared/api-error/api-error';
 import type { StorageAdapter } from '../../shared/storage/keyed-storage';
+import { JobStartAttempt } from '../store/form-submit-attempt-job';
 import { resolveCollectionSettings } from '../store/collection-settings';
 import type { ExportDialogData } from './export-dialog-data';
 import {
@@ -54,9 +54,12 @@ export class ExportForm {
     return this.form.valid;
   });
   readonly activeSection = signal<ExportSection>('format');
-  readonly saving = signal(false);
-  readonly submitAttempted = signal(false);
-  readonly submitErrors = signal<readonly string[]>([]);
+  readonly #attempt = new JobStartAttempt<ExportRequestDto>(() =>
+    this.options.translate(TRACKER_TOKENS.EXPORT.TOAST.STARTFAILED),
+  );
+  readonly saving = this.#attempt.saving;
+  readonly submitAttempted = this.#attempt.state.attempted;
+  readonly submitErrors = this.#attempt.state.errors;
   readonly sections = computed<readonly ExportSection[]>(() => [
     'format',
     'collections',
@@ -179,7 +182,7 @@ export class ExportForm {
     this.#changes.add(
       this.form.valueChanges.subscribe(() => {
         this.refreshSelections();
-        this.submitErrors.set([]);
+        this.#attempt.state.clear();
         // A Retry request is a one-off; it must not become the remembered draft.
         if (options.storage && !options.data.request) persistDraft(this.form.getRawValue(), options.storage);
       }),
@@ -243,10 +246,8 @@ export class ExportForm {
 
   /** Show every error and move to the first section that has one. Returns whether the form is invalid. */
   revealErrors(): boolean {
-    this.submitAttempted.set(true);
     this.refreshSelections();
-    if (!this.form.invalid) return false;
-    this.form.markAllAsTouched();
+    if (this.#attempt.state.check(this.form)) return false;
     const first = this.sections().find((section) => this.sectionErrors().has(section));
     if (first) this.activeSection.set(first);
     return true;
@@ -257,26 +258,7 @@ export class ExportForm {
   }
 
   submit(start: (request: ExportRequestDto) => Observable<ExportJobDto>): Observable<ExportJobDto> {
-    return defer(() => {
-      if (this.saving()) return EMPTY;
-      const request = this.submitResult();
-      if (!request) return EMPTY;
-      this.saving.set(true);
-      this.submitErrors.set([]);
-      return defer(() => start(request)).pipe(
-        catchError((error: unknown) => {
-          const details =
-            error instanceof ApiError ? error.details.filter((item): item is string => typeof item === 'string') : [];
-          this.submitErrors.set(
-            details.length
-              ? details
-              : [apiErrorMessage(error, this.options.translate(TRACKER_TOKENS.EXPORT.TOAST.STARTFAILED))],
-          );
-          return throwError(() => error);
-        }),
-        finalize(() => this.saving.set(false)),
-      );
-    });
+    return this.#attempt.start(() => this.submitResult(), start);
   }
 
   destroy(): void {

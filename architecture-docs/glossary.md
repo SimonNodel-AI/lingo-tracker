@@ -154,7 +154,15 @@ Explained in context: [`bundle-generation.md`](bundle-generation.md#where-bundle
 
 ---
 
-### Key Tree
+#### Job Start Attempt
+
+The job acceptance helper in `apps/tracker/src/app/collections/store/form-submit-attempt-job.ts`. `JobStartAttempt<TResult>` takes a failure-message callback and composes [Form Attempt State](#form-attempt-state), exposed as `state`. `start(prepare, start)` returns a lazy Observable, ignores duplicate starts, and clears previous errors after valid preparation. It owns `saving`, maps failures through `detailsElseMessage`, rethrows the original error and resets saving on completion, error or cancellation. Export and import forms keep their validation, request construction and section jumps.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
+## Key Tree
 
 The pure conversion between dot-delimited keys and nested JSON in `libs/domain/src/lib/key-tree.ts`. `buildKeyTree(entries, { leaf?, path? })` returns `{ tree, conflicts }`. Every branch has a null prototype, and traversal checks own properties. Leaves remain opaque, including rich objects. Parent leaves win over descendants in both key orders; conflicts lists each parent once, sorted. Exact duplicates use the last value. With `path`, distinct source keys that share a transformed path produce conflicts naming every source key. Callers validate key syntax before conversion.
 
@@ -506,7 +514,7 @@ Explained in context: [`frontend.md`](frontend.md#collection-connector-links)
 
 ### Dialog Config Submit
 
-Dialog Config Submit owns the collection or bundle write lifecycle; [Form Submit Attempt](#form-submit-attempt) composes it and adds the form's attempt state. `NamedEntrySubmit` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` accepts five submit fields: `dialog`, `entry` (mode and original name), `prepare`, `write`, and `onRefusal`. The form's `prepare(): TResult | undefined | Promise<TResult | undefined>` owns synchronous validity checks, any confirmation, explicit error resets and one result build; `undefined` aborts. The module ignores another attempt during confirmation or a write, awaits preparation, chooses create or update, and builds the rename patch. `write` groups the entity's `create(result)` and `update(name, patch, result)` calls. The module owns `saving`, the server-taken-name validator and localized refusal classification; the form renders the refusal. `submitDialogConfigWrite()` owns the cold write subscription, close lock, success close and restoration on refusal. Destruction cancels an in-flight write and prevents a write after pending preparation. Confirmation keeps the original saving and close behavior. Each form's `submit({ dialog, write })` is its single submit entry point; dialogs call it directly. `dialog-config-submit-adapters.ts` returns only `{ env, write }`, using DTO types without importing forms. The environment supplies `translate`, `destroyRef` and an injected `confirm` function. The collection form owns its removed-locale prompt. `classifyConfigRefusal()` remains with [Config Write](#config-write); Settings uses it for row errors and keeps its page-owned subscription after navigation.
+Dialog Config Submit owns the collection or bundle write lifecycle; [Form Submit Attempt](#form-submit-attempt) composes it and adds the form's attempt state. `NamedEntrySubmit` in `apps/tracker/src/app/collections/store/dialog-config-submit.ts` accepts five submit fields: `dialog`, `entry` (mode and original name), `prepare`, `write`, and `onRefusal`. The form's `prepare(): TResult | undefined | Promise<TResult | undefined>` owns synchronous validity checks, any confirmation, explicit error resets and one result build; `undefined` aborts. The module ignores another attempt during confirmation or a write, awaits preparation, chooses create or update, and builds the rename patch. `write` groups the entity's `create(result)` and `update(name, patch, result)` calls. The module owns `saving`, the server-taken-name validator and localized refusal classification; the form renders the refusal. `submitDialogConfigWrite()` owns the cold write subscription, close lock, success close and restoration on refusal. The same module supplies `submitDialogJob({ dialogRef, start, destroyRef })` for export and import: it locks closing, subscribes to the form-owned start, closes with the accepted job, unlocks on finalization and cancels on destruction. Job refusal messages stay with [Job Start Attempt](#job-start-attempt). Destruction cancels an in-flight write and prevents a write after pending preparation. Confirmation keeps the original saving and close behavior. Each form's `submit({ dialog, write })` is its single submit entry point; dialogs call it directly. `dialog-config-submit-adapters.ts` returns only `{ env, write }`, using DTO types without importing forms. The environment supplies `translate`, `destroyRef` and an injected `confirm` function. The collection form owns its removed-locale prompt. `classifyConfigRefusal()` remains with [Config Write](#config-write); Settings uses it for row errors and keeps its page-owned subscription after navigation.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -662,6 +670,14 @@ Explained in context: [`core-library.md`](core-library.md#add-resource)
 
 ---
 
+### Export Dialog Decisions
+
+The plain footer and plan presentation rules in `apps/tracker/src/app/collections/export-dialog/export-dialog-decisions.ts`. `exportFooter(input)` takes validity, preview state, the plan and busy flags; it returns the ordered footer state, submit permission and primary button token with its count. `exportPlanPresentation(plan, sectionErrors)` adds server output problems to the rail errors. `exportFixSection(formInvalid, outputProblem)` chooses the Output jump only when field validation did not already choose a section. The component binds these Angular-free functions with computed signals.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
 ### Export Options Policy
 
 The shared export rules in `exportOptionsPolicy` from `libs/domain/src/lib/export-options-policy.ts`.
@@ -794,9 +810,17 @@ Explained in context: [`frontend.md`](frontend.md#optimistic-updates-with-rollba
 
 ---
 
+### Form Attempt State
+
+The shared attempt and refusal state in `apps/tracker/src/app/collections/store/form-submit-attempt-state.ts`. `FormAttemptState` owns `attempted`, `errors`, `check(form)`, error reveal rules, `clear`, `fail` and `clearOnEdit(form)`. It records attempts and marks invalid forms touched. [Form Submit Attempt](#form-submit-attempt) and [Job Start Attempt](#job-start-attempt) compose it; each owns its own saving lifecycle.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
+
+---
+
 ### Form Submit Attempt
 
-The state one named-entry dialog form keeps for an attempted submit. `FormSubmitAttempt` in `apps/tracker/src/app/collections/store/form-submit-attempt.ts` is configured with the entry (mode and original name), a `prepare` step, an optional `refusalMessages` mapping, an optional `onNameConflict` hook and an error-reveal rule (`'touched'`, or `'touched-dirty-attempted'`). It owns `attempted`, `saving`, the refusal `errors` (always a list, so a single message is a one-item list), `check(form)` (records the attempt and marks every field touched when the form is invalid), `reveals(control)` and `showError(control, error?)` (the rule for when an error shows), and `clearOnEdit(form)` (messages clear on the next change). `submit({ dialog, write })` composes `NamedEntrySubmit` from [Dialog Config Submit](#dialog-config-submit) for the write lifecycle: a taken name runs `onNameConflict` and lists nothing, any other refusal becomes the mapped messages. `detailsElseMessage` is the mapping that prefers the server's rule messages over its one message. [Bundle Form](#bundle-form) reveals errors after touch, edit or attempt, lists details else message, and opens the Output section on a name conflict; [Collection Form](#collection-form) reveals after touch only and lists the message. [Settings Draft](#settings-draft) does not use it: the page saves through its own subscription, with no dialog, no name field and an outcome union rather than refusal messages.
+The named-entry submit helper in `apps/tracker/src/app/collections/store/form-submit-attempt.ts`. `FormSubmitAttempt<TResult extends { name: string }>` composes [Form Attempt State](#form-attempt-state) and `NamedEntrySubmit` from [Dialog Config Submit](#dialog-config-submit). Its existing `submit({ dialog, write })` API owns preparation, saving, name conflicts and refusal rendering. Configuration supplies the entry, prepare callback, optional refusal mapping and name-conflict hook, and error reveal rule. `detailsElseMessage` prefers string server details over the fallback message. [Bundle Form](#bundle-form) uses that mapping and opens Output on name conflict; [Collection Form](#collection-form) shows the refusal message and reveals errors after touch.
 
 Explained in context: [`frontend.md`](frontend.md#bundle-form-dialog)
 
@@ -817,6 +841,14 @@ During [bundle](#bundle) generation, simple `{varName}` placeholders are convert
 The [ICU Message](#icu-message) module owns parsing and range-based conversion of translation values.
 
 Explained in context: [`domain-and-data-model.md`](domain-and-data-model.md), [`bundle-generation.md`](bundle-generation.md)
+
+---
+
+### Import Dialog Decisions
+
+The plain footer and plan presentation rules in `apps/tracker/src/app/collections/import-dialog/import-dialog-decisions.ts`. `importFooter(input)` takes collection, listing, upload, validity, preview and busy values; it returns the ordered footer state, submit permission and primary button token with its count. `importPlanPresentation(plan, listing)` returns ordered notes, file rows, locale counts, nontrivial status transitions, capped issues and auto-fixes with overflow counts, failures and whether every file is unreadable. `importFilesError(input)` maps a revealed file problem to its message token. The component binds these Angular-free functions with computed signals and retains drag-and-drop DOM handling.
+
+Explained in context: [`frontend.md`](frontend.md#export-and-import-dialogs)
 
 ---
 
