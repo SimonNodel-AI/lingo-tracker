@@ -19,6 +19,7 @@ export interface ProjectConfig {
   importFolder: string;
   collections: Record<string, CollectionConfig>;
   protectedTermsFile?: string;
+  preferredTerminologyFile?: string;
   bundles?: Record<string, BundleDefinitionDto>;
   [key: string]: unknown;
 }
@@ -60,4 +61,9 @@ export async function directoryExists(path: string): Promise<boolean> {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false;
     throw error;
   }
+}
+
+export async function preferredTerminologyPath(projectRoot: string): Promise<string> {
+  const config = await readConfig(projectRoot);
+  return resolve(projectRoot, config.preferredTerminologyFile ?? '.lingo-tracker-preferred-terminology.json');
 }

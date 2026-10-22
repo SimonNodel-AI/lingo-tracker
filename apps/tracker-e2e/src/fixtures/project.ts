@@ -7,8 +7,9 @@ import type {
   CreateCollectionDto,
   CreateResourceDto,
   UpdateCollectionDto,
+  UpdateConfigDto,
 } from '@simoncodes-ca/data-transfer';
-import { type CollectionConfig, protectedTermsPath } from './disk';
+import { type CollectionConfig, preferredTerminologyPath, protectedTermsPath } from './disk';
 import type { Server } from './server';
 
 export interface Project {
@@ -16,6 +17,7 @@ export interface Project {
   translationsFolder: string;
   artifactsFolder: string;
   updateCollection(collection: UpdateCollectionDto['collection']): Promise<void>;
+  setPreferredTerminology(rules: NonNullable<UpdateConfigDto['preferredTerminology']>): Promise<void>;
   addBundle(bundle: CreateBundleDto): Promise<void>;
   addResource(resource: CreateResourceDto): Promise<void>;
   addCollection(overrides?: Partial<Omit<CollectionConfig, 'translationsFolder'>>): Promise<string>;
@@ -42,6 +44,11 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return undefined;
     throw error;
   });
+  const terminologyPath = await preferredTerminologyPath(server.projectRoot);
+  const terminologySnapshot = await readFile(terminologyPath).catch((error: unknown) => {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return undefined;
+    throw error;
+  });
   try {
     await use({
       collectionName,
@@ -51,6 +58,9 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
         await requireSeedSuccess(
           await request.put(`/api/collections/${encodeURIComponent(collectionName)}`, { data: { collection } }),
         );
+      },
+      async setPreferredTerminology(rules) {
+        await requireSeedSuccess(await request.put('/api/config', { data: { preferredTerminology: rules } }));
       },
       async addBundle(bundle) {
         await requireSeedSuccess(await request.post('/api/bundles', { data: bundle }));
@@ -78,9 +88,14 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
         else await writeFile(termsPath, termsSnapshot);
       } finally {
         try {
-          await rm(translationsFolder, { recursive: true, force: true });
+          if (terminologySnapshot === undefined) await rm(terminologyPath, { force: true });
+          else await writeFile(terminologyPath, terminologySnapshot);
         } finally {
-          await rm(artifactsFolder, { recursive: true, force: true });
+          try {
+            await rm(translationsFolder, { recursive: true, force: true });
+          } finally {
+            await rm(artifactsFolder, { recursive: true, force: true });
+          }
         }
       }
     }

@@ -98,3 +98,77 @@ test('rejects a base value with a braced placeholder and leaves resource files u
   expect(await readEntries(project.translationsFolder)).toEqual(entries);
   expect(await readMeta(project.translationsFolder)).toEqual(meta);
 });
+
+test('suggests the exact existing text and copies its key for reuse', async ({
+  context,
+  baseURL,
+  page,
+  project,
+  browserPage,
+  translationEditor,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseURL });
+  await project.addCollection();
+  await project.addResource({ key: 'greeting', baseValue: 'Welcome back' });
+  await browserPage.goto(project.collectionName);
+  await browserPage.addButton.click();
+  await translationEditor.key.fill('duplicate');
+  await translationEditor.baseValue.fill('Welcome back');
+  await expect(translationEditor.exactMatchMessage).toHaveText(
+    'The exact text already exists under greeting. Reuse that key instead of adding a duplicate.',
+  );
+  await translationEditor.similarValue('Welcome back').click();
+  await expect(translationEditor.keyCopied).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('greeting');
+  await expect(translationEditor.dialog).toBeVisible();
+  await expect(translationEditor.key).toHaveValue('duplicate');
+});
+
+test('shows a completed similar lookup without an exact-match warning for different text', async ({
+  project,
+  browserPage,
+  translationEditor,
+}) => {
+  await project.addCollection();
+  await project.addResource({ key: 'save', baseValue: 'Save your changes' });
+  await browserPage.goto(project.collectionName);
+  await browserPage.addButton.click();
+  await translationEditor.key.fill('saveNow');
+  await translationEditor.baseValue.fill('Save your changes now');
+  // A rendered result proves the debounced lookup finished; there was no prior query to leave a stale hit.
+  await expect(translationEditor.similarValue('Save your changes')).toBeVisible();
+  await expect(translationEditor.exactMatchMessage).toBeHidden();
+});
+
+test('shows preferred terminology advice, clears it after editing and allows saving discouraged text', async ({
+  project,
+  browserPage,
+  translationEditor,
+}) => {
+  await project.addCollection();
+  await project.setPreferredTerminology([{ discouraged: 'utilize', preferred: 'use' }]);
+  await browserPage.goto(project.collectionName);
+  await browserPage.addButton.click();
+  await translationEditor.key.fill('instructions');
+  await translationEditor.comment.fill('Instructions for the primary action button');
+  await translationEditor.baseValue.fill('Please utilize this button');
+  await expect(translationEditor.preferredTermHint).toContainText(
+    'Preferred terminology: consider “use” instead of “utilize”.',
+  );
+  await translationEditor.baseValue.fill('Please press this button');
+  // The previously visible advisory disappearing proves the new text was validated.
+  await expect(translationEditor.preferredTermHint).toBeHidden();
+  await translationEditor.baseValue.fill('Please utilize this button');
+  await expect(translationEditor.preferredTermHint).toContainText(
+    'Preferred terminology: consider “use” instead of “utilize”.',
+  );
+  await expect(translationEditor.createButton).toBeEnabled();
+  await translationEditor.createButton.click();
+  await expect(translationEditor.dialog).toBeHidden();
+  await expect(browserPage.row('instructions')).toContainText('Please utilize this button');
+  await expect
+    .poll(() => readEntries(project.translationsFolder))
+    .toMatchObject({
+      instructions: { source: 'Please utilize this button' },
+    });
+});
