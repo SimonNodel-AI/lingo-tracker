@@ -23,8 +23,7 @@
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^default", "translationFixtures"],
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"]
+      "inputs": ["default", "^default", "translationFixtures"]
     },
     "@angular/build:application": {
       "cache": true,
