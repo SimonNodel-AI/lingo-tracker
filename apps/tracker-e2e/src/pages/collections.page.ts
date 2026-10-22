@@ -27,6 +27,16 @@ export class CollectionsPage {
     await this.card(name).getByRole('button', { name: 'More actions for collection', exact: true }).click();
   }
 
+  async openExport(name: string): Promise<void> {
+    await this.openActions(name);
+    await this.page.getByRole('menuitem', { name: 'Export…', exact: true }).click();
+  }
+
+  async openImport(name: string): Promise<void> {
+    await this.openActions(name);
+    await this.importAction.click();
+  }
+
   async create(name: string, translationsFolder: string): Promise<void> {
     await this.page.getByRole('button', { name: /^(Create your first collection|Add collection)$/ }).click();
     await this.createDialog.getByRole('textbox', { name: 'Collection name', exact: true }).fill(name);

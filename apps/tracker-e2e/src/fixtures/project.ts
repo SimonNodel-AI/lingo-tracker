@@ -2,13 +2,15 @@ import { createHash } from 'node:crypto';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { APIRequestContext, APIResponse, TestFixture } from '@playwright/test';
-import type { CreateCollectionDto, CreateResourceDto } from '@simoncodes-ca/data-transfer';
+import type { CreateBundleDto, CreateCollectionDto, CreateResourceDto } from '@simoncodes-ca/data-transfer';
 import { type CollectionConfig, protectedTermsPath } from './disk';
 import type { Server } from './server';
 
 export interface Project {
   collectionName: string;
   translationsFolder: string;
+  artifactsFolder: string;
+  addBundle(bundle: CreateBundleDto): Promise<void>;
   addResource(resource: CreateResourceDto): Promise<void>;
   addCollection(overrides?: Partial<Omit<CollectionConfig, 'translationsFolder'>>): Promise<string>;
 }
@@ -26,6 +28,7 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
 ) => {
   const collectionName = `t-${createHash('sha256').update(testInfo.testId).digest('hex').slice(0, 12)}`;
   const translationsFolder = join(server.projectRoot, 'translations', collectionName);
+  const artifactsFolder = join(server.projectRoot, 'artifacts', collectionName);
   const configPath = join(server.projectRoot, '.lingo-tracker.json');
   const snapshot = await readFile(configPath);
   const termsPath = await protectedTermsPath(server.projectRoot);
@@ -37,6 +40,10 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
     await use({
       collectionName,
       translationsFolder,
+      artifactsFolder,
+      async addBundle(bundle) {
+        await requireSeedSuccess(await request.post('/api/bundles', { data: bundle }));
+      },
       async addResource(resource) {
         await requireSeedSuccess(
           await request.post(`/api/collections/${encodeURIComponent(collectionName)}/resources`, { data: resource }),
@@ -59,7 +66,11 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
         if (termsSnapshot === undefined) await rm(termsPath, { force: true });
         else await writeFile(termsPath, termsSnapshot);
       } finally {
-        await rm(translationsFolder, { recursive: true, force: true });
+        try {
+          await rm(translationsFolder, { recursive: true, force: true });
+        } finally {
+          await rm(artifactsFolder, { recursive: true, force: true });
+        }
       }
     }
   }

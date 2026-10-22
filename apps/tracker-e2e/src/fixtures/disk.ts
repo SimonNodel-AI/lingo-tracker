@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 
 export interface CollectionConfig {
   translationsFolder: string;
@@ -18,6 +19,7 @@ export interface ProjectConfig {
   importFolder: string;
   collections: Record<string, CollectionConfig>;
   protectedTermsFile?: string;
+  bundles?: Record<string, BundleDefinitionDto>;
   [key: string]: unknown;
 }
 
@@ -45,4 +47,8 @@ export async function protectedTermsPath(projectRoot: string): Promise<string> {
 
 export async function readProtectedTerms(projectRoot: string): Promise<string[]> {
   return readJson(await protectedTermsPath(projectRoot));
+}
+
+export function readOutput(path: string): Promise<Record<string, unknown>> {
+  return readJson(path);
 }

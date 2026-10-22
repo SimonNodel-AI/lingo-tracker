@@ -571,6 +571,7 @@
         @for (card of bundleCards(); track card.entry.name) {
           <app-bundle-card
             [attr.data-bundle]="card.entry.name"
+            [attr.data-testid]="'bundle-card-' + card.entry.name"
             [entry]="card.entry"
             [run]="store.bundleRuns()[card.entry.name]"
             [linked]="hoveredBundle() === card.entry.name"
