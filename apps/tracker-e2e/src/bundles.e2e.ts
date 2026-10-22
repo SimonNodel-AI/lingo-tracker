@@ -225,3 +225,44 @@ test('creates a key-pattern bundle in the dialog and generates only matching res
       common: { greeting: 'Bonjour', farewell: 'Au revoir' },
     });
 });
+
+test('matches bundle tag rules against tags inherited from the collection', async ({
+  project,
+  collectionsPage,
+  bundlesPage,
+}) => {
+  await project.addCollection({ tags: ['shared'] });
+  await project.addResource({
+    key: 'common.greeting',
+    baseValue: 'Hello',
+    tags: ['release'],
+    translations: [{ locale: 'fr-ca', value: 'Bonjour' }],
+  });
+  await project.addResource({
+    key: 'common.draft',
+    baseValue: 'Draft',
+    translations: [{ locale: 'fr-ca', value: 'Brouillon' }],
+  });
+  const output = join(project.artifactsFolder, 'inherited-bundle');
+  // Only the inherited collection tag lets common.greeting satisfy both tags; common.draft has shared alone.
+  await project.addBundle({
+    name: project.collectionName,
+    bundle: {
+      dist: output,
+      bundleName: '{locale}',
+      collections: [
+        {
+          name: project.collectionName,
+          entriesSelectionRules: [
+            { matchingPattern: '*', matchingTags: ['shared', 'release'], matchingTagOperator: 'All' },
+          ],
+        },
+      ],
+    },
+  });
+  await collectionsPage.goto();
+  await bundlesPage.generate(project.collectionName);
+  await expect(bundlesPage.runStatus(project.collectionName)).toContainText('Generated');
+  await expect.poll(() => readOutput(join(output, 'en.json'))).toEqual({ common: { greeting: 'Hello' } });
+  await expect.poll(() => readOutput(join(output, 'fr-ca.json'))).toEqual({ common: { greeting: 'Bonjour' } });
+});

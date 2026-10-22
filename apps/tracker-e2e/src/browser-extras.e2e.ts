@@ -172,3 +172,29 @@ test('shows preferred terminology advice, clears it after editing and allows sav
       instructions: { source: 'Please utilize this button' },
     });
 });
+
+test('warns about exact duplicate text but still saves it under the new key', async ({
+  project,
+  browserPage,
+  translationEditor,
+}) => {
+  await project.addCollection();
+  await project.addResource({ key: 'greeting', baseValue: 'Welcome back' });
+  await browserPage.goto(project.collectionName);
+  await browserPage.addButton.click();
+  await translationEditor.key.fill('welcome');
+  await translationEditor.comment.fill('Shown on the returning-user banner');
+  await translationEditor.baseValue.fill('Welcome back');
+  await expect(translationEditor.exactMatchMessage).toHaveText(
+    'The exact text already exists under greeting. Reuse that key instead of adding a duplicate.',
+  );
+  await translationEditor.createButton.click();
+  await expect(translationEditor.dialog).toBeHidden();
+  await expect(browserPage.row('welcome')).toContainText('Welcome back');
+  await expect
+    .poll(() => readEntries(project.translationsFolder))
+    .toMatchObject({
+      greeting: { source: 'Welcome back' },
+      welcome: { source: 'Welcome back', comment: 'Shown on the returning-user banner' },
+    });
+});
