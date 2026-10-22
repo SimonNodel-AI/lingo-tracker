@@ -6,6 +6,7 @@
 -->
 <div class="item-header" [class.item-header--inline]="layout() === 'inline'">
   <mat-icon
+    data-testid="resource-drag-handle"
     class="translation-drag-handle"
     [class.translation-drag-handle--locked]="isReadOnly()"
     cdkDragHandle

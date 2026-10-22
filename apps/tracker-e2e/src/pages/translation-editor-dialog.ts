@@ -14,6 +14,17 @@ export class TranslationEditorDialog {
   readonly conflictDialog = this.page.getByRole('dialog', { name: 'Translation Key Already Exists', exact: true });
   readonly createButton = this.dialog.getByRole('button', { name: 'Create translation', exact: true });
   readonly localesDrawer = this.dialog.getByRole('group', { name: 'Other locales', exact: true });
+  readonly readOnlyNotice = this.dialog.getByRole('status').filter({
+    hasText: "This collection is read-only — you're viewing this resource in read-only mode.",
+  });
+
+  readonly folderPicker = this.page.getByRole('dialog', { name: 'Folder tree', exact: true });
+
+  async chooseFolder(name: string): Promise<void> {
+    await this.dialog.getByTestId('location-pill').click();
+    await this.folderPicker.getByRole('treeitem', { name: `Folder ${name}`, exact: true }).click();
+    await this.folderPicker.getByTestId('use-this-folder').click();
+  }
 
   tag(name: string) {
     return this.dialog.getByRole('button', { name: `Remove ${name}`, exact: true });

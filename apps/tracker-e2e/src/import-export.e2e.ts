@@ -61,3 +61,113 @@ test('uploads and imports translations through the dialog and persists values an
     await rm(input, { force: true });
   }
 });
+
+for (const { strategy, status } of [
+  { strategy: 'translation-service', status: 'translated' },
+  { strategy: 'verification', status: 'verified' },
+  { strategy: 'migration', status: 'translated' },
+  { strategy: 'update', status: 'verified' },
+] as const) {
+  test(`imports conflicting translations with the ${strategy} strategy and stores ${status} status`, async ({
+    project,
+    collectionsPage,
+    importDialog,
+    page,
+  }, testInfo) => {
+    await project.addCollection({ importFolder: join(project.artifactsFolder, 'import') });
+    await project.addResource({
+      key: 'common.greeting',
+      baseValue: 'Hello',
+      translations: [{ locale: 'fr-ca', value: 'Bonjour', status: strategy === 'update' ? 'verified' : 'new' }],
+    });
+    const input = testInfo.outputPath('fr-ca.json');
+    try {
+      await writeFile(
+        input,
+        JSON.stringify({ 'common.greeting': { value: 'Salut', baseValue: 'Hello', status: 'verified' } }),
+      );
+      await collectionsPage.goto();
+      await collectionsPage.openImport(project.collectionName);
+      await importDialog.upload(input);
+      await expect(importDialog.dialog.getByTestId('file-row-fr-ca.json').getByRole('checkbox')).toBeChecked();
+      await importDialog.chooseStrategy(strategy);
+      await expect(importDialog.strategy(strategy)).toBeChecked();
+      await importDialog.submitButton.click();
+      await expect(importDialog.dialog).toBeHidden();
+      await expect(page.getByTestId('import-strip')).toContainText('Imported');
+      const folder = join(project.translationsFolder, 'common');
+      expect(await readEntries(folder)).toMatchObject({ greeting: { source: 'Hello', 'fr-ca': 'Salut' } });
+      expect(await readMeta(folder)).toMatchObject({ greeting: { 'fr-ca': { status } } });
+    } finally {
+      await rm(input, { force: true });
+    }
+  });
+}
+
+test('keeps the status from the file when Keep status from file is on', async ({
+  project,
+  collectionsPage,
+  importDialog,
+  page,
+}, testInfo) => {
+  await project.addCollection({ importFolder: join(project.artifactsFolder, 'import') });
+  await project.addResource({
+    key: 'common.greeting',
+    baseValue: 'Hello',
+    translations: [{ locale: 'fr-ca', value: 'Bonjour', status: 'new' }],
+  });
+  const input = testInfo.outputPath('fr-ca.json');
+  try {
+    await writeFile(
+      input,
+      JSON.stringify({ 'common.greeting': { value: 'Salut', baseValue: 'Hello', status: 'verified' } }),
+    );
+    await collectionsPage.goto();
+    await collectionsPage.openImport(project.collectionName);
+    await importDialog.upload(input);
+    await expect(importDialog.dialog.getByTestId('file-row-fr-ca.json').getByRole('checkbox')).toBeChecked();
+    await importDialog.keepStatusFromFile();
+    await expect(importDialog.dialog.getByRole('switch', { name: 'Keep status from file', exact: true })).toBeChecked();
+    await importDialog.submitButton.click();
+    await expect(importDialog.dialog).toBeHidden();
+    await expect(page.getByTestId('import-strip')).toContainText('Imported');
+    const folder = join(project.translationsFolder, 'common');
+    expect(await readEntries(folder)).toMatchObject({ greeting: { 'fr-ca': 'Salut' } });
+    expect(await readMeta(folder)).toMatchObject({ greeting: { 'fr-ca': { status: 'verified' } } });
+  } finally {
+    await rm(input, { force: true });
+  }
+});
+
+test('imports a changed base value with Migration and marks existing translations stale', async ({
+  project,
+  collectionsPage,
+  importDialog,
+  page,
+}, testInfo) => {
+  await project.addCollection({ importFolder: join(project.artifactsFolder, 'import') });
+  await project.addResource({
+    key: 'common.greeting',
+    baseValue: 'Hello',
+    translations: [{ locale: 'fr-ca', value: 'Bonjour', status: 'verified' }],
+  });
+  const input = testInfo.outputPath('en.json');
+  try {
+    await writeFile(input, JSON.stringify({ 'common.greeting': 'Welcome' }));
+    await collectionsPage.goto();
+    await collectionsPage.openImport(project.collectionName);
+    await importDialog.chooseStrategy('migration');
+    await expect(importDialog.strategy('migration')).toBeChecked();
+    await importDialog.dialog.getByTestId('rail-source').click();
+    await importDialog.upload(input);
+    await expect(importDialog.dialog.getByTestId('file-row-en.json').getByRole('checkbox')).toBeChecked();
+    await importDialog.submitButton.click();
+    await expect(importDialog.dialog).toBeHidden();
+    await expect(page.getByTestId('import-strip')).toContainText('Imported');
+    const folder = join(project.translationsFolder, 'common');
+    expect(await readEntries(folder)).toMatchObject({ greeting: { source: 'Welcome', 'fr-ca': 'Bonjour' } });
+    expect(await readMeta(folder)).toMatchObject({ greeting: { 'fr-ca': { status: 'stale' } } });
+  } finally {
+    await rm(input, { force: true });
+  }
+});

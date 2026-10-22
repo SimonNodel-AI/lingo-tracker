@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { expect, test } from './fixtures';
-import { readConfig, readEntries } from './fixtures/disk';
+import { readConfig, readEntries, readMeta } from './fixtures/disk';
+import type { Project } from './fixtures/project';
 
 test('creates a collection in the dialog and persists its translations folder', async ({
   project,
@@ -73,4 +75,77 @@ test('read-only collections disable Import but keep collection Edit and Delete a
   const config = await readConfig(server.projectRoot);
   expect(config.collections[name]?.readOnly).toBe(true);
   expect(config.collections[writableName]?.translationsFolder).toBe(join(project.translationsFolder, 'writable'));
+});
+
+async function seedLocales(project: Project): Promise<void> {
+  await project.addCollection({ locales: ['en', 'fr-ca', 'de'] });
+  await project.addResource({
+    key: 'greeting',
+    baseValue: 'Hello',
+    translations: [
+      { locale: 'fr-ca', value: 'Bonjour', status: 'verified' },
+      { locale: 'de', value: 'Hallo', status: 'translated' },
+    ],
+  });
+}
+
+test('confirms locale removal and removes only that locale from config, values and metadata', async ({
+  project,
+  server,
+  collectionsPage,
+}) => {
+  await seedLocales(project);
+  await collectionsPage.goto();
+  await collectionsPage.removeLocale(project.collectionName, 'fr-ca');
+  await expect(collectionsPage.removeLocalesDialog).toBeVisible();
+  await expect(collectionsPage.removeLocalesDialog).toContainText(
+    'Removing fr-ca will permanently delete all translation data',
+  );
+  await collectionsPage.removeLocalesDialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(collectionsPage.removeLocalesDialog).toBeHidden();
+  await expect(collectionsPage.editDialog).toBeHidden();
+  await expect
+    .poll(async () => (await readConfig(server.projectRoot)).collections[project.collectionName]?.locales)
+    .toEqual(['en', 'de']);
+  expect(await readEntries(project.translationsFolder)).toEqual({ greeting: { source: 'Hello', de: 'Hallo' } });
+  const baseChecksum = createHash('md5').update('Hello').digest('hex');
+  expect(await readMeta(project.translationsFolder)).toEqual({
+    greeting: {
+      en: { checksum: baseChecksum },
+      de: {
+        checksum: createHash('md5').update('Hallo').digest('hex'),
+        baseChecksum,
+        status: 'translated',
+      },
+    },
+  });
+});
+
+test('cancels locale removal and keeps config, values and metadata unchanged', async ({
+  project,
+  server,
+  collectionsPage,
+}) => {
+  await seedLocales(project);
+  const config = (await readConfig(server.projectRoot)).collections[project.collectionName];
+  const entries = await readEntries(project.translationsFolder);
+  const meta = await readMeta(project.translationsFolder);
+  await collectionsPage.goto();
+  await collectionsPage.removeLocale(project.collectionName, 'fr-ca');
+  await expect(collectionsPage.removeLocalesDialog).toBeVisible();
+  await expect(collectionsPage.removeLocalesDialog).toContainText(
+    'Removing fr-ca will permanently delete all translation data',
+  );
+  await collectionsPage.removeLocalesDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(collectionsPage.removeLocalesDialog).toBeHidden();
+  await expect(collectionsPage.editDialog).toBeVisible();
+  // Cancelling the confirmation keeps the removal staged until the Edit draft is discarded.
+  await expect(collectionsPage.localeChip('fr-ca')).toBeHidden();
+  await collectionsPage.editDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(collectionsPage.editDialog).toBeHidden();
+  await collectionsPage.openEdit(project.collectionName);
+  await expect(collectionsPage.localeChip('fr-ca')).toBeVisible();
+  expect((await readConfig(server.projectRoot)).collections[project.collectionName]).toEqual(config);
+  expect(await readEntries(project.translationsFolder)).toEqual(entries);
+  expect(await readMeta(project.translationsFolder)).toEqual(meta);
 });

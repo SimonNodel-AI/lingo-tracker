@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 
@@ -51,4 +51,13 @@ export async function readProtectedTerms(projectRoot: string): Promise<string[]>
 
 export function readOutput(path: string): Promise<Record<string, unknown>> {
   return readJson(path);
+}
+
+export async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
+  }
 }

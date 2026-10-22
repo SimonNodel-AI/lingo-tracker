@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { APIRequestContext, APIResponse, TestFixture } from '@playwright/test';
-import type { CreateBundleDto, CreateCollectionDto, CreateResourceDto } from '@simoncodes-ca/data-transfer';
+import type {
+  CreateBundleDto,
+  CreateCollectionDto,
+  CreateResourceDto,
+  UpdateCollectionDto,
+} from '@simoncodes-ca/data-transfer';
 import { type CollectionConfig, protectedTermsPath } from './disk';
 import type { Server } from './server';
 
@@ -10,6 +15,7 @@ export interface Project {
   collectionName: string;
   translationsFolder: string;
   artifactsFolder: string;
+  updateCollection(collection: UpdateCollectionDto['collection']): Promise<void>;
   addBundle(bundle: CreateBundleDto): Promise<void>;
   addResource(resource: CreateResourceDto): Promise<void>;
   addCollection(overrides?: Partial<Omit<CollectionConfig, 'translationsFolder'>>): Promise<string>;
@@ -41,6 +47,11 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
       collectionName,
       translationsFolder,
       artifactsFolder,
+      async updateCollection(collection) {
+        await requireSeedSuccess(
+          await request.put(`/api/collections/${encodeURIComponent(collectionName)}`, { data: { collection } }),
+        );
+      },
       async addBundle(bundle) {
         await requireSeedSuccess(await request.post('/api/bundles', { data: bundle }));
       },
