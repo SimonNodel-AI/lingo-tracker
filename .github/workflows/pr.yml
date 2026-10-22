@@ -68,3 +68,21 @@ jobs:
 
       - name: E2E (affected)
         run: pnpm nx affected -t e2e --base=${{ steps.nx-base.outputs.NX_BASE }} --exclude=tracker-e2e
+
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: dist/test-results/**/junit.xml
+          check_name: Unit test results
+          annotate_only: true
+          detailed_summary: true
+          require_tests: false
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: dist/test-results/
+          if-no-files-found: ignore

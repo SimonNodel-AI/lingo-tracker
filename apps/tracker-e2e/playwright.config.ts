@@ -10,7 +10,12 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
   outputDir: resolve(outputRoot, 'test-results'),
-  reporter: [['list'], ['html', { open: 'never', outputFolder: resolve(outputRoot, 'report') }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never', outputFolder: resolve(outputRoot, 'report') }],
+    ['junit', { outputFile: resolve(__dirname, '../../dist/test-results/apps/tracker-e2e/junit.xml') }],
+    ...(process.env.CI ? [['github'] as const] : []),
+  ],
   use: { trace: 'on-first-retry', serviceWorkers: 'block' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

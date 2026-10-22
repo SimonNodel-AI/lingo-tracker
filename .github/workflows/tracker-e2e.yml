@@ -77,8 +77,18 @@ jobs:
         env:
           CI: true
 
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: dist/test-results/apps/tracker-e2e/junit.xml
+          check_name: Tracker E2E results
+          annotate_only: true
+          detailed_summary: true
+          include_passed: true
+
       - name: Upload Playwright results
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: tracker-e2e-playwright
