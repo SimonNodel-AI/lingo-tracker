@@ -31,7 +31,7 @@ export default defineConfig(() => ({
     environment: 'jsdom',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     setupFiles: ['src/test-setup.ts'],
-    reporters: ['default'],
+    reporters: ['default', ['junit', { outputFile: '../../dist/test-results/apps/tracker/junit.xml' }]],
     server: {
       deps: {
         inline: ['@ngneat/spectator'],

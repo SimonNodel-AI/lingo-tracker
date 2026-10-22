@@ -77,10 +77,28 @@ jobs:
         env:
           CI: true
 
+      - name: Test summary
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: dist/test-results/apps/tracker-e2e/junit.xml
+          check_name: Tracker E2E results
+          annotate_only: true
+          detailed_summary: true
+          include_passed: true
+
       - name: Upload Playwright results
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: tracker-e2e-playwright
           path: dist/.playwright/apps/tracker-e2e/
           include-hidden-files: true
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracker-e2e-results
+          path: dist/test-results/apps/tracker-e2e/junit.xml
+          if-no-files-found: ignore

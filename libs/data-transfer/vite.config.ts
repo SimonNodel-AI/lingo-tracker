@@ -51,7 +51,7 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'node',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    reporters: ['default'],
+    reporters: ['default', ['junit', { outputFile: '../../dist/test-results/libs/data-transfer/junit.xml' }]],
     coverage: {
       reportsDirectory: '../../coverage/libs/data-transfer',
       provider: 'v8' as const,

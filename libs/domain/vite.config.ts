@@ -12,7 +12,7 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'jsdom',
     include: ['src/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    reporters: ['default'],
+    reporters: ['default', ['junit', { outputFile: '../../dist/test-results/libs/domain/junit.xml' }]],
     coverage: {
       reportsDirectory: '../../coverage/libs/domain',
       provider: 'v8' as const,

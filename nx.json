@@ -33,7 +33,7 @@
     "@nx/vitest:test": {
       "cache": true,
       "inputs": ["default", "^default", "translationFixtures"],
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"]
     },
     "@nx/esbuild:esbuild": {
       "cache": true,

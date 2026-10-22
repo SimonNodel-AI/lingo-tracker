@@ -1,0 +1,144 @@
+name: Test Report
+
+on:
+  workflow_run:
+    workflows: [PR Check, Tracker E2E]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  unit:
+    if: contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) && github.event.workflow_run.name == 'PR Check'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: write
+      pull-requests: write
+
+    steps:
+      - name: Resolve PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          HEAD_OWNER: ${{ github.event.workflow_run.head_repository.owner.login }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          # $ENV is evaluated by jq, not the shell.
+          # shellcheck disable=SC2016
+          number=$(gh api -X GET "repos/$GITHUB_REPOSITORY/pulls" -f state=open -f head="$HEAD_OWNER:$HEAD_BRANCH" --jq '[.[] | select(.head.sha==$ENV.SHA and .head.repo.full_name==$ENV.HEAD_REPO) | .number] | first // empty') || number=''
+          if [[ "$number" =~ ^[0-9]+$ ]]; then
+            echo "number=$number" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: unit-test-results
+          path: results
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Detect test results
+        id: detect
+        run: find results -name junit.xml 2>/dev/null | grep -q . && echo found=true >> "$GITHUB_OUTPUT" || true
+
+      - name: Publish test results
+        id: publish
+        if: steps.detect.outputs.found == 'true'
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: results/**/junit.xml
+          check_name: Unit test results
+          commit: ${{ github.event.workflow_run.head_sha }}
+          check_annotations: false
+          detailed_summary: true
+          include_passed: false
+          require_tests: false
+          comment: false
+
+      - name: Comment on PR
+        if: steps.publish.outcome == 'success' && steps.pr.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.pr.outputs.number }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          TOTAL: ${{ steps.publish.outputs.total }}
+          PASSED: ${{ steps.publish.outputs.passed }}
+          SKIPPED: ${{ steps.publish.outputs.skipped }}
+          FAILED: ${{ steps.publish.outputs.failed }}
+          REPORT_URL: ${{ steps.publish.outputs.report_url }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          for count in "$TOTAL" "$PASSED" "$SKIPPED" "$FAILED"; do
+            if [[ ! "$count" =~ ^[0-9]+$ ]]; then
+              exit 0
+            fi
+          done
+          if (( TOTAL == 0 )); then
+            exit 0
+          fi
+
+          status='✅'
+          if [[ "$FAILED" =~ [1-9] ]]; then
+            status='❌'
+          fi
+
+          body=$(mktemp "$RUNNER_TEMP/unit-test-comment.XXXXXX")
+          trap 'rm -f "$body"' EXIT
+          {
+            printf '### Unit test results\n\n'
+            printf '%s %s tests · %s passed · %s skipped · %s failed\n\n' "$status" "$TOTAL" "$PASSED" "$SKIPPED" "$FAILED"
+            printf 'Commit %s' "${SHA:0:7}"
+            if [[ -n "$REPORT_URL" ]]; then
+              printf ' · [Check run](%s)' "$REPORT_URL"
+            fi
+            printf ' · [Workflow run](%s)\n\n' "$RUN_URL"
+            printf '<!-- lingo-tracker:test-report:unit -->'
+          } > "$body"
+
+          comment_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- lingo-tracker:test-report:unit -->"))) | .id')
+          comment_id=${comment_id%%$'\n'*}
+          if [[ "$comment_id" =~ ^[0-9]+$ ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -F "body=@$body"
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$body"
+          fi
+
+  e2e:
+    if: contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) && github.event.workflow_run.name == 'Tracker E2E'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      checks: write
+
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: tracker-e2e-results
+          path: results
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Detect test results
+        id: detect
+        run: find results -name junit.xml 2>/dev/null | grep -q . && echo found=true >> "$GITHUB_OUTPUT" || true
+
+      - name: Publish test results
+        if: steps.detect.outputs.found == 'true'
+        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
+        with:
+          report_paths: results/**/junit.xml
+          check_name: Tracker E2E results
+          commit: ${{ github.event.workflow_run.head_sha }}
+          check_annotations: false
+          detailed_summary: true
+          include_passed: true
+          require_tests: false
