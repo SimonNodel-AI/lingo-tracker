@@ -1,5 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import type { BundleDefinitionDto } from '@simoncodes-ca/data-transfer';
 
 export interface CollectionConfig {
   translationsFolder: string;
@@ -18,6 +19,8 @@ export interface ProjectConfig {
   importFolder: string;
   collections: Record<string, CollectionConfig>;
   protectedTermsFile?: string;
+  preferredTerminologyFile?: string;
+  bundles?: Record<string, BundleDefinitionDto>;
   [key: string]: unknown;
 }
 
@@ -45,4 +48,22 @@ export async function protectedTermsPath(projectRoot: string): Promise<string> {
 
 export async function readProtectedTerms(projectRoot: string): Promise<string[]> {
   return readJson(await protectedTermsPath(projectRoot));
+}
+
+export function readOutput(path: string): Promise<Record<string, unknown>> {
+  return readJson(path);
+}
+
+export async function directoryExists(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (error: unknown) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+export async function preferredTerminologyPath(projectRoot: string): Promise<string> {
+  const config = await readConfig(projectRoot);
+  return resolve(projectRoot, config.preferredTerminologyFile ?? '.lingo-tracker-preferred-terminology.json');
 }

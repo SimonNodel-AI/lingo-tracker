@@ -51,7 +51,7 @@
     } @else {
       <span class="expand-spacer" aria-hidden="true"></span>
     }
-    <mat-icon class="folder-icon folder-drag-handle" cdkDragHandle [attr.aria-label]="TOKENS.BROWSER.FOLDERNODE.DRAGTOMOVEFOLDERARIALABEL | transloco">{{ folderIcon() }}</mat-icon>
+    <mat-icon data-testid="folder-drag-handle" class="folder-icon folder-drag-handle" cdkDragHandle [attr.aria-label]="TOKENS.BROWSER.FOLDERNODE.DRAGTOMOVEFOLDERARIALABEL | transloco">{{ folderIcon() }}</mat-icon>
     <span class="folder-name">{{ folder().name }}</span>
     @if (isNewlyCreated()) {
       <span class="new-chip">{{ TOKENS.BROWSER.FOLDERNODE.NEWCHIP | transloco }}</span>
