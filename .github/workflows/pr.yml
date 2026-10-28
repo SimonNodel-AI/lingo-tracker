@@ -159,4 +159,26 @@ jobs:
           assert.match(body.message, /Configuration file not found/);
           NODE
 
+          # Exercise multipart uploads (multer) on this Node line: one accepted file, then the file-count limit.
+          cat > "$runtime_dir/.lingo-tracker.json" <<'JSON'
+          { "baseLocale": "en", "locales": ["en"], "importFolder": "imports", "collections": { "smoke": { "translationsFolder": "translations" } } }
+          JSON
+          RUNTIME_DIR="$runtime_dir" node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const url = `http://127.0.0.1:${process.env.LINGO_TRACKER_PORT}/api/imports/sources?collection=smoke`;
+          const upload = async (count) => {
+            const form = new FormData();
+            for (let i = 0; i < count; i++) form.append('files', new Blob(['{"greeting":"hi"}']), `smoke-${i}.json`);
+            return fetch(url, { method: 'POST', body: form });
+          };
+          const accepted = await upload(1);
+          assert.equal(accepted.status, 201);
+          assert.deepEqual((await accepted.json()).files.map((file) => file.name), ['smoke-0.json']);
+          assert.equal(readFileSync(`${process.env.RUNTIME_DIR}/imports/smoke-0.json`, 'utf8'), '{"greeting":"hi"}');
+          const tooMany = await upload(11);
+          assert.equal(tooMany.status, 400);
+          assert.deepEqual((await tooMany.json()).errors, ['Invalid multipart fields or limits exceeded.']);
+          NODE
+
           node "$GITHUB_WORKSPACE/dist/apps/cli/main.cjs" --version
