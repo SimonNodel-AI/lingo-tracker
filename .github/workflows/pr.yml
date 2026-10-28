@@ -86,3 +86,79 @@ jobs:
           name: unit-test-results
           path: dist/test-results/
           if-no-files-found: ignore
+
+  # Test engines minimums, including require(esm) of ESM-only NestJS 12.
+  runtime-smoke:
+    name: runtime-smoke (${{ matrix.node }})
+    runs-on: ${{ vars.RUN_ON_VPS == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        node: ["22.22.3", "24.15.0"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24 # API Jest needs Node >=24.9 to load ESM-only NestJS 12
+          package-manager-cache: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI and API on Node 24
+        run: pnpm nx run-many -t build -p cli api
+
+      - name: Setup runtime Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+
+      - name: Smoke test published runtime
+        shell: bash
+        run: |
+          runtime_dir=$(mktemp -d)
+          export LINGO_TRACKER_PORT=$((20000 + RANDOM % 40000))
+          (cd "$runtime_dir" && exec node "$GITHUB_WORKSPACE/dist/apps/api/main.js") > "$runtime_dir/api.log" 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true; wait "$api_pid" 2>/dev/null || true; rm -rf "$runtime_dir"' EXIT
+
+          timeout 30s bash -c '
+            until [[ $(curl --silent --max-time 1 --output /dev/null --write-out "%{http_code}" "http://127.0.0.1:$LINGO_TRACKER_PORT/api/health") == 200 ]]; do
+              sleep 1
+            done
+          ' || {
+            cat "$runtime_dir/api.log"
+            exit 1
+          }
+
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          const response = await fetch(`http://127.0.0.1:${process.env.LINGO_TRACKER_PORT}/api/config`);
+          assert.equal(response.status, 404);
+          assert.match(response.headers.get('content-type') ?? '', /application\/json/);
+          const body = await response.json();
+          assert.match(body.message, /Configuration file not found/);
+          NODE
+
+          node "$GITHUB_WORKSPACE/dist/apps/cli/main.cjs" --version
