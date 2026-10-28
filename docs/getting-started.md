@@ -9,7 +9,7 @@ Lingo Tracker helps you track, validate, and manage translations across projects
 
 ### Install
 
-Node.js 22.22.3 or later 22.x, 24.15 or later 24.x, or 26 and later is required. Install the CLI as a dev dependency in your project.
+Node.js 24.15 or later 24.x, or 26 and later, is required. Install the CLI as a dev dependency in your project.
 
 #### pnpm
 

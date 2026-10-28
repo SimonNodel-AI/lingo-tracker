@@ -250,7 +250,7 @@ export class CollectionsController {
 ## Important Notes
 
 - **Package Manager**: pnpm 10+ required (enforced by engines)
-- **Node Version**: ^22.22.3 || ^24.15.0 || >=26.0.0 (matches `engines`)
+- **Node Version**: ^24.15.0 || >=26.0.0 (matches `engines`)
 - **Commits**: Use `pnpm run commit` for conventional commits with commitizen
 - **Testing**: Vitest for unit tests (the API uses Jest); see [Testing](#testing) for running a single file. API Jest tests need Node 24.9 or later, because NestJS 12 is ESM-only and Jest loads it through require(esm); `nx test api` sets `NODE_OPTIONS=--experimental-vm-modules`, replacing any `NODE_OPTIONS` already set for that target; the published runtime still supports the `engines` range.
 - **API Port**: Default 3030, configurable via `LINGO_TRACKER_PORT` env var
