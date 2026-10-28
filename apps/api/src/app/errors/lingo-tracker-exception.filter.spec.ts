@@ -323,7 +323,8 @@ class ThrowingController {
 
   @Get('status-code')
   statusCode(): never {
-    throw Object.assign(new Error('request entity too large'), { statusCode: 413 });
+    // Mirrors the http-errors shape body-parser throws, which NestJS 12 requires before it honours statusCode.
+    throw Object.assign(new Error('request entity too large'), { statusCode: 413, status: 413, expose: true });
   }
 }
 
