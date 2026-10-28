@@ -250,7 +250,7 @@ export class CollectionsController {
 ## Important Notes
 
 - **Package Manager**: pnpm 10+ required (enforced by engines)
-- **Node Version**: >=22.16.0
+- **Node Version**: ^22.22.3 || ^24.15.0 || >=26.0.0 (matches `engines`)
 - **Commits**: Use `pnpm run commit` for conventional commits with commitizen
 - **Testing**: Vitest for unit tests (the API uses Jest); see [Testing](#testing) for running a single file
 - **API Port**: Default 3030, configurable via `LINGO_TRACKER_PORT` env var
