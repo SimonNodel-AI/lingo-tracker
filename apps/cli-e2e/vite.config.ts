@@ -9,6 +9,6 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.e2e.spec.ts'],
     testTimeout: 30_000,
-    reporters: ['verbose', ['junit', { outputFile: '../../dist/test-results/apps/cli-e2e/junit.xml' }]],
+    reporters: ['tree', ['junit', { outputFile: '../../dist/test-results/apps/cli-e2e/junit.xml' }]],
   },
 });

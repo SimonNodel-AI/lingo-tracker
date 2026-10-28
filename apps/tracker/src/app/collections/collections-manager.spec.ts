@@ -990,7 +990,7 @@ describe('CollectionsManager', () => {
         item?.click();
 
         expect(item?.disabled).toBe(true);
-        expect(item?.getAttribute('aria-disabled')).toBe('true');
+        expect(item?.hasAttribute('disabled')).toBe(true);
         expect(item?.parentElement?.classList.contains('menu-item-tooltip')).toBe(true);
         expect(dialog.open).not.toHaveBeenCalled();
       });

@@ -20,7 +20,12 @@
       "@simoncodes-ca/core/testing": ["libs/core/src/testing.ts"],
       "@simoncodes-ca/data-transfer": ["libs/data-transfer/src"],
       "@simoncodes-ca/domain": ["libs/domain/src"]
-    }
+    },
+    "strict": false,
+    "noUncheckedSideEffectImports": false,
+    "types": ["*"],
+    "esModuleInterop": false,
+    "ignoreDeprecations": "6.0"
   },
   "exclude": ["node_modules", "tmp"]
 }

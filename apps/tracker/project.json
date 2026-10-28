@@ -28,6 +28,7 @@
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
       "dependsOn": ["^build", "generate-tokens"],
+      "defaultConfiguration": "production",
       "options": {
         "outputPath": "dist/apps/tracker",
         "browser": "apps/tracker/src/main.ts",
@@ -70,12 +71,16 @@
           "extractLicenses": false,
           "sourceMap": true
         }
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "serve": {
       "continuous": true,
       "executor": "@angular/build:dev-server",
+      "defaultConfiguration": "development",
+      "dependsOn": ["generate-tokens", "api:serve"],
+      "readyWhen": {
+        "signal": true
+      },
       "configurations": {
         "production": {
           "buildTarget": "tracker:build:production"
@@ -84,9 +89,7 @@
           "buildTarget": "tracker:build:development",
           "proxyConfig": "apps/tracker/proxy.conf.json"
         }
-      },
-      "defaultConfiguration": "development",
-      "dependsOn": ["generate-tokens", "api:serve"]
+      }
     },
     "extract-i18n": {
       "executor": "@angular/build:extract-i18n",
@@ -105,7 +108,9 @@
         "default",
         "^default",
         "{workspaceRoot}/tsconfig.base.json",
-        { "dependentTasksOutputFiles": "**/*.ts" }
+        {
+          "dependentTasksOutputFiles": "**/*.ts"
+        }
       ],
       "options": {
         "cwd": "apps/tracker",
@@ -113,11 +118,18 @@
       }
     },
     "test": {
-      "executor": "@nx/vitest:test",
+      "inputs": [
+        "default",
+        "^default",
+        "translationFixtures",
+        {
+          "dependentTasksOutputFiles": "**/*.ts"
+        }
+      ],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"],
       "dependsOn": ["generate-tokens"],
-      "inputs": ["default", "^default", "translationFixtures", { "dependentTasksOutputFiles": "**/*.ts" }],
       "options": {
-        "reportsDirectory": "../../coverage/apps/tracker"
+        "coverage.reportsDirectory": "../../coverage/apps/tracker"
       }
     },
     "serve-static": {
@@ -127,7 +139,11 @@
         "buildTarget": "tracker:build",
         "staticFilePath": "dist/apps/tracker/browser",
         "spa": true
-      }
+      },
+      "readyWhen": {
+        "signal": true
+      },
+      "dependsOn": ["build"]
     }
   }
 }

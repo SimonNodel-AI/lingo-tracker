@@ -6,16 +6,25 @@
   "implicitDependencies": ["tracker", "api"],
   "targets": {
     "e2e": {
-      "executor": "@nx/playwright:playwright",
-      "dependsOn": [{ "projects": ["api"], "target": "build" }, { "projects": ["tracker"], "target": "build" }],
-      "cache": false,
-      "options": { "config": "apps/tracker-e2e/playwright.config.ts", "skipInstall": true }
+      "dependsOn": [
+        {
+          "projects": ["api"],
+          "target": "build"
+        },
+        {
+          "projects": ["tracker"],
+          "target": "build"
+        }
+      ],
+      "cache": false
     },
     "typecheck": {
       "executor": "nx:run-commands",
       "cache": true,
       "inputs": ["default", "^default", "{workspaceRoot}/tsconfig.base.json"],
-      "options": { "command": "tsc --noEmit -p apps/tracker-e2e/tsconfig.spec.json" }
+      "options": {
+        "command": "tsc --noEmit -p apps/tracker-e2e/tsconfig.spec.json"
+      }
     }
   }
 }

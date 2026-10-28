@@ -18,9 +18,9 @@
       }
     },
     "test": {
-      "executor": "@nx/vitest:test",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"],
       "options": {
-        "reportsDirectory": "../../coverage/libs/data-transfer"
+        "coverage.reportsDirectory": "../../coverage/libs/data-transfer"
       }
     }
   }

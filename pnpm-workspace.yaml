@@ -2,10 +2,10 @@ packages:
   - "libs/*"
   - "apps/*"
 allowBuilds:
-  '@nestjs/core': true
-  '@parcel/watcher': true
-  '@scarf/scarf': true
-  '@swc/core': true
+  "@nestjs/core": true
+  "@parcel/watcher": true
+  "@scarf/scarf": true
+  "@swc/core": true
   esbuild: true
   less: false
   lmdb: true
@@ -50,8 +50,6 @@ overrides:
   "picomatch@>=2.0.0 <3.0.0": "^2.3.2"
   "glob@>=10.2.0 <10.5.0": "^10.5.0"
   "yaml@>=1.0.0 <1.10.3": "^1.10.3"
-  "esbuild@<=0.24.2": "^0.25.0"
-  "esbuild@>=0.27.3 <0.28.1": "^0.28.1"
   "http-proxy-middleware@>=0.16.0 <2.0.10": "^2.0.10"
   "http-proxy-middleware@>=3.0.0 <3.0.7": "^3.0.7"
   "@babel/core@<7.29.6": "^7.29.6"
@@ -60,7 +58,7 @@ overrides:
   "launch-editor@<2.14.2": "^2.14.2"
   "shell-quote@<=1.8.3": "^1.8.4"
   "uuid@<11.1.1": "^11.1.1"
-  "vite@>=7.0.0 <=7.3.4": "^7.3.6"
+  "vite@>=8.3.0 <8.3.3": "^8.3.3"
   "svgo@>=3.0.0 <3.3.4": "^3.3.4"
   "svgo@>=4.0.0 <4.1.0": "^4.1.0"
   "fast-uri@<3.1.9": "^3.1.9"

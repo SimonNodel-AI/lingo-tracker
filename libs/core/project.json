@@ -6,9 +6,9 @@
   "tags": [],
   "targets": {
     "test": {
-      "executor": "@nx/vitest:test",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"],
       "options": {
-        "reportsDirectory": "../../coverage/libs/core"
+        "coverage.reportsDirectory": "../../coverage/libs/core"
       }
     },
     "typecheck": {
