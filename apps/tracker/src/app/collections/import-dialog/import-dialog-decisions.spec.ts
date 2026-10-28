@@ -175,22 +175,20 @@ describe('import dialog decisions', () => {
     expect(importPlanPresentation(plan({ files }), undefined).everyFileUnreadable).toBe(files.length === 1);
   });
 
-  it.each([
-    'filesRequired',
-    'duplicatePath',
-    'localeRequired',
-    'baseLocaleNeedsMigration',
-  ] as const)('file problem mapping %s', (problem) => {
-    const expected = {
-      filesRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
-      duplicatePath: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
-      localeRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.LOCALEREQUIRED,
-      baseLocaleNeedsMigration: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.BASELOCALENEEDSMIGRATION,
-    };
-    expect(importFilesError({ problem, invalid: true, touched: true, attempted: false, obsoleteLocale: false })).toBe(
-      expected[problem],
-    );
-  });
+  it.each(['filesRequired', 'duplicatePath', 'localeRequired', 'baseLocaleNeedsMigration'] as const)(
+    'file problem mapping %s',
+    (problem) => {
+      const expected = {
+        filesRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
+        duplicatePath: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.FILESREQUIRED,
+        localeRequired: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.LOCALEREQUIRED,
+        baseLocaleNeedsMigration: TRACKER_TOKENS.IMPORT.DIALOG.VALIDATION.BASELOCALENEEDSMIGRATION,
+      };
+      expect(importFilesError({ problem, invalid: true, touched: true, attempted: false, obsoleteLocale: false })).toBe(
+        expected[problem],
+      );
+    },
+  );
 
   it.each<[boolean, boolean, boolean, boolean, boolean]>([
     [true, false, false, false, false],
@@ -198,10 +196,13 @@ describe('import dialog decisions', () => {
     [true, false, true, false, true],
     [true, false, false, true, true],
     [false, true, true, true, false],
-  ])('file error reveal invalid=%s touched=%s attempted=%s obsolete=%s', (invalid, touched, attempted, obsoleteLocale, revealed) => {
-    expect(
-      importFilesError({ problem: 'localeRequired', invalid, touched, attempted, obsoleteLocale }) !== undefined,
-    ).toBe(revealed);
-    expect(importFilesError({ problem: undefined, invalid, touched, attempted, obsoleteLocale })).toBeUndefined();
-  });
+  ])(
+    'file error reveal invalid=%s touched=%s attempted=%s obsolete=%s',
+    (invalid, touched, attempted, obsoleteLocale, revealed) => {
+      expect(
+        importFilesError({ problem: 'localeRequired', invalid, touched, attempted, obsoleteLocale }) !== undefined,
+      ).toBe(revealed);
+      expect(importFilesError({ problem: undefined, invalid, touched, attempted, obsoleteLocale })).toBeUndefined();
+    },
+  );
 });

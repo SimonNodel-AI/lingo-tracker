@@ -318,14 +318,14 @@ describe('Translation Run', () => {
       expect(result.totalResources).toBe(0);
     });
 
-    it.each([
-      undefined,
-      { ...AUTO, enabled: false },
-    ])('still refuses a collection whose translation config is %j', async (translationConfig) => {
-      await expect(
-        executeLocale(collection({ translationConfig }), { onMutation, targetLocale: 'fr' }),
-      ).rejects.toThrow(AutoTranslationDisabledError);
-    });
+    it.each([undefined, { ...AUTO, enabled: false }])(
+      'still refuses a collection whose translation config is %j',
+      async (translationConfig) => {
+        await expect(
+          executeLocale(collection({ translationConfig }), { onMutation, targetLocale: 'fr' }),
+        ).rejects.toThrow(AutoTranslationDisabledError);
+      },
+    );
   });
 
   it('translates new, stale and metadata-less resources, and leaves translated and verified ones', async () => {

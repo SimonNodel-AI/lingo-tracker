@@ -113,33 +113,33 @@ describe('reported run', () => {
     expect(result.exitCode).toBe(1);
   });
 
-  it.each([
-    'import',
-    'export',
-  ] as const)('writes no %s summary in a dry run and only renders export previews', async (kind) => {
-    const render = vi.fn(() => '# Preview');
-    const errors = Array.from({ length: 12 }, (_, index) => `error ${index}`);
-    const command = defineCommand()({
-      name: 'Preview',
-      collection: 'none',
-      run: () =>
-        reportRun({
-          summary: { kind, text: render, directory: project.cwd, previewOnDryRun: kind === 'export' },
-          dryRun: true,
-          printBody: () => CommandOutput.log('Body'),
-          warnings: [],
-          errors,
-          outcome: 'failed',
-        }),
-    });
-    const result = await project.run(command, {});
-    expect(summaries()).toEqual([]);
-    expect(render).toHaveBeenCalledTimes(kind === 'export' ? 1 : 0);
-    expect(result.stdout).toMatch(/^Body\n\n(?:Import|Export) summary would be written to: /);
-    expect(result.stdout.endsWith('# Preview\n')).toBe(kind === 'export');
-    expect(result.stderr).toBe(`❌ Errors (12):\n${errors.map((error) => `  - ${error}\n`).join('')}`);
-    expect(result.exitCode).toBe(1);
-  });
+  it.each(['import', 'export'] as const)(
+    'writes no %s summary in a dry run and only renders export previews',
+    async (kind) => {
+      const render = vi.fn(() => '# Preview');
+      const errors = Array.from({ length: 12 }, (_, index) => `error ${index}`);
+      const command = defineCommand()({
+        name: 'Preview',
+        collection: 'none',
+        run: () =>
+          reportRun({
+            summary: { kind, text: render, directory: project.cwd, previewOnDryRun: kind === 'export' },
+            dryRun: true,
+            printBody: () => CommandOutput.log('Body'),
+            warnings: [],
+            errors,
+            outcome: 'failed',
+          }),
+      });
+      const result = await project.run(command, {});
+      expect(summaries()).toEqual([]);
+      expect(render).toHaveBeenCalledTimes(kind === 'export' ? 1 : 0);
+      expect(result.stdout).toMatch(/^Body\n\n(?:Import|Export) summary would be written to: /);
+      expect(result.stdout.endsWith('# Preview\n')).toBe(kind === 'export');
+      expect(result.stderr).toBe(`❌ Errors (12):\n${errors.map((error) => `  - ${error}\n`).join('')}`);
+      expect(result.exitCode).toBe(1);
+    },
+  );
 
   it('announces a summary failure after the report without changing the outcome', async () => {
     const command = defineCommand()({

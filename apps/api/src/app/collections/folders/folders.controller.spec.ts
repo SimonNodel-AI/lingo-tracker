@@ -208,13 +208,16 @@ describe('FoldersController HTTP (real project)', () => {
     ['bad path', 'apps.shared', 400],
     ['apps.common', 'apps.common.buttons', 400],
     ['apps.missing', 'apps.shared', 404],
-  ])('maps a typed move error through the exception filter (%s)', async (sourceFolderPath, destinationFolderPath, status) => {
-    await seed('apps.common.buttons');
-    const result = await move({ sourceFolderPath, destinationFolderPath });
-    expect(result.status).toBe(status);
-    expect(result.body.statusCode).toBe(status);
-    expect(result.body.message).toEqual(expect.any(String));
-  });
+  ])(
+    'maps a typed move error through the exception filter (%s)',
+    async (sourceFolderPath, destinationFolderPath, status) => {
+      await seed('apps.common.buttons');
+      const result = await move({ sourceFolderPath, destinationFolderPath });
+      expect(result.status).toBe(status);
+      expect(result.body.statusCode).toBe(status);
+      expect(result.body.message).toEqual(expect.any(String));
+    },
+  );
   it('should report a move of an empty folder', async () => {
     mkdirSync(join(cwd, 'translations/test/apps/empty'), { recursive: true });
     const result = await move({ sourceFolderPath: 'apps.empty', destinationFolderPath: 'apps.shared' });

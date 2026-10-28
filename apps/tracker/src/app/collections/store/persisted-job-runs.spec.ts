@@ -12,7 +12,8 @@ for (const [name, read, request] of [
 ] as const) {
   describe(`persisted ${name} runs`, () => {
     it.each([undefined, null, '', '{bad', 'null', '[]', '{}', '1'])('ignores absent or corrupt data: %s', (raw) =>
-      expect(read(raw)).toBeUndefined());
+      expect(read(raw)).toBeUndefined(),
+    );
     it.each(['running', 'completed', 'failed'])('retains the stored JSON for %s', (status) => {
       const run = {
         status,
@@ -28,11 +29,12 @@ for (const [name, read, request] of [
     it.each(['idle', 'pending', '', null, 1])('rejects status %s', (status) => {
       expect(read(JSON.stringify({ status, jobId: 'job', request }))).toBeUndefined();
     });
-    it.each([null, [], {}, 1].map((badRequest) => ({ badRequest })))('rejects invalid request $badRequest', ({
-      badRequest,
-    }) => {
-      expect(read(JSON.stringify({ status: 'running', jobId: 'job', request: badRequest }))).toBeUndefined();
-    });
+    it.each([null, [], {}, 1].map((badRequest) => ({ badRequest })))(
+      'rejects invalid request $badRequest',
+      ({ badRequest }) => {
+        expect(read(JSON.stringify({ status: 'running', jobId: 'job', request: badRequest }))).toBeUndefined();
+      },
+    );
   });
 }
 

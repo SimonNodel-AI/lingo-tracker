@@ -29,24 +29,20 @@ describe('run dialog focus', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it.each([
-    'disabled',
-    'aria-disabled',
-    'detached',
-    'body',
-    'tabindex',
-    'missing',
-  ])('falls back to the strip for a %s trigger', (kind) => {
-    let target: HTMLElement | null = trigger;
-    if (kind === 'disabled') trigger.disabled = true;
-    if (kind === 'aria-disabled') trigger.setAttribute('aria-disabled', 'true');
-    if (kind === 'detached') trigger.remove();
-    if (kind === 'body') target = document.body;
-    if (kind === 'tabindex') trigger.tabIndex = -2;
-    if (kind === 'missing') target = null;
-    restoreRunFocus(host, target, 'export-strip');
-    expect(document.activeElement).toBe(strip);
-  });
+  it.each(['disabled', 'aria-disabled', 'detached', 'body', 'tabindex', 'missing'])(
+    'falls back to the strip for a %s trigger',
+    (kind) => {
+      let target: HTMLElement | null = trigger;
+      if (kind === 'disabled') trigger.disabled = true;
+      if (kind === 'aria-disabled') trigger.setAttribute('aria-disabled', 'true');
+      if (kind === 'detached') trigger.remove();
+      if (kind === 'body') target = document.body;
+      if (kind === 'tabindex') trigger.tabIndex = -2;
+      if (kind === 'missing') target = null;
+      restoreRunFocus(host, target, 'export-strip');
+      expect(document.activeElement).toBe(strip);
+    },
+  );
 
   it('falls back to the heading when the strip is missing', () => {
     strip.remove();
@@ -68,34 +64,34 @@ describe('run dialog focus', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it.each([
-    'export',
-    'import',
-  ] as const)('captures focus before lazy-loading the %s dialog and restores after close', async (kind) => {
-    strip.dataset['testid'] = `${kind}-strip`;
-    const closed = new Subject<void>();
-    const open = vi.fn().mockReturnValue({ afterClosed: () => closed });
-    const dialog = { open } as unknown as Pick<MatDialog, 'open'>;
-    class Dialog {}
-    let resolve: ((component: typeof Dialog) => void) | undefined;
-    const loading = new Promise<typeof Dialog>((done) => {
-      resolve = done;
-    });
-    trigger.focus();
-    launchRunDialog(dialog, host, () => loading, { preselectedCollection: 'main' }, kind, 'wide');
-    heading.focus();
-    resolve?.(Dialog);
-    await loading;
-    expect(open).toHaveBeenCalledWith(Dialog, {
-      data: { preselectedCollection: 'main' },
-      panelClass: `${kind}-dialog-panel`,
-      maxWidth: 'wide',
-      restoreFocus: false,
-    });
-    expect(document.activeElement).toBe(heading);
-    closed.next();
-    expect(document.activeElement).toBe(trigger);
-  });
+  it.each(['export', 'import'] as const)(
+    'captures focus before lazy-loading the %s dialog and restores after close',
+    async (kind) => {
+      strip.dataset['testid'] = `${kind}-strip`;
+      const closed = new Subject<void>();
+      const open = vi.fn().mockReturnValue({ afterClosed: () => closed });
+      const dialog = { open } as unknown as Pick<MatDialog, 'open'>;
+      class Dialog {}
+      let resolve: ((component: typeof Dialog) => void) | undefined;
+      const loading = new Promise<typeof Dialog>((done) => {
+        resolve = done;
+      });
+      trigger.focus();
+      launchRunDialog(dialog, host, () => loading, { preselectedCollection: 'main' }, kind, 'wide');
+      heading.focus();
+      resolve?.(Dialog);
+      await loading;
+      expect(open).toHaveBeenCalledWith(Dialog, {
+        data: { preselectedCollection: 'main' },
+        panelClass: `${kind}-dialog-panel`,
+        maxWidth: 'wide',
+        restoreFocus: false,
+      });
+      expect(document.activeElement).toBe(heading);
+      closed.next();
+      expect(document.activeElement).toBe(trigger);
+    },
+  );
 
   it('uses an explicit return target instead of the captured active element', async () => {
     const closed = new Subject<void>();

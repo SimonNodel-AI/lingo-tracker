@@ -35,20 +35,23 @@ describe('prepareBundleRun', () => {
       'camelCase',
       false,
     ],
-  ] as const)('%s settings win', (_label, bundle, overrides, tokenConstantName, tokenCasing, transformICUToTransloco) => {
-    const prepared = prepareBundleRun({
-      source: 'supplied',
-      bundleKey: 'main',
-      bundleDefinition: { ...definition, ...bundle },
-      config,
-      locales: ['fr'],
-      ...overrides,
-    });
-    expect(prepared.settings).toEqual({ tokenConstantName, tokenCasing, transformICUToTransloco });
-    expect(prepared.locales).toEqual(['fr']);
-    expect(prepared.collections).toEqual({ collections: [], warnings: [] });
-    expect(prepared.warnings).toEqual([]);
-  });
+  ] as const)(
+    '%s settings win',
+    (_label, bundle, overrides, tokenConstantName, tokenCasing, transformICUToTransloco) => {
+      const prepared = prepareBundleRun({
+        source: 'supplied',
+        bundleKey: 'main',
+        bundleDefinition: { ...definition, ...bundle },
+        config,
+        locales: ['fr'],
+        ...overrides,
+      });
+      expect(prepared.settings).toEqual({ tokenConstantName, tokenCasing, transformICUToTransloco });
+      expect(prepared.locales).toEqual(['fr']);
+      expect(prepared.collections).toEqual({ collections: [], warnings: [] });
+      expect(prepared.warnings).toEqual([]);
+    },
+  );
 
   it.each([
     [{ locales: ['xx'] }, 'Unknown locale "xx": must be defined in the project locales'],

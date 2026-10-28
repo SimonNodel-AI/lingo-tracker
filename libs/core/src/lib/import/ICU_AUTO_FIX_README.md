@@ -46,6 +46,7 @@ types.ts
 ### How It Works
 
 1. **Placeholder Extraction**
+
    ```typescript
    Base:        "Hello {name}, you have {count} items"
    Extracted:   [{name: "name", ...}, {name: "count", ...}]
@@ -55,6 +56,7 @@ types.ts
    ```
 
 2. **Positional Matching**
+
    ```typescript
    Match by position:
    Base[0] "name"  → Translation[0] "nombre"
@@ -62,6 +64,7 @@ types.ts
    ```
 
 3. **Replacement**
+
    ```typescript
    Replace translation placeholders with base placeholders:
    Text segments: ["Hola ", ", tienes ", " elementos"]
@@ -70,6 +73,7 @@ types.ts
    ```
 
 4. **Validation**
+
    ```typescript
    Validate the auto-fixed result has correct ICU syntax
    Report success with description of changes
@@ -78,38 +82,43 @@ types.ts
 ## Supported ICU Patterns
 
 ### Simple Placeholders
+
 ```typescript
-Base:        "Hello {name}"
-Translation: "Hola {nombre}"
-Fixed:       "Hola {name}"
+Base: 'Hello {name}';
+Translation: 'Hola {nombre}';
+Fixed: 'Hola {name}';
 ```
 
 ### Plural Forms
+
 ```typescript
-Base:        "{count, plural, one {# item} other {# items}}"
-Translation: "{numero, plural, one {# elemento} other {# elementos}}"
-Fixed:       "{count, plural, one {# elemento} other {# elementos}}"
+Base: '{count, plural, one {# item} other {# items}}';
+Translation: '{numero, plural, one {# elemento} other {# elementos}}';
+Fixed: '{count, plural, one {# elemento} other {# elementos}}';
 ```
 
 ### Select Statements
+
 ```typescript
-Base:        "{gender, select, male {he} female {she} other {they}}"
-Translation: "{genero, select, male {él} female {ella} other {ellos}}"
-Fixed:       "{gender, select, male {él} female {ella} other {ellos}}"
+Base: '{gender, select, male {he} female {she} other {they}}';
+Translation: '{genero, select, male {él} female {ella} other {ellos}}';
+Fixed: '{gender, select, male {él} female {ella} other {ellos}}';
 ```
 
 ### Number/Date/Time Formatters
+
 ```typescript
-Base:        "Price: {price, number, currency}"
-Translation: "Precio: {precio, number, currency}"
-Fixed:       "Precio: {price, number, currency}"
+Base: 'Price: {price, number, currency}';
+Translation: 'Precio: {precio, number, currency}';
+Fixed: 'Precio: {price, number, currency}';
 ```
 
 ### Nested Patterns
+
 ```typescript
-Base:        "{count, plural, one {You have {count} item} other {You have {count} items}}"
-Translation: "{numero, plural, one {Tienes {numero} elemento} other {Tienes {numero} elementos}}"
-Fixed:       "{count, plural, one {Tienes {count} elemento} other {Tienes {count} elementos}}"
+Base: '{count, plural, one {You have {count} item} other {You have {count} items}}';
+Translation: '{numero, plural, one {Tienes {numero} elemento} other {Tienes {numero} elementos}}';
+Fixed: '{count, plural, one {Tienes {count} elemento} other {Tienes {count} elementos}}';
 ```
 
 ## Error Handling
@@ -119,6 +128,7 @@ Fixed:       "{count, plural, one {Tienes {count} elemento} other {Tienes {count
 These cases return `ICUAutoFixError` and preserve the original value:
 
 1. **Extra Placeholders**
+
    ```typescript
    Base:        "Hello {name}"
    Translation: "Hola {name} {extra}"
@@ -126,6 +136,7 @@ These cases return `ICUAutoFixError` and preserve the original value:
    ```
 
 2. **Multiple Missing Placeholders**
+
    ```typescript
    Base:        "Hello {firstName} {lastName}"
    Translation: "Hola"
@@ -133,6 +144,7 @@ These cases return `ICUAutoFixError` and preserve the original value:
    ```
 
 3. **Malformed ICU Syntax**
+
    ```typescript
    Base:        "Hello {name}"
    Translation: "Hola {nombre"  // Unclosed brace
@@ -142,6 +154,7 @@ These cases return `ICUAutoFixError` and preserve the original value:
 ### Recoverable Cases (Auto-Fixed)
 
 1. **Single Missing Placeholder**
+
    ```typescript
    Base:        "You have {count} items"
    Translation: "Tienes items"
@@ -149,6 +162,7 @@ These cases return `ICUAutoFixError` and preserve the original value:
    ```
 
 2. **Renamed Placeholders**
+
    ```typescript
    Base:        "Hello {firstName} {lastName}"
    Translation: "Hola {nombre} {apellido}"
@@ -188,7 +202,11 @@ const resources = [
   { key: 'count', value: '{numero} elementos' },
 ];
 
-const { resources: fixed, autoFixes, autoFixErrors } = applyICUAutoFixToResources({
+const {
+  resources: fixed,
+  autoFixes,
+  autoFixErrors,
+} = applyICUAutoFixToResources({
   resources,
   getBaseValue: (key) => baseLocaleData[key],
   verbose: true,
@@ -342,27 +360,27 @@ We don't auto-insert multiple placeholders because:
 
 ```typescript
 interface ICUAutoFix {
-  key: string;                      // Resource key
-  originalValue: string;            // Original imported value
-  fixedValue: string;               // Auto-fixed value
-  description: string;              // Human-readable change description
-  originalPlaceholders: string[];   // Original placeholders
-  fixedPlaceholders: string[];      // Corrected placeholders
+  key: string; // Resource key
+  originalValue: string; // Original imported value
+  fixedValue: string; // Auto-fixed value
+  description: string; // Human-readable change description
+  originalPlaceholders: string[]; // Original placeholders
+  fixedPlaceholders: string[]; // Corrected placeholders
 }
 
 interface ICUAutoFixError {
-  key: string;                      // Resource key
-  error: string;                    // Error message
-  originalValue: string;            // Value that couldn't be fixed
+  key: string; // Resource key
+  error: string; // Error message
+  originalValue: string; // Value that couldn't be fixed
 }
 
 interface ICUAutoFixResult {
-  wasFixed: boolean;                // Whether auto-fix was applied
-  value: string;                    // Fixed or original value
-  description?: string;             // Change description
-  originalPlaceholders?: string[];  // Original placeholders
-  fixedPlaceholders?: string[];     // Fixed placeholders
-  error?: string;                   // Error if fix failed
+  wasFixed: boolean; // Whether auto-fix was applied
+  value: string; // Fixed or original value
+  description?: string; // Change description
+  originalPlaceholders?: string[]; // Original placeholders
+  fixedPlaceholders?: string[]; // Fixed placeholders
+  error?: string; // Error if fix failed
 }
 ```
 

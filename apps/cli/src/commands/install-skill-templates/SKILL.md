@@ -1,4 +1,5 @@
 ---
+
 name: lingo-tracker
 description: Translation management for lingo-tracker. Handles i18n, internationalization, transloco, hardcoded strings detection, translation resource creation, token generation, and code updates.
 ---
@@ -64,11 +65,13 @@ If the key already exists the command exits 1; reuse the key, use `edit-resource
 ## Detecting Hardcoded Strings
 
 ### Flag these as translatable:
+
 - HTML text content, `placeholder`, `aria-label`, `title` attributes
 - Angular Material: `matTooltip`, `<mat-label>`, button text
 - TypeScript: snackbar messages, dialog titles/messages, toast notifications, error messages shown to users
 
 ### Skip these (not translatable):
+
 - CSS class names, route paths, enum values, icon names (e.g., `'add'`, `'delete'`)
 - Technical identifiers, object keys, log messages, selector strings
 - URLs, file paths, regex patterns

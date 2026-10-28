@@ -114,23 +114,23 @@ describe.each(['sidebar', 'picker'] as const)('Folder Draft Session: %s adapter'
     }
   });
 
-  it.each([
-    ...settlements,
-    { name: 'stale session', outcome: { kind: 'stale-session', feedback: null } as const },
-  ])('ignores $name for a replaced or cancelled draft', ({ outcome }) => {
-    for (const action of ['cancel', 'replace'] as const) {
-      const { session, create } = harness(surface);
-      const late = new Subject<CreateFolderOutcome>();
-      create.mockReturnValue(late);
-      session.start('common');
-      session.confirm('new').subscribe();
-      if (action === 'cancel') session.cancel();
-      else session.start('errors');
-      const current = session.state();
-      late.next(outcome);
-      expect(session.state()).toBe(current);
-    }
-  });
+  it.each([...settlements, { name: 'stale session', outcome: { kind: 'stale-session', feedback: null } as const }])(
+    'ignores $name for a replaced or cancelled draft',
+    ({ outcome }) => {
+      for (const action of ['cancel', 'replace'] as const) {
+        const { session, create } = harness(surface);
+        const late = new Subject<CreateFolderOutcome>();
+        create.mockReturnValue(late);
+        session.start('common');
+        session.confirm('new').subscribe();
+        if (action === 'cancel') session.cancel();
+        else session.start('errors');
+        const current = session.state();
+        late.next(outcome);
+        expect(session.state()).toBe(current);
+      }
+    },
+  );
 
   it('handles a stale session according to the surface reset ownership', () => {
     const { session, create } = harness(surface);

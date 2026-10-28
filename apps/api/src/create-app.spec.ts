@@ -387,76 +387,76 @@ describe('createApp over HTTP', () => {
   });
 });
 
-describe.each([
-  '',
-  '  My-Laptop.Local , OTHER.local  ',
-])('createApp with the production Nest factory (allowedHosts %s)', (allowedHosts) => {
-  let root: string | undefined;
-  let app: INestApplication | undefined;
-  let baseUrl = '';
-  const indexHtml = '<!doctype html><html><body>Production factory client fixture</body></html>';
+describe.each(['', '  My-Laptop.Local , OTHER.local  '])(
+  'createApp with the production Nest factory (allowedHosts %s)',
+  (allowedHosts) => {
+    let root: string | undefined;
+    let app: INestApplication | undefined;
+    let baseUrl = '';
+    const indexHtml = '<!doctype html><html><body>Production factory client fixture</body></html>';
 
-  beforeAll(async () => {
-    const clientPath = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-api-production-bootstrap-')));
-    root = clientPath;
-    writeFileSync(join(clientPath, 'index.html'), indexHtml);
+    beforeAll(async () => {
+      const clientPath = realpathSync(mkdtempSync(join(tmpdir(), 'lingo-api-production-bootstrap-')));
+      root = clientPath;
+      writeFileSync(join(clientPath, 'index.html'), indexHtml);
 
-    app = await createApp({ clientPath, allowedHosts });
-    await app.listen(0);
-    const server = app.getHttpServer() as Server;
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('HTTP server has no TCP address');
-    baseUrl = `http://localhost:${address.port}`;
-  });
-
-  afterAll(async () => {
-    try {
-      await app?.close();
-    } finally {
-      if (root !== undefined) rmSync(root, { recursive: true, force: true });
-    }
-  });
-
-  it('serves API health and the client index without an app creation override', async () => {
-    const healthResponse = await fetch(`${baseUrl}/api/health`);
-    expect(healthResponse.status).toBe(200);
-    expect(healthResponse.headers.get('content-type')).toContain('application/json');
-    expect(await healthResponse.json()).toEqual({ status: 'all is good' });
-
-    const clientResponse = await fetch(`${baseUrl}/`);
-    expect(clientResponse.status).toBe(200);
-    expect(clientResponse.headers.get('content-type')).toContain('text/html');
-    expect(await clientResponse.text()).toBe(indexHtml);
-  });
-  it('rejects a foreign Host regardless of allowed names', async () => {
-    const response = await requestWithHost(`${baseUrl}/api/health`, 'evil.example:3030');
-    expect(response.status).toBe(403);
-    expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
-  });
-
-  it('still rejects foreign Origins with explicitly allowed names', async () => {
-    const response = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'http://evil.example' } });
-    expect(response.status).toBe(403);
-    expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
-  });
-  it('allows named LAN access only when explicitly listed, trimmed and case-insensitive', async () => {
-    const response = await requestWithHost(`${baseUrl}/api/health`, 'MY-LAPTOP.local:3030', {
-      origin: 'http://my-laptop.LOCAL:3030',
+      app = await createApp({ clientPath, allowedHosts });
+      await app.listen(0);
+      const server = app.getHttpServer() as Server;
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('HTTP server has no TCP address');
+      baseUrl = `http://localhost:${address.port}`;
     });
-    const listed = allowedHosts.length > 0;
-    expect(response.status).toBe(listed ? 200 : 403);
-    expect(JSON.parse(response.body)).toEqual(
-      listed
-        ? { status: 'all is good' }
-        : {
-            statusCode: 403,
-            message: 'Host not allowed',
-            error: 'Forbidden',
-          },
-    );
-    if (listed) expect(response.allowOrigin).toBe('http://my-laptop.LOCAL:3030');
-  });
-});
+
+    afterAll(async () => {
+      try {
+        await app?.close();
+      } finally {
+        if (root !== undefined) rmSync(root, { recursive: true, force: true });
+      }
+    });
+
+    it('serves API health and the client index without an app creation override', async () => {
+      const healthResponse = await fetch(`${baseUrl}/api/health`);
+      expect(healthResponse.status).toBe(200);
+      expect(healthResponse.headers.get('content-type')).toContain('application/json');
+      expect(await healthResponse.json()).toEqual({ status: 'all is good' });
+
+      const clientResponse = await fetch(`${baseUrl}/`);
+      expect(clientResponse.status).toBe(200);
+      expect(clientResponse.headers.get('content-type')).toContain('text/html');
+      expect(await clientResponse.text()).toBe(indexHtml);
+    });
+    it('rejects a foreign Host regardless of allowed names', async () => {
+      const response = await requestWithHost(`${baseUrl}/api/health`, 'evil.example:3030');
+      expect(response.status).toBe(403);
+      expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    });
+
+    it('still rejects foreign Origins with explicitly allowed names', async () => {
+      const response = await fetch(`${baseUrl}/api/health`, { headers: { Origin: 'http://evil.example' } });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ statusCode: 403, message: 'Origin not allowed', error: 'Forbidden' });
+    });
+    it('allows named LAN access only when explicitly listed, trimmed and case-insensitive', async () => {
+      const response = await requestWithHost(`${baseUrl}/api/health`, 'MY-LAPTOP.local:3030', {
+        origin: 'http://my-laptop.LOCAL:3030',
+      });
+      const listed = allowedHosts.length > 0;
+      expect(response.status).toBe(listed ? 200 : 403);
+      expect(JSON.parse(response.body)).toEqual(
+        listed
+          ? { status: 'all is good' }
+          : {
+              statusCode: 403,
+              message: 'Host not allowed',
+              error: 'Forbidden',
+            },
+      );
+      if (listed) expect(response.allowOrigin).toBe('http://my-laptop.LOCAL:3030');
+    });
+  },
+);
 
 describe('resolvePort', () => {
   it('supports --port=value with precedence over the environment', () => {

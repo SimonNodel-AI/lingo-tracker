@@ -59,7 +59,7 @@ describe('generateBundles', () => {
     expect(result.outcomes[0]?.error).toBeInstanceOf(BundleNotFoundError);
     expect(result.outcome).toBe('failed');
     expect(result.outcomes.map((item) => item.outcome)).toEqual(['failed', 'succeeded']);
-    expect((result.outcomes[0]?.error as BundleNotFoundError).message).toBe('Bundle "missing" not found');
+    expect((result.outcomes[0]?.error as BundleNotFoundError | undefined)?.message).toBe('Bundle "missing" not found');
     expect(result.totals.bundlesProcessed).toBe(1);
   });
 

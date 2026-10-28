@@ -385,7 +385,7 @@ describe('Settings', () => {
     it('removes a rule', () => {
       render(terminologyConfig);
 
-      (ruleRows()[0]?.querySelector('button.rule-remove') as HTMLButtonElement).click();
+      (ruleRows()[0]?.querySelector('button.rule-remove') as HTMLButtonElement | null)?.click();
       spectator.detectChanges();
 
       expect(ruleRows()).toHaveLength(1);

@@ -412,48 +412,48 @@ describe('bundle collection reference planning', () => {
     }
   });
 
-  it.each([
-    'rename',
-    'remove',
-  ] as const)('preserves null bundles, empty lists and source objects on %s', (operation) => {
-    const source = JSON.parse(
-      JSON.stringify({
-        ...baseConfig(),
-        bundles: {
-          nullBundle: null,
-          empty: validDefinition({ collections: [] }),
-          malformed: { ...validDefinition(), collections: 42 },
-          all: validDefinition(),
-          constructor: validDefinition({
-            collections: [
+  it.each(['rename', 'remove'] as const)(
+    'preserves null bundles, empty lists and source objects on %s',
+    (operation) => {
+      const source = JSON.parse(
+        JSON.stringify({
+          ...baseConfig(),
+          bundles: {
+            nullBundle: null,
+            empty: validDefinition({ collections: [] }),
+            malformed: { ...validDefinition(), collections: 42 },
+            all: validDefinition(),
+            constructor: validDefinition({
+              collections: [
+                null,
+                { name: 'common', entriesSelectionRules: 'All', bundledKeyPrefix: 'a' },
+                { name: 'common', entriesSelectionRules: 'All', bundledKeyPrefix: 'b' },
+              ] as unknown as BundleDefinition['collections'],
+            }),
+          },
+        }),
+      ) as LingoTrackerConfig;
+      const before = JSON.stringify(source);
+      const config = { ...source };
+      if (operation === 'rename') renameBundleCollectionReferences(config, 'common', 'renamed');
+      else removeBundleCollectionReferences(config, 'common');
+      expect(JSON.stringify(source)).toBe(before);
+      expect(Object.keys(config.bundles ?? {})).toEqual(['nullBundle', 'empty', 'malformed', 'all', 'constructor']);
+      expect(config.bundles?.['nullBundle']).toBeNull();
+      expect(config.bundles?.['empty']?.collections).toEqual([]);
+      expect(config.bundles?.['malformed']?.collections).toBe(42);
+      expect(config.bundles?.['all']?.collections).toBe('All');
+      expect(config.bundles?.['constructor']?.collections).toEqual(
+        operation === 'rename'
+          ? [
               null,
-              { name: 'common', entriesSelectionRules: 'All', bundledKeyPrefix: 'a' },
-              { name: 'common', entriesSelectionRules: 'All', bundledKeyPrefix: 'b' },
-            ] as unknown as BundleDefinition['collections'],
-          }),
-        },
-      }),
-    ) as LingoTrackerConfig;
-    const before = JSON.stringify(source);
-    const config = { ...source };
-    if (operation === 'rename') renameBundleCollectionReferences(config, 'common', 'renamed');
-    else removeBundleCollectionReferences(config, 'common');
-    expect(JSON.stringify(source)).toBe(before);
-    expect(Object.keys(config.bundles ?? {})).toEqual(['nullBundle', 'empty', 'malformed', 'all', 'constructor']);
-    expect(config.bundles?.['nullBundle']).toBeNull();
-    expect(config.bundles?.['empty']?.collections).toEqual([]);
-    expect(config.bundles?.['malformed']?.collections).toBe(42);
-    expect(config.bundles?.['all']?.collections).toBe('All');
-    expect(config.bundles?.['constructor']?.collections).toEqual(
-      operation === 'rename'
-        ? [
-            null,
-            { name: 'renamed', entriesSelectionRules: 'All', bundledKeyPrefix: 'a' },
-            { name: 'renamed', entriesSelectionRules: 'All', bundledKeyPrefix: 'b' },
-          ]
-        : [null],
-    );
-  });
+              { name: 'renamed', entriesSelectionRules: 'All', bundledKeyPrefix: 'a' },
+              { name: 'renamed', entriesSelectionRules: 'All', bundledKeyPrefix: 'b' },
+            ]
+          : [null],
+      );
+    },
+  );
 
   it.each(['rename', 'remove'] as const)('leaves the original map intact when %s is refused', (operation) => {
     const config = baseConfig({

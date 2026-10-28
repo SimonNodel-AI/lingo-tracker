@@ -130,76 +130,76 @@ describe('editResource (real fs)', () => {
     expect(provider.calls).toEqual([]);
   });
 
-  it.each([
-    { baseValue: '{{{a}}}' },
-    { baseValue: 'Changed', translations: { fr: { value: '{{{a}}}' } } },
-  ])('rejects braced edits without changing files: %j', async (changes) => {
-    seedEntry();
-    const entriesPath = join(root, 'translations', 'common', 'resource_entries.json');
-    const metaPath = join(root, 'translations', 'common', 'tracker_meta.json');
-    const before = [readFileSync(entriesPath), readFileSync(metaPath)];
-    await expect(
-      editResource(
-        { ...collection(), onMutation: onMutation ?? collection().onMutation },
-        'common.save',
-        { ...changes, moveTo: 'other' },
-        {},
-      ),
-    ).rejects.toThrow(BracedPlaceholderError);
-    expect([readFileSync(entriesPath), readFileSync(metaPath)]).toEqual(before);
-    expect(existsSync(join(root, 'translations', 'other'))).toBe(false);
-    expect(collected).toEqual([]);
-  });
-  it.each([
-    'Hi',
-    '{{{s}}}',
-  ])('applies a comment edit while holding unchanged braced values (source=%s)', async (source) => {
-    const value = '{{{a}}}';
-    const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
-    folder.setEntry(
-      'save',
-      { source, fr: value },
-      {
-        en: { checksum: md5(source) },
-        fr: { checksum: md5(value), baseChecksum: md5(source), status: 'verified' },
-      },
-    );
-    folder.save();
-    const beforeMeta = readFileSync(join(root, 'translations', 'common', 'tracker_meta.json'));
-    const result = await editResource(collection(), 'common.save', {
-      baseValue: source,
-      translations: { fr: { value } },
-      comment: 'Updated comment',
-    });
-    expect(result.updated).toBe(true);
-    expect(read('resource_entries.json', 'common').save).toEqual({ source, fr: value, comment: 'Updated comment' });
-    expect(readFileSync(join(root, 'translations', 'common', 'tracker_meta.json'))).toEqual(beforeMeta);
-  });
+  it.each([{ baseValue: '{{{a}}}' }, { baseValue: 'Changed', translations: { fr: { value: '{{{a}}}' } } }])(
+    'rejects braced edits without changing files: %j',
+    async (changes) => {
+      seedEntry();
+      const entriesPath = join(root, 'translations', 'common', 'resource_entries.json');
+      const metaPath = join(root, 'translations', 'common', 'tracker_meta.json');
+      const before = [readFileSync(entriesPath), readFileSync(metaPath)];
+      await expect(
+        editResource(
+          { ...collection(), onMutation: onMutation ?? collection().onMutation },
+          'common.save',
+          { ...changes, moveTo: 'other' },
+          {},
+        ),
+      ).rejects.toThrow(BracedPlaceholderError);
+      expect([readFileSync(entriesPath), readFileSync(metaPath)]).toEqual(before);
+      expect(existsSync(join(root, 'translations', 'other'))).toBe(false);
+      expect(collected).toEqual([]);
+    },
+  );
+  it.each(['Hi', '{{{s}}}'])(
+    'applies a comment edit while holding unchanged braced values (source=%s)',
+    async (source) => {
+      const value = '{{{a}}}';
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      folder.setEntry(
+        'save',
+        { source, fr: value },
+        {
+          en: { checksum: md5(source) },
+          fr: { checksum: md5(value), baseChecksum: md5(source), status: 'verified' },
+        },
+      );
+      folder.save();
+      const beforeMeta = readFileSync(join(root, 'translations', 'common', 'tracker_meta.json'));
+      const result = await editResource(collection(), 'common.save', {
+        baseValue: source,
+        translations: { fr: { value } },
+        comment: 'Updated comment',
+      });
+      expect(result.updated).toBe(true);
+      expect(read('resource_entries.json', 'common').save).toEqual({ source, fr: value, comment: 'Updated comment' });
+      expect(readFileSync(join(root, 'translations', 'common', 'tracker_meta.json'))).toEqual(beforeMeta);
+    },
+  );
 
-  it.each([
-    { baseValue: '{{{changed}}}' },
-    { translations: { fr: { value: '{{{changed}}}' } } },
-  ])('rejects changed braced values in a legacy entry without writes: %j', async (changes) => {
-    const value = '{{{a}}}';
-    const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
-    folder.setEntry(
-      'save',
-      { source: value, fr: value },
-      {
-        en: { checksum: md5(value) },
-        fr: { checksum: md5(value), baseChecksum: md5(value), status: 'new' },
-      },
-    );
-    folder.save();
-    const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
-      join(root, 'translations', 'common', file),
-    );
-    const before = paths.map((path) => readFileSync(path));
-    await expect(editResource(collection(), 'common.save', { ...changes, comment: 'Changed' })).rejects.toThrow(
-      BracedPlaceholderError,
-    );
-    expect(paths.map((path) => readFileSync(path))).toEqual(before);
-  });
+  it.each([{ baseValue: '{{{changed}}}' }, { translations: { fr: { value: '{{{changed}}}' } } }])(
+    'rejects changed braced values in a legacy entry without writes: %j',
+    async (changes) => {
+      const value = '{{{a}}}';
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      folder.setEntry(
+        'save',
+        { source: value, fr: value },
+        {
+          en: { checksum: md5(value) },
+          fr: { checksum: md5(value), baseChecksum: md5(value), status: 'new' },
+        },
+      );
+      folder.save();
+      const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+        join(root, 'translations', 'common', file),
+      );
+      const before = paths.map((path) => readFileSync(path));
+      await expect(editResource(collection(), 'common.save', { ...changes, comment: 'Changed' })).rejects.toThrow(
+        BracedPlaceholderError,
+      );
+      expect(paths.map((path) => readFileSync(path))).toEqual(before);
+    },
+  );
 
   it('ignores a braced translation for the base locale during an edit', async () => {
     const before = read('resource_entries.json', 'common').save;

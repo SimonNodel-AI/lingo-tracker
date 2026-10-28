@@ -104,34 +104,34 @@ describe('addResource (real fs)', () => {
   });
 
   describe('locale seeding', () => {
-    it.each([
-      { baseValue: '{{{a}}}' },
-      { baseValue: 'OK', translations: [{ locale: 'fr', value: '{{{a}}}' }] },
-    ])('rejects braced supplied values before writing: %j', async (changes) => {
-      await expect(
-        addResource(
-          { ...collection(), onMutation: onMutation ?? collection().onMutation },
-          { key: 'common.ok', ...changes },
-          {},
-        ),
-      ).rejects.toThrow(BracedPlaceholderError);
-      expect(existsSync(join(root, 'translations'))).toBe(false);
-      expect(collected).toEqual([]);
-      await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
-      const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
-        join(root, 'translations', 'common', file),
-      );
-      const before = paths.map((path) => readFileSync(path));
-      await expect(
-        addResource(
-          { ...collection(), onMutation: onMutation ?? collection().onMutation },
-          { key: 'common.ok', ...changes },
-          { onExisting: 'replace' },
-        ),
-      ).rejects.toThrow(BracedPlaceholderError);
-      expect(paths.map((path) => readFileSync(path))).toEqual(before);
-      expect(collected).toEqual([]);
-    });
+    it.each([{ baseValue: '{{{a}}}' }, { baseValue: 'OK', translations: [{ locale: 'fr', value: '{{{a}}}' }] }])(
+      'rejects braced supplied values before writing: %j',
+      async (changes) => {
+        await expect(
+          addResource(
+            { ...collection(), onMutation: onMutation ?? collection().onMutation },
+            { key: 'common.ok', ...changes },
+            {},
+          ),
+        ).rejects.toThrow(BracedPlaceholderError);
+        expect(existsSync(join(root, 'translations'))).toBe(false);
+        expect(collected).toEqual([]);
+        await addResource(collection(), { key: 'common.ok', baseValue: 'Existing' });
+        const paths = ['resource_entries.json', 'tracker_meta.json'].map((file) =>
+          join(root, 'translations', 'common', file),
+        );
+        const before = paths.map((path) => readFileSync(path));
+        await expect(
+          addResource(
+            { ...collection(), onMutation: onMutation ?? collection().onMutation },
+            { key: 'common.ok', ...changes },
+            { onExisting: 'replace' },
+          ),
+        ).rejects.toThrow(BracedPlaceholderError);
+        expect(paths.map((path) => readFileSync(path))).toEqual(before);
+        expect(collected).toEqual([]);
+      },
+    );
 
     it.each([
       ['{n, plural, other {{{a}}}}', '{n, plural, other {{a}}}'],

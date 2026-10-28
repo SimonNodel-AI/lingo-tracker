@@ -10,28 +10,28 @@ const cases = [
 ] as const;
 
 describe('Key Tree', () => {
-  it.each(cases)('builds opaque rich leaves and reports order-independent conflicts for $keys', ({
-    keys,
-    conflicts,
-  }) => {
-    const entries = keys.map((key) => [key, key] as const);
-    const leaf = (value: string) => ({ value, comment: 'Rich leaf' });
-    const forward = buildKeyTree(entries, { leaf });
-    const reverse = buildKeyTree([...entries].reverse(), { leaf });
-    expect(forward.conflicts).toEqual(conflicts);
-    expect(reverse.conflicts).toEqual(conflicts);
-    expect(forward.tree).toEqual(reverse.tree);
-    expect(Object.getPrototypeOf(forward.tree)).toBeNull();
-    const flattened = flattenKeyTree(
-      forward.tree,
-      (value): value is { value: string; comment: string } =>
-        typeof value === 'object' && value !== null && Object.getOwnPropertyDescriptor(value, 'value') !== undefined,
-    );
-    const accepted = keys.filter((key) => !keys.some((parent) => key.startsWith(`${parent}.`)));
-    expect(flattened.map(([key]) => key).sort()).toEqual([...accepted].sort());
-    for (const [key, value] of flattened) expect(value).toEqual(leaf(key));
-    expect(Object.prototype).not.toHaveProperty('x');
-  });
+  it.each(cases)(
+    'builds opaque rich leaves and reports order-independent conflicts for $keys',
+    ({ keys, conflicts }) => {
+      const entries = keys.map((key) => [key, key] as const);
+      const leaf = (value: string) => ({ value, comment: 'Rich leaf' });
+      const forward = buildKeyTree(entries, { leaf });
+      const reverse = buildKeyTree([...entries].reverse(), { leaf });
+      expect(forward.conflicts).toEqual(conflicts);
+      expect(reverse.conflicts).toEqual(conflicts);
+      expect(forward.tree).toEqual(reverse.tree);
+      expect(Object.getPrototypeOf(forward.tree)).toBeNull();
+      const flattened = flattenKeyTree(
+        forward.tree,
+        (value): value is { value: string; comment: string } =>
+          typeof value === 'object' && value !== null && Object.getOwnPropertyDescriptor(value, 'value') !== undefined,
+      );
+      const accepted = keys.filter((key) => !keys.some((parent) => key.startsWith(`${parent}.`)));
+      expect(flattened.map(([key]) => key).sort()).toEqual([...accepted].sort());
+      for (const [key, value] of flattened) expect(value).toEqual(leaf(key));
+      expect(Object.prototype).not.toHaveProperty('x');
+    },
+  );
 
   it('preserves ordinary insertion order and overwrites exact duplicates without a hierarchy conflict', () => {
     const result = buildKeyTree([

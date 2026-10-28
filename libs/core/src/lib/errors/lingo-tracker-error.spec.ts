@@ -355,18 +355,16 @@ describe('LingoTrackerError subclasses', () => {
     expect(terminology.message).toBe('Invalid preferred terminology rules: row 1 preferred: empty');
   });
 
-  it.each(cases)('$name has its name, code and message, and is a LingoTrackerError', ({
-    error,
-    name,
-    code,
-    message,
-  }) => {
-    expect(error).toBeInstanceOf(LingoTrackerError);
-    expect(error).toBeInstanceOf(Error);
-    expect(error.name).toBe(name);
-    expect(error.code).toBe(code);
-    expect(error.message).toBe(message);
-  });
+  it.each(cases)(
+    '$name has its name, code and message, and is a LingoTrackerError',
+    ({ error, name, code, message }) => {
+      expect(error).toBeInstanceOf(LingoTrackerError);
+      expect(error).toBeInstanceOf(Error);
+      expect(error.name).toBe(name);
+      expect(error.code).toBe(code);
+      expect(error.message).toBe(message);
+    },
+  );
 
   it('keeps each catalogue constructor, kind, code, message and name compatible with its exported class', () => {
     const expectedMessages = new Map(cases.map(({ name, message }) => [name, message]));
