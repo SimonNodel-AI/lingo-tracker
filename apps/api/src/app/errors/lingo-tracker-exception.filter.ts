@@ -135,7 +135,8 @@ export function toHttpException(error: unknown): HttpException {
  * `statusCode` keep Nest's default handling: http-errors-shaped Error instances (a boolean
  * `expose` and `status === statusCode`, as body-parser throws) and non-Error objects with a
  * valid HTTP error `statusCode` and a non-empty string `message` keep their status. A plain
- * Error with only `statusCode` gets 500 `{ statusCode: 500, message: 'Internal server error' }`.
+ * Error with only `statusCode` gets 500 `{ statusCode: 500, message: 'Internal server error' }`
+ * and is logged by Nest's own `ExceptionsHandler`, not by this filter.
  */
 @Catch()
 export class LingoTrackerExceptionFilter extends BaseExceptionFilter {

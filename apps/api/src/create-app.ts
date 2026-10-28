@@ -14,7 +14,8 @@ export const DEFAULT_HOST = '127.0.0.1';
 
 class RootNotFoundExpressAdapter extends ExpressAdapter {
   override setNotFoundHandler(handler: express.RequestHandler): void {
-    // Restore NestJS 11's root fallback while reusing Nest's exception handling.
+    // Restore NestJS 11's root fallback while reusing Nest's exception handling. Dropping
+    // the prefix and excluded routes is safe only while setGlobalPrefix has no `exclude`.
     super.setNotFoundHandler(handler);
   }
 }
