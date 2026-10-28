@@ -23,7 +23,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24 # API Jest needs Node >=24.9 to load ESM-only NestJS 12
           package-manager-cache: false
 
       - name: Install pnpm
