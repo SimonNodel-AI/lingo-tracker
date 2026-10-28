@@ -2,7 +2,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
 import type {
@@ -59,7 +58,7 @@ const job: ExportJobDto = {
 
 const createComponent = createComponentFactory({
   component: ExportDialog,
-  imports: [NoopAnimationsModule, getTranslocoTestingModule({ langs: { en: enResources } })],
+  imports: [getTranslocoTestingModule({ langs: { en: enResources } })],
   providers: [provideTranslocoMessageformat()],
   detectChanges: false,
 });

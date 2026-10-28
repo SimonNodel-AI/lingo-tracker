@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto } from '@simoncodes-ca/data-transfer';
 import { of, Subject, throwError } from 'rxjs';
@@ -22,7 +21,7 @@ const savedConfig: LingoTrackerConfigDto = {
 
 const createComponent = createComponentFactory({
   component: CollectionFormDialog,
-  imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+  imports: [getTranslocoTestingModule()],
   detectChanges: false,
 });
 

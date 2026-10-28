@@ -1,7 +1,6 @@
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
@@ -26,7 +25,7 @@ describe('TranslationSearch', () => {
 
   const createComponent = createComponentFactory({
     component: TranslationSearch,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [{ provide: BrowserStore, useFactory: () => mockStore }],
   });
 

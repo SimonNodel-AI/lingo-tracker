@@ -1,6 +1,5 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../testing/transloco-testing.module';
@@ -22,7 +21,7 @@ describe('TranslationMainHeader', () => {
 
   const createComponent = createComponentFactory({
     component: TranslationMainHeader,
-    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [
       provideHttpClient(),
       provideHttpClientTesting(),

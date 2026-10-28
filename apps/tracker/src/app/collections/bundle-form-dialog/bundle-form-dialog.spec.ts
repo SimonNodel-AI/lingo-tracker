@@ -2,7 +2,6 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory } from '@ngneat/spectator/vitest';
 import type {
   BundleDefinitionDto,
@@ -76,7 +75,7 @@ const rejection = (status: number, body: object) => throwError(() => apiError(st
 
 const createComponent = createComponentFactory({
   component: BundleFormDialog,
-  imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+  imports: [getTranslocoTestingModule()],
   detectChanges: false,
 });
 

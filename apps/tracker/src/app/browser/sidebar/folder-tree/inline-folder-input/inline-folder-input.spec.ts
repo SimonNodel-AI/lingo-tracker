@@ -1,5 +1,4 @@
 import type { ComponentFixture } from '@angular/core/testing';
-import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTranslocoTestingModule } from '../../../../../testing/transloco-testing.module';
@@ -13,7 +12,6 @@ describe('InlineFolderInput', () => {
   const createComponent = createComponentFactory({
     component: InlineFolderInput,
     imports: [getTranslocoTestingModule()],
-    providers: [provideNoopAnimations()],
   });
 
   beforeEach(() => {

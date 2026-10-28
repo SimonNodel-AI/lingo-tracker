@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
@@ -87,7 +86,6 @@ describe('CollectionsManager', () => {
   const createComponent = createComponentFactory({
     component: CollectionsManager,
     imports: [
-      NoopAnimationsModule,
       getTranslocoTestingModule({
         translocoConfig: { availableLangs: ['en', 'fr'], defaultLang: 'en', reRenderOnLangChange: true },
       }),
