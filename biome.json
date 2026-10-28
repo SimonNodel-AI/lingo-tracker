@@ -36,6 +36,11 @@
       "unsafeParameterDecoratorsEnabled": true
     }
   },
+  "css": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
+  },
   "assist": {
     "enabled": true,
     "actions": {
@@ -56,9 +61,6 @@
     },
     {
       "includes": ["**/*.scss"],
-      "formatter": {
-        "enabled": false
-      },
       "linter": {
         "rules": {
           "correctness": {

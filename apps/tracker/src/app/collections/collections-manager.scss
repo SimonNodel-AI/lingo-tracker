@@ -847,8 +847,15 @@ app-run-result-strip {
 }
 
 @keyframes ring-pulse {
-  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: var(--ring-opacity, 0.2); }
-  50% { transform: translate(-50%, -50%) scale(1.08); opacity: calc(var(--ring-opacity, 0.2) * 1.5); }
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: var(--ring-opacity, 0.2);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.08);
+    opacity: calc(var(--ring-opacity, 0.2) * 1.5);
+  }
 }
 
 .empty-message {
@@ -1146,10 +1153,7 @@ app-run-result-strip {
   height: 18px;
   opacity: 0.75;
   transform: translateX(-4px);
-  transition:
-    color var(--transition-normal),
-    opacity var(--transition-normal),
-    transform var(--transition-normal);
+  transition: color var(--transition-normal), opacity var(--transition-normal), transform var(--transition-normal);
   width: 18px;
 }
 
@@ -1172,7 +1176,6 @@ app-run-result-strip {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
   }
-
 
   .empty-bundles {
     grid-column: 1 / -1;
@@ -1231,7 +1234,9 @@ app-run-result-strip {
 // Reduced motion
 // ---------------------------------------------------------------------------
 @media (prefers-reduced-motion: reduce) {
-  .ring { animation: none; }
+  .ring {
+    animation: none;
+  }
 
   .collection-card {
     animation: none;

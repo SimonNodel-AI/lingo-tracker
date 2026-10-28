@@ -47,9 +47,7 @@
     height: 1px;
     margin: 4px 0;
   }
-
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Export-specific
@@ -193,10 +191,7 @@
 
   &--button {
     cursor: pointer;
-    transition:
-      background var(--transition-fast),
-      border-color var(--transition-fast),
-      color var(--transition-fast);
+    transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 
     &:hover {
       color: var(--color-text-primary);
@@ -302,7 +297,6 @@
 .tree-file--skipped {
   // Placeholder ink, not tertiary: this is text to read (Text-Weight Rule).
   color: var(--color-text-placeholder);
-
 }
 
 .shape {

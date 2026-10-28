@@ -159,10 +159,7 @@ code {
   font-weight: var(--font-weight-semibold);
   text-align: left;
   cursor: pointer;
-  transition:
-    background var(--transition-fast),
-    box-shadow var(--transition-fast),
-    color var(--transition-fast);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
 
   > mat-icon {
     flex: none;
@@ -190,7 +187,6 @@ code {
       color: var(--color-primary);
     }
   }
-
 }
 
 .rail-stack {
@@ -226,7 +222,6 @@ code {
   &--empty {
     color: var(--color-text-tertiary);
   }
-
 }
 
 .rail-count {
@@ -339,9 +334,7 @@ code {
   border-radius: var(--border-radius-md);
   background: var(--dialog-well);
   color: var(--color-text-primary);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
   > mat-icon {
     flex: none;
@@ -383,7 +376,6 @@ code {
     border-color: var(--color-error);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 18%, transparent);
   }
-
 }
 
 // The `.json` tail sits inside the pattern well so the user types only the stem.
@@ -435,9 +427,7 @@ code {
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius-lg);
   background: var(--color-background-subtle);
-  transition:
-    border-color var(--transition-normal),
-    background var(--transition-normal);
+  transition: border-color var(--transition-normal), background var(--transition-normal);
 
   &--on {
     border-color: color-mix(in srgb, var(--color-primary) 35%, var(--color-border));
@@ -499,9 +489,7 @@ code {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--border-radius-md);
   background: var(--dialog-well);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
   &:focus-within {
     border-color: var(--color-secondary);
