@@ -82,7 +82,7 @@ pnpm nx                # Direct Nx CLI access
 
 ## Architecture
 
-### Monorepo Structure (Nx 22.7.9)
+### Monorepo Structure (Nx 24.0.2)
 
 The codebase follows a **layered architecture** with three applications sharing core business logic:
 
@@ -90,7 +90,7 @@ The codebase follows a **layered architecture** with three applications sharing 
 apps/
 ├── cli/        # Command-line interface (Node.js + Commander)
 ├── api/        # REST API backend (NestJS + Express)
-└── tracker/    # Web UI (Angular 21 + Material)
+└── tracker/    # Web UI (Angular 22 + Material)
 
 libs/
 ├── domain/            # Pure business logic (NO Node.js deps — browser-safe)
