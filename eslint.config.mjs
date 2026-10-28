@@ -13,7 +13,7 @@ export default [
       '**/.angular/**',
       '**/.claude/**',
       '**/.cursor/**',
-      '**/apps/tracker/src/i18n-types/**',
+      '**/src/i18n-types/**', // generated Transloco tokens (apps/tracker)
     ],
   },
   {

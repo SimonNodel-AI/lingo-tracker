@@ -4,7 +4,7 @@ export default defineConfig(() => ({
   resolve: {
     tsconfigPaths: true,
   },
-  root: __dirname,
+  root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/libs/domain',
   test: {
     name: 'domain',

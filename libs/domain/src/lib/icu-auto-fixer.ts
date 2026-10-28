@@ -744,13 +744,11 @@ function replaceTranslationPlaceholders(
   }
 
   // Generate description of changes
-  let description = '';
-  if (originalPlaceholderNames.length > 0) {
-    const changes = originalPlaceholderNames.map((orig, idx) => `${orig} → ${fixedPlaceholderNames[idx]}`).join(', ');
-    description = `Replaced placeholders: ${changes}`;
-  } else {
-    description = 'Placeholders already match (no changes needed)';
-  }
+  const changes = originalPlaceholderNames.map((orig, idx) => `${orig} → ${fixedPlaceholderNames[idx]}`).join(', ');
+  const description =
+    originalPlaceholderNames.length > 0
+      ? `Replaced placeholders: ${changes}`
+      : 'Placeholders already match (no changes needed)';
 
   return {
     wasFixed: originalPlaceholderNames.length > 0,

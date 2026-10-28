@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Command } from 'commander';
-import { afterAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { commandManifest } from './command-manifest';
 import { createCli } from './program';
 import { flagValues, resolveFlagValues } from './runner/flag-record';
@@ -54,11 +54,16 @@ describe('Commander surface baseline', () => {
     return this;
   });
 
+  // Vitest clears mock state between tests, so record the program main.ts parses once.
+  let program: Command | undefined;
+  beforeAll(async () => {
+    await import('./main');
+    program = parse.mock.instances[0] as Command | undefined;
+  });
+
   afterAll(() => parse.mockRestore());
 
-  it('snapshots root and every command helpInformation and parsed options', async () => {
-    await import('./main');
-    const program = parse.mock.instances[0] as Command | undefined;
+  it('snapshots root and every command helpInformation and parsed options', () => {
     expect(program).toBeDefined();
     const commands = program?.commands ?? [];
     expect(commands.map((command) => command.name())).toEqual(Object.keys(argvByCommand));
@@ -79,8 +84,7 @@ describe('Commander surface baseline', () => {
     expect(surface).toMatchSnapshot();
   });
 
-  it('keeps choice and custom parser errors', async () => {
-    const program = parse.mock.instances[0] as Command | undefined;
+  it('keeps choice and custom parser errors', () => {
     expect(program).toBeDefined();
     const command = (name: string) => program?.commands.find((item) => item.name() === name);
     const casing = command('bundle');

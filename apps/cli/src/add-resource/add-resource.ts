@@ -79,6 +79,7 @@ function parseTranslations(raw: string): TranslationInput[] {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
+    // eslint-disable-next-line preserve-caught-error -- printCliError prints a cause as a second line; this message already says enough.
     throw new Error(
       `Invalid ${flagName(ADD_RESOURCE_FLAGS.translations)} JSON: ${error instanceof Error ? error.message : String(error)}`,
     );

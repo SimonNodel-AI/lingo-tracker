@@ -27,7 +27,7 @@
       ],
       "options": {
         "watch": false,
-        "config": "./vite.config.ts"
+        "config": "./vite.config.mts"
       }
     },
     "typecheck": {

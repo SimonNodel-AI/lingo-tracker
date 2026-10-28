@@ -8,12 +8,12 @@ export default defineConfig(() => ({
   resolve: {
     tsconfigPaths: true,
   },
-  root: __dirname,
-  cacheDir: '../../node_modules/.vite/libs/core',
+  root: import.meta.dirname,
+  cacheDir: '../../node_modules/.vite/libs/data-transfer',
   plugins: [
     dts({
       entryRoot: 'src',
-      tsconfigPath: path.join(__dirname, 'tsconfig.lib.json'),
+      tsconfigPath: path.join(import.meta.dirname, 'tsconfig.lib.json'),
       pathsToAliases: false,
     }),
   ],
@@ -24,7 +24,7 @@ export default defineConfig(() => ({
   // Configuration for building your library.
   // See: https://vitejs.dev/guide/build.html#library-mode
   build: {
-    outDir: '../../dist/libs/core',
+    outDir: '../../dist/libs/data-transfer',
     emptyOutDir: true,
     reportCompressedSize: true,
     commonjsOptions: {
@@ -33,7 +33,7 @@ export default defineConfig(() => ({
     lib: {
       // Could also be a dictionary or array of multiple entry points.
       entry: 'src/index.ts',
-      name: 'core',
+      name: 'data-transfer',
       fileName: 'index',
       // Change this to the formats you want to support.
       // Don't forget to update your package.json as well.
@@ -41,18 +41,18 @@ export default defineConfig(() => ({
     },
     rolldownOptions: {
       // External packages that should not be bundled into your library.
-      external: ['node:crypto', 'node:fs', 'node:path', 'crypto', 'fs', 'path'],
+      external: [],
     },
   },
   test: {
-    name: 'core',
+    name: 'data-transfer',
     watch: false,
     globals: true,
     environment: 'node',
     include: ['{src,tests}/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
-    reporters: ['default', ['junit', { outputFile: '../../dist/test-results/libs/core/junit.xml' }]],
+    reporters: ['default', ['junit', { outputFile: '../../dist/test-results/libs/data-transfer/junit.xml' }]],
     coverage: {
-      reportsDirectory: '../../coverage/libs/core',
+      reportsDirectory: '../../coverage/libs/data-transfer',
       provider: 'v8' as const,
     },
   },

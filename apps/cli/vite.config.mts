@@ -6,7 +6,7 @@ export default defineConfig(() => ({
   resolve: {
     tsconfigPaths: true,
   },
-  root: __dirname,
+  root: import.meta.dirname,
   cacheDir: '../../node_modules/.vite/apps/cli',
   define: {
     __CLI_VERSION__: JSON.stringify('0.0.0-test'),
