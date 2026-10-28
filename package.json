@@ -88,37 +88,7 @@
     ]
   },
   "nx": {
-    "includedScripts": [
-      "build:cli",
-      "build:api",
-      "prebuild:tracker",
-      "build:tracker",
-      "build",
-      "serve:api",
-      "serve:tracker",
-      "prepare",
-      "commit",
-      "release",
-      "test:api",
-      "test:cli",
-      "test:cli-e2e",
-      "test:core",
-      "test:domain",
-      "test:tracker",
-      "test:data-transfer",
-      "test",
-      "test:release",
-      "typecheck:core",
-      "typecheck:data-transfer",
-      "typecheck",
-      "nx",
-      "format",
-      "format:check",
-      "format:write",
-      "lingo-tracker",
-      "docs:dev",
-      "docs:build"
-    ]
+    "includedScripts": []
   },
   "dependencies": {
     "@messageformat/core": "^3.4.1",
