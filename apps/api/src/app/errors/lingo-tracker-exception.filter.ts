@@ -131,8 +131,11 @@ export function toHttpException(error: unknown): HttpException {
  * Global filter (registered with `APP_FILTER`). It turns typed core errors and unexpected
  * errors into HTTP exceptions with `toHttpException`, then lets Nest's base filter write
  * the body. An unexpected error is logged (message and stack) and answered with a generic
- * 500 without a message, so internal details stay on the server. Errors from HTTP middleware that carry their
- * own `statusCode` (body-parser, for example) keep Nest's default handling.
+ * 500 without a message, so internal details stay on the server. Values with their own
+ * `statusCode` keep Nest's default handling: http-errors-shaped Error instances (a boolean
+ * `expose` and `status === statusCode`, as body-parser throws) and non-Error objects with a
+ * valid HTTP error `statusCode` and a non-empty string `message` keep their status. A plain
+ * Error with only `statusCode` gets 500 `{ statusCode: 500, message: 'Internal server error' }`.
  */
 @Catch()
 export class LingoTrackerExceptionFilter extends BaseExceptionFilter {

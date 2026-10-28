@@ -146,6 +146,39 @@ describe('createApp over HTTP', () => {
     });
   });
 
+  it('returns a Nest JSON 404 for POST /foo', async () => {
+    const response = await request('/foo', { method: 'POST' });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      message: 'Cannot POST /foo',
+      error: 'Not Found',
+      statusCode: 404,
+    });
+  });
+
+  it('returns a Nest JSON 404 for DELETE /some/route', async () => {
+    const response = await request('/some/route', { method: 'DELETE' });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      message: 'Cannot DELETE /some/route',
+      error: 'Not Found',
+      statusCode: 404,
+    });
+  });
+
+  it('returns a Nest JSON 404 for GET /apiary', async () => {
+    const response = await request('/apiary', { method: 'GET' });
+    expect(response.status).toBe(404);
+    expect(response.headers.get('content-type')).toContain('application/json');
+    expect(await response.json()).toEqual({
+      message: 'Cannot GET /apiary',
+      error: 'Not Found',
+      statusCode: 404,
+    });
+  });
+
   it('allows same-origin PATCH preflights', async () => {
     const response = await request('/api/collections/x/resources', {
       method: 'OPTIONS',
