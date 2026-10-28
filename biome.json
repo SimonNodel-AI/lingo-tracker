@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!!**/dist", "!!**/sample-translations", "!**/*.scss"]
+    "includes": ["**", "!!**/dist", "!!**/sample-translations"]
   },
   "formatter": {
     "enabled": true,
@@ -52,6 +52,26 @@
       },
       "linter": {
         "enabled": false
+      }
+    },
+    {
+      "includes": ["**/*.scss"],
+      "formatter": {
+        "enabled": false
+      },
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnknownUnit": "off",
+            "noUnknownPseudoElement": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          },
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
       }
     },
     {
