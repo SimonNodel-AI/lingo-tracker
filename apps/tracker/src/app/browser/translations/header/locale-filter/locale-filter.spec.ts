@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideTransloco, type Translation, type TranslocoLoader } from '@jsverse/transloco';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
@@ -33,7 +32,7 @@ describe('LocaleFilter', () => {
 
   const createComponent = createComponentFactory({
     component: LocaleFilter,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [provideTranslocoMessageformat(), { provide: BrowserStore, useFactory: () => mockStore }],
   });
 
@@ -226,7 +225,6 @@ describe('LocaleFilter with translations that load after the first render', () =
   }
   const createLateComponent = createComponentFactory({
     component: LocaleFilter,
-    imports: [NoopAnimationsModule],
     providers: [
       provideTransloco({
         config: { availableLangs: ['en'], defaultLang: 'en' },

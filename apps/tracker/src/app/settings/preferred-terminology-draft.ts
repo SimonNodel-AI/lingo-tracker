@@ -89,11 +89,11 @@ export class PreferredTerminologyDraft {
 
       for (const error of clientErrors.get(row.id) ?? []) {
         const field = error.field === 'rule' ? 'discouraged' : error.field;
-        if (!errors[field] && visible(field)) errors[field] = describe(error, row, rows);
+        if (!errors[field] && visible(field)) errors[field] = describeRuleError(error, row, rows);
       }
       for (const error of serverErrors.get(row.id) ?? []) {
         const field = error.field === 'rule' ? 'discouraged' : error.field;
-        if (!errors[field]) errors[field] = describe(error, row, rows);
+        if (!errors[field]) errors[field] = describeRuleError(error, row, rows);
       }
 
       return { row, position: index + 1, status: statusOf(row), errors };
@@ -230,7 +230,7 @@ const fold = (term: string) => term.trim().toLowerCase();
  * messages are English and cite row numbers; the UI names the terms instead, which
  * reads better next to the field and needs no row numbering.
  */
-function describe(error: PreferredTermRuleError, row: RuleRow, rows: readonly RuleRow[]): RuleFieldError {
+function describeRuleError(error: PreferredTermRuleError, row: RuleRow, rows: readonly RuleRow[]): RuleFieldError {
   switch (error.code) {
     case 'duplicate':
       return { code: error.code, params: { term: row.discouraged.trim() } };

@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncodes-ca/data-transfer';
@@ -46,7 +45,7 @@ describe('Settings', () => {
 
   const createComponent = createComponentFactory({
     component: Settings,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [
       { provide: CollectionsStore, useFactory: () => buildStore(null) },
       { provide: NotificationService, useValue: notifications },
@@ -385,7 +384,7 @@ describe('Settings', () => {
     it('removes a rule', () => {
       render(terminologyConfig);
 
-      (ruleRows()[0]?.querySelector('button.rule-remove') as HTMLButtonElement).click();
+      (ruleRows()[0]?.querySelector('button.rule-remove') as HTMLButtonElement | null)?.click();
       spectator.detectChanges();
 
       expect(ruleRows()).toHaveLength(1);
@@ -769,7 +768,6 @@ describe('Settings', () => {
       const createWithMessageformat = createComponentFactory({
         component: Settings,
         imports: [
-          NoopAnimationsModule,
           getTranslocoTestingModule({
             langs: {
               en: {

@@ -248,9 +248,7 @@ code {
   // overlay container, where the :host custom properties do not inherit.
   background: var(--dialog-well, var(--color-background));
   color: var(--color-text-primary);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
   > mat-icon {
     flex: none;
@@ -432,9 +430,7 @@ code {
   font-size: var(--font-size-sm);
   text-align: left;
   cursor: pointer;
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
   &:disabled {
     cursor: default;
@@ -669,9 +665,7 @@ code {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--border-radius-md);
   background: var(--dialog-well);
-  transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 
   &:focus-within {
     border-color: var(--color-secondary);
@@ -982,7 +976,6 @@ code {
   .bd {
     border-right: 0;
   }
-
 }
 
 @media (max-width: 639px) {

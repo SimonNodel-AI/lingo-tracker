@@ -175,20 +175,17 @@ describe('patchCollectionEntry', () => {
     });
   });
 
-  it.each([
-    'locales',
-    'translation',
-    'tags',
-    'exportFolder',
-    'readOnly',
-  ])('throws InvalidCollectionError for %s: null (a JSON body), and stores nothing', (field) => {
-    // JSON.parse, as the API would: the type has no null, a request body can.
-    const patch: Partial<LingoTrackerCollection> = JSON.parse(`{ "${field}": null }`);
+  it.each(['locales', 'translation', 'tags', 'exportFolder', 'readOnly'])(
+    'throws InvalidCollectionError for %s: null (a JSON body), and stores nothing',
+    (field) => {
+      // JSON.parse, as the API would: the type has no null, a request body can.
+      const patch: Partial<LingoTrackerCollection> = JSON.parse(`{ "${field}": null }`);
 
-    expect(() => patchCollectionEntry(config, 'app', patch)).toThrow(
-      new InvalidCollectionError(`${field} must not be null`, { field }),
-    );
-  });
+      expect(() => patchCollectionEntry(config, 'app', patch)).toThrow(
+        new InvalidCollectionError(`${field} must not be null`, { field }),
+      );
+    },
+  );
 
   it('treats an undefined value like a key left out (the `{ locales }` shorthand of a caller with nothing to say)', () => {
     const next = patchCollectionEntry(config, 'app', {

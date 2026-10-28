@@ -16,7 +16,7 @@ export abstract class LingoTrackerError extends Error {
     return this;
   }
   /** The underlying error, when this one wraps it. Not part of the message, so it never reaches a client. */
-  readonly cause?: unknown;
+  override readonly cause?: unknown;
 
   /** Additional domain validation problems, when the error has a list. */
   readonly details?: readonly unknown[];

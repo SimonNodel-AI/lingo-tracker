@@ -2,8 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "../../dist/out-tsc/apps/cli-e2e/spec",
+    "moduleResolution": "bundler",
     "typeRoots": ["../../node_modules/@types", "../../node_modules", "../../types"],
     "types": ["node", "vitest", "vite/client"]
   },
-  "include": ["vite.config.ts", "src/**/*.ts"]
+  "include": ["vite.config.mts", "src/**/*.ts"]
 }

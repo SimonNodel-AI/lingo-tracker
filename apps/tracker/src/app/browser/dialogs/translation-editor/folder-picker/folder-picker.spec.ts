@@ -1,6 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import type { ComponentFixture } from '@angular/core/testing';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { FolderNodeDto } from '@simoncodes-ca/data-transfer';
 import { of, Subject } from 'rxjs';
@@ -48,7 +47,7 @@ describe('FolderPicker', () => {
 
   const createComponent = createComponentFactory({
     component: FolderPicker,
-    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [
       {
         provide: NotificationService,

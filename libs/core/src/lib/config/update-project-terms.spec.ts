@@ -477,21 +477,21 @@ describe('updateProjectTerms', () => {
     expect(view(report).protectedTerms?.warnings).toEqual([]);
   });
 
-  it.each([
-    { upsert: { discouraged: 'Old', preferred: 'New' } },
-    { remove: 'Old' },
-  ])('keeps broken-file rule-edit refusals typed without a synthetic cause: %j', (edit) => {
-    writeFileSync(preferredFile, '{bad');
-    const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: edit });
-    expect(report.status).toBe('failed');
-    expect(failure(report, 'failed').error).toBeInstanceOf(CoreOperationError);
-    expect((failure(report, 'failed').error as CoreOperationError).cause).toBeUndefined();
-    expect((failure(report, 'failed').error as CoreOperationError).message).toBe(
-      view(report).preferredTerminologyError?.message,
-    );
-    expect(report.status === 'failed' ? report.reverted : false).toBe(false);
-    expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
-  });
+  it.each([{ upsert: { discouraged: 'Old', preferred: 'New' } }, { remove: 'Old' }])(
+    'keeps broken-file rule-edit refusals typed without a synthetic cause: %j',
+    (edit) => {
+      writeFileSync(preferredFile, '{bad');
+      const report = updateProjectTerms(project(loadConfig({ cwd })), { preferredTerminology: edit });
+      expect(report.status).toBe('failed');
+      expect(failure(report, 'failed').error).toBeInstanceOf(CoreOperationError);
+      expect((failure(report, 'failed').error as CoreOperationError).cause).toBeUndefined();
+      expect((failure(report, 'failed').error as CoreOperationError).message).toBe(
+        view(report).preferredTerminologyError?.message,
+      );
+      expect(report.status === 'failed' ? report.reverted : false).toBe(false);
+      expect(readFileSync(preferredFile, 'utf8')).toBe('{bad');
+    },
+  );
 
   it('returns a broken preferred file as advisory data for a list-only core request', () => {
     writeFileSync(preferredFile, '{bad');

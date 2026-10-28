@@ -154,22 +154,17 @@ describe('CLI Error Wording contract', () => {
     expect(await runFailure(error)).toEqual({ exitCode: 1, stdout: '', stderr: `❌ ${message}\n` });
   });
 
-  it.each([
-    'not-found',
-    'conflict',
-    'invalid',
-    'forbidden',
-    'unavailable',
-    'upstream',
-    'internal',
-  ] as const)('keeps the original message and default exit for a new %s code', async (kind: ErrorKind) => {
-    class NewError extends core.LingoTrackerError {
-      readonly kind = kind;
-    }
-    const error = new NewError('Original message', 'NEW_CODE');
-    expect(cliErrorWording(error)).toEqual({ message: 'Original message' });
-    expect(await runFailure(error)).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Original message\n' });
-  });
+  it.each(['not-found', 'conflict', 'invalid', 'forbidden', 'unavailable', 'upstream', 'internal'] as const)(
+    'keeps the original message and default exit for a new %s code',
+    async (kind: ErrorKind) => {
+      class NewError extends core.LingoTrackerError {
+        readonly kind = kind;
+      }
+      const error = new NewError('Original message', 'NEW_CODE');
+      expect(cliErrorWording(error)).toEqual({ message: 'Original message' });
+      expect(await runFailure(error)).toEqual({ exitCode: 1, stdout: '', stderr: '❌ Original message\n' });
+    },
+  );
 
   it.each(Object.keys(CLI_BY_CODE))('has no redundant CLI override for %s', (code) => {
     const error = errorAdapterFixtures().find((error) => error.code === code);
@@ -285,25 +280,24 @@ describe('CLI Error Wording contract', () => {
     expect(hook).toHaveBeenCalledWith(error, stage === 'run');
   });
 
-  it.each([
-    ADD_RESOURCE_COMMAND_NAME,
-    'Edit resource',
-    'Add resources',
-  ])('scopes existing-key advice for %s', async (name) => {
-    const error = new core.ResourceAlreadyExistsError('a.b');
-    const command = defineCommand<object>()({
-      name,
-      collection: 'none',
-      config: false,
-      run: () => {
-        throw error;
-      },
-    });
-    const result = await runCommand(command, {}, { cwd: process.cwd() });
-    const hint =
-      name === ADD_RESOURCE_COMMAND_NAME ? '  Use --override to replace it, or edit-resource to change it.\n' : '';
-    expect(result).toEqual({ exitCode: 1, stdout: '', stderr: `❌ Resource already exists: a.b\n${hint}` });
-  });
+  it.each([ADD_RESOURCE_COMMAND_NAME, 'Edit resource', 'Add resources'])(
+    'scopes existing-key advice for %s',
+    async (name) => {
+      const error = new core.ResourceAlreadyExistsError('a.b');
+      const command = defineCommand<object>()({
+        name,
+        collection: 'none',
+        config: false,
+        run: () => {
+          throw error;
+        },
+      });
+      const result = await runCommand(command, {}, { cwd: process.cwd() });
+      const hint =
+        name === ADD_RESOURCE_COMMAND_NAME ? '  Use --override to replace it, or edit-resource to change it.\n' : '';
+      expect(result).toEqual({ exitCode: 1, stdout: '', stderr: `❌ Resource already exists: a.b\n${hint}` });
+    },
+  );
 
   it.each([
     [

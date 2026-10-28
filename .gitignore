@@ -176,3 +176,5 @@ vitest.config.*.timestamp*
 
 # Local planning specs
 specs/
+
+.nx/migrate-runs

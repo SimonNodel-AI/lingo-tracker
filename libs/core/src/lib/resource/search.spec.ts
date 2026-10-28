@@ -85,15 +85,12 @@ it.each([
     defaultLimit: 5,
     expected: { kind: 'search', query: 'save', mode: 'similar-value', limit: 5 },
   },
-] as const)('normalizes a search request: $query, $mode, $limit, default $defaultLimit', ({
-  query,
-  mode,
-  limit,
-  defaultLimit,
-  expected,
-}) => {
-  expect(normalizeSearchRequest({ query, mode, limit }, defaultLimit)).toEqual(expected);
-});
+] as const)(
+  'normalizes a search request: $query, $mode, $limit, default $defaultLimit',
+  ({ query, mode, limit, defaultLimit, expected }) => {
+    expect(normalizeSearchRequest({ query, mode, limit }, defaultLimit)).toEqual(expected);
+  },
+);
 
 describe('searchPage', () => {
   it('reports the true total after ranking and limiting', () => {

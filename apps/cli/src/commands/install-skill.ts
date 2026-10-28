@@ -205,6 +205,7 @@ export async function generateSkillMd(collections: CollectionSpec[], tokenCasing
     return substituteSkillTemplate(template, collections, tokenCasing);
   } catch (err) {
     if (hasFsErrorCode(err, 'ENOENT')) {
+      // eslint-disable-next-line preserve-caught-error -- printCliError prints a cause as a second line; this message already says enough.
       throw new Error(
         `Template file not found: ${filePath}. Make sure the CLI was built with pnpm run build:cli before running.`,
       );
@@ -220,6 +221,7 @@ export async function readPatternsMdTemplate(): Promise<string> {
     return await fs.promises.readFile(filePath, 'utf-8');
   } catch (err) {
     if (hasFsErrorCode(err, 'ENOENT')) {
+      // eslint-disable-next-line preserve-caught-error -- printCliError prints a cause as a second line; this message already says enough.
       throw new Error(
         `Template file not found: ${filePath}. Make sure the CLI was built with pnpm run build:cli before running.`,
       );

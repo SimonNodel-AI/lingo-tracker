@@ -1,6 +1,6 @@
 # Monorepo Structure
 
-LingoTracker is an Nx 22.7.9 monorepo containing three applications and three shared libraries. This document covers the directory layout, the unidirectional dependency graph that keeps browser-safe logic isolated from Node.js code, and the Nx workspace configuration highlights that govern how each project is built and tested.
+LingoTracker is an Nx 24.0.2 monorepo containing three applications and three shared libraries. This document covers the directory layout, the unidirectional dependency graph that keeps browser-safe logic isolated from Node.js code, and the Nx workspace configuration highlights that govern how each project is built and tested.
 
 Return to [architecture README](README.md).
 
@@ -40,7 +40,7 @@ lingo-tracker/                         # Nx workspace root
 │   │           ├── controllers/       # HTTP route handlers
 │   │           ├── mappers/           # Domain model ↔ DTO conversion
 │   │           └── services/          # Collection cache, config service
-│   └── tracker/                       # Angular 21 SPA (Tracker UI)
+│   └── tracker/                       # Angular 22 SPA (Tracker UI)
 │       └── src/
 │           ├── app/                   # Routes, feature modules, stores
 │           └── i18n/                  # Tracker's own translation resources
@@ -102,7 +102,7 @@ graph TD
     subgraph apps["Applications (outermost layer)"]
         CLI["cli\nNode.js + Commander"]
         API["api\nNestJS + Express"]
-        Tracker["tracker\nAngular 21 SPA"]
+        Tracker["tracker\nAngular 22 SPA"]
     end
 
     subgraph libs["Libraries"]

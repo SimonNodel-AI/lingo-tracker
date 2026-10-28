@@ -1,4 +1,4 @@
-import { Component, inject, type OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, type OnInit } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterModule } from '@angular/router';
 import { TranslocoPipe } from '@jsverse/transloco';
@@ -11,6 +11,7 @@ import { AppHeader } from './header/app-header';
   imports: [RouterModule, AppHeader, MatIconModule, TranslocoPipe],
   selector: 'lingo-tracker-app',
   templateUrl: './app.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   styleUrl: './app.scss',
 })
 export class App implements OnInit {

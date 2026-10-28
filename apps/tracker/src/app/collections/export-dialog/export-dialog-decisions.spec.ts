@@ -79,17 +79,16 @@ describe('export dialog decisions', () => {
     });
   });
 
-  it.each([
-    undefined,
-    plan(),
-    plan({ outputProblem: 'bad' }),
-  ])('rail combines field and output errors (%j)', (preview) => {
-    const fields = new Set(['filters']);
-    expect([...exportPlanPresentation(preview, fields).railErrors]).toEqual(
-      preview?.outputProblem ? ['filters', 'output'] : ['filters'],
-    );
-    expect([...fields]).toEqual(['filters']);
-  });
+  it.each([undefined, plan(), plan({ outputProblem: 'bad' })])(
+    'rail combines field and output errors (%j)',
+    (preview) => {
+      const fields = new Set(['filters']);
+      expect([...exportPlanPresentation(preview, fields).railErrors]).toEqual(
+        preview?.outputProblem ? ['filters', 'output'] : ['filters'],
+      );
+      expect([...fields]).toEqual(['filters']);
+    },
+  );
 
   it.each<[boolean, boolean, string | undefined]>([
     [true, true, undefined],

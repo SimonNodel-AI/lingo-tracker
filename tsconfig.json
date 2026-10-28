@@ -11,5 +11,8 @@
     { "path": "./apps/cli/tsconfig.json" },
     { "path": "./apps/cli-e2e/tsconfig.json" },
     { "path": "./apps/tracker-e2e/tsconfig.json" }
-  ]
+  ],
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0"
+  }
 }

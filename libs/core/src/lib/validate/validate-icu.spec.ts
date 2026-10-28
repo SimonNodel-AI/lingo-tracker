@@ -39,30 +39,30 @@ describe('validateIcuValues', () => {
     );
   });
 
-  it.each([
-    false,
-    true,
-  ])('reports braced values independently of compilation and locale support (compileValues=%s)', (compileValues) => {
-    const value = '{{{a}}}';
-    const found = checkStoredValue(value)[0];
-    expect(found).toBeDefined();
-    if (!found) throw new Error('Missing finding');
-    const result = validateIcuValues([resource({ source: value, translations: { fr_CA: value } })], ['fr_CA'], {
-      baseLocale: 'en',
-      compileValues,
-      requirePortablePlurals: false,
-    });
-    expect(result.failures).toEqual(
-      ['en', 'fr_CA'].map((locale) => ({
-        key: 'common.count',
-        collection: 'main',
-        locale,
-        message: describeStoredValueFinding(found),
-      })),
-    );
-    expect(result.unsupportedLocales).toEqual(compileValues ? ['fr_CA'] : []);
-    expect(result.valuesChecked).toBe(compileValues ? 1 : 0);
-  });
+  it.each([false, true])(
+    'reports braced values independently of compilation and locale support (compileValues=%s)',
+    (compileValues) => {
+      const value = '{{{a}}}';
+      const found = checkStoredValue(value)[0];
+      expect(found).toBeDefined();
+      if (!found) throw new Error('Missing finding');
+      const result = validateIcuValues([resource({ source: value, translations: { fr_CA: value } })], ['fr_CA'], {
+        baseLocale: 'en',
+        compileValues,
+        requirePortablePlurals: false,
+      });
+      expect(result.failures).toEqual(
+        ['en', 'fr_CA'].map((locale) => ({
+          key: 'common.count',
+          collection: 'main',
+          locale,
+          message: describeStoredValueFinding(found),
+        })),
+      );
+      expect(result.unsupportedLocales).toEqual(compileValues ? ['fr_CA'] : []);
+      expect(result.valuesChecked).toBe(compileValues ? 1 : 0);
+    },
+  );
 
   describe('compiling each value under its own locale', () => {
     it('reports nothing when every value compiles', () => {

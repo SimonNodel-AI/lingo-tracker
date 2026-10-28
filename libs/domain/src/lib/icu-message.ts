@@ -1066,7 +1066,7 @@ function readSpacedName(
   // not whitespace and runs as far as name characters go; only whitespace may follow.
   // Without such a character, the name is the last character that can be one.
   let nameStart = firstSolid;
-  let nameEnd = firstSolid;
+  let nameEnd: number;
   if (firstSolid >= 0) {
     NAME_RUN.lastIndex = firstSolid;
     if (!NAME_RUN.test(source)) return undefined;

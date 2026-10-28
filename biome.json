@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.13/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -21,7 +21,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "style": {
         "useNodejsImportProtocol": "off"
       }
@@ -34,6 +34,11 @@
     },
     "parser": {
       "unsafeParameterDecoratorsEnabled": true
+    }
+  },
+  "css": {
+    "formatter": {
+      "quoteStyle": "single"
     }
   },
   "assist": {
@@ -52,6 +57,23 @@
       },
       "linter": {
         "enabled": false
+      }
+    },
+    {
+      "includes": ["**/*.scss"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnknownUnit": "off",
+            "noUnknownPseudoElement": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          },
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
       }
     },
     {

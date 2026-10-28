@@ -6,7 +6,27 @@
   "tags": [],
   "targets": {
     "typecheck": {
-      "dependsOn": ["^typecheck", "typecheck-spec"]
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["^typecheck", "typecheck-spec"],
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{workspaceRoot}/types/**/*",
+        {
+          "dependentTasksOutputFiles": "**/*.{d.ts,tsbuildinfo}",
+          "transitive": true
+        }
+      ],
+      "outputs": [
+        "{workspaceRoot}/dist/out-tsc/libs/domain/**/*.d.ts",
+        "{workspaceRoot}/dist/out-tsc/libs/domain/tsconfig.lib.tsbuildinfo"
+      ],
+      "options": {
+        "cwd": "libs/domain",
+        "command": "tsc --build tsconfig.lib.json --emitDeclarationOnly"
+      }
     },
     "typecheck-spec": {
       "executor": "nx:run-commands",
@@ -18,9 +38,9 @@
       }
     },
     "test": {
-      "executor": "@nx/vitest:test",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}", "{workspaceRoot}/dist/test-results/{projectRoot}"],
       "options": {
-        "reportsDirectory": "../../coverage/libs/domain"
+        "coverage.reportsDirectory": "../../coverage/libs/domain"
       }
     }
   }

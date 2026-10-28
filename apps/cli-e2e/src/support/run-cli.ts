@@ -24,11 +24,14 @@ export function runCli(args: string[], { cwd, input, env, timeoutMs = 20_000 }: 
     throw new Error(`Built CLI not found at ${binaryPath}. Run nx build cli first.`);
   }
 
+  // Nx sets FORCE_COLOR for tasks; with NO_COLOR also set, Node warns on stderr when an ESM
+  // dependency (commander) loads node:util.
+  const { FORCE_COLOR: _forceColor, ...inherited } = process.env;
   return new Promise((resolveResult, reject) => {
     const child = spawn(process.execPath, [binaryPath, ...args], {
       cwd,
       // pnpm's inherited INIT_CWD otherwise points back at the workspace.
-      env: { ...process.env, CI: 'true', NO_COLOR: '1', ...env, INIT_CWD: cwd },
+      env: { ...inherited, CI: 'true', NO_COLOR: '1', ...env, INIT_CWD: cwd },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     });

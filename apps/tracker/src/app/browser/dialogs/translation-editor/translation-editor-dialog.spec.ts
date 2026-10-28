@@ -2,7 +2,6 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal, type WritableSignal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { patchState } from '@ngrx/signals';
 import { unprotected } from '@ngrx/signals/testing';
@@ -111,7 +110,7 @@ describe('TranslationEditorDialog', () => {
 
   const createDialog = createComponentFactory({
     component: TranslationEditorDialog,
-    imports: [BrowserAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [provideTrackerHttpClient(), provideHttpClientTesting()],
     componentProviders: [
       { provide: MatDialogRef, useFactory: () => dialogRef },

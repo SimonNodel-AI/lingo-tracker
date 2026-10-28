@@ -75,19 +75,20 @@ describe('Value Admission', () => {
     });
   }
 
-  it.each(
-    policies.filter((policy) => policy.name !== 'stored-entry'),
-  )('%j gives protected terms precedence while retaining diagnostic order', (policy) => {
-    const result = admitValue('Brand {name}', 'Marque {Name}', policy);
-    expect(result.admitted).toBe(false);
-    if (result.admitted) throw new Error('Expected rejection');
-    expect(result.reason).toEqual({ kind: 'protected-term-dropped', terms: ['Brand'] });
-    expect(result.violations.map((violation) => violation.kind)).toEqual(
-      policy.name === 'import' && policy.referencesResolved
-        ? ['protected-term-dropped']
-        : ['argument-mismatch', 'protected-term-dropped'],
-    );
-  });
+  it.each(policies.filter((policy) => policy.name !== 'stored-entry'))(
+    '%j gives protected terms precedence while retaining diagnostic order',
+    (policy) => {
+      const result = admitValue('Brand {name}', 'Marque {Name}', policy);
+      expect(result.admitted).toBe(false);
+      if (result.admitted) throw new Error('Expected rejection');
+      expect(result.reason).toEqual({ kind: 'protected-term-dropped', terms: ['Brand'] });
+      expect(result.violations.map((violation) => violation.kind)).toEqual(
+        policy.name === 'import' && policy.referencesResolved
+          ? ['protected-term-dropped']
+          : ['argument-mismatch', 'protected-term-dropped'],
+      );
+    },
+  );
 
   it('gives conversion safety precedence over protected terms in machine output', () => {
     const result = admitValue('Brand {name}', 'Marque {{{Name}}}', {
@@ -113,10 +114,11 @@ describe('Value Admission', () => {
     });
   });
 
-  it.each(
-    policies.filter((policy) => policy.name !== 'stored-entry'),
-  )('%j preserves its empty and absent source rules', (policy) => {
-    expect(admitValue(undefined, '{name}', policy)).toEqual({ admitted: true, value: '{name}' });
-    expect(admitValue('', '{name}', policy).admitted).toBe(policy.name === 'import');
-  });
+  it.each(policies.filter((policy) => policy.name !== 'stored-entry'))(
+    '%j preserves its empty and absent source rules',
+    (policy) => {
+      expect(admitValue(undefined, '{name}', policy)).toEqual({ admitted: true, value: '{name}' });
+      expect(admitValue('', '{name}', policy).admitted).toBe(policy.name === 'import');
+    },
+  );
 });

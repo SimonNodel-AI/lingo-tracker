@@ -288,50 +288,48 @@ describe('ResourceFolder', () => {
       oldStatus: domain.TranslationStatus;
       oldBase: string;
       status: domain.TranslationStatus;
-    }[])('normalizeEntry hashes the source without base metadata ($oldStatus, $oldBase, $value)', ({
-      value,
-      oldStatus,
-      oldBase,
-      status,
-    }) => {
-      writePair(
-        { ok: { source: 'OK', fr: value } },
-        {
-          ok: { fr: { checksum: 'outdated', baseChecksum: md5(oldBase), status: oldStatus } },
-        },
-      );
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
-      folder.normalizeEntry('ok', ['fr']);
-      expect(folder.get('ok')?.meta).toEqual({
-        en: { checksum: md5('OK') },
-        fr: { checksum: md5(value), baseChecksum: md5('OK'), status },
-      });
-      expect(folder.normalizeEntry('ok', ['fr']).changed).toBe(false);
-    });
+    }[])(
+      'normalizeEntry hashes the source without base metadata ($oldStatus, $oldBase, $value)',
+      ({ value, oldStatus, oldBase, status }) => {
+        writePair(
+          { ok: { source: 'OK', fr: value } },
+          {
+            ok: { fr: { checksum: 'outdated', baseChecksum: md5(oldBase), status: oldStatus } },
+          },
+        );
+        const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+        folder.normalizeEntry('ok', ['fr']);
+        expect(folder.get('ok')?.meta).toEqual({
+          en: { checksum: md5('OK') },
+          fr: { checksum: md5(value), baseChecksum: md5('OK'), status },
+        });
+        expect(folder.normalizeEntry('ok', ['fr']).changed).toBe(false);
+      },
+    );
 
-    it.each([
-      true,
-      false,
-    ])('reconfirmation computes the missing base checksum once (locale metadata: %s)', (hasLocaleMetadata) => {
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
-      folder.setEntry(
-        'ok',
-        { source: 'OK', fr: 'Oui' },
-        hasLocaleMetadata
-          ? {
-              fr: { checksum: 'kept', baseChecksum: 'older', status: 'verified' },
-            }
-          : {},
-      );
-      const checksum = vi.spyOn(checksumModule, 'calculateChecksum');
-      expect(folder.reconfirmTranslation('ok', 'fr', 'verification')).toEqual({ status: 'verified', changed: true });
-      expect(checksum.mock.calls.filter(([value]) => value === 'OK')).toHaveLength(1);
-      expect(folder.get('ok')?.meta?.['fr']).toEqual({
-        checksum: hasLocaleMetadata ? 'kept' : md5('Oui'),
-        baseChecksum: md5('OK'),
-        status: 'verified',
-      });
-    });
+    it.each([true, false])(
+      'reconfirmation computes the missing base checksum once (locale metadata: %s)',
+      (hasLocaleMetadata) => {
+        const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+        folder.setEntry(
+          'ok',
+          { source: 'OK', fr: 'Oui' },
+          hasLocaleMetadata
+            ? {
+                fr: { checksum: 'kept', baseChecksum: 'older', status: 'verified' },
+              }
+            : {},
+        );
+        const checksum = vi.spyOn(checksumModule, 'calculateChecksum');
+        expect(folder.reconfirmTranslation('ok', 'fr', 'verification')).toEqual({ status: 'verified', changed: true });
+        expect(checksum.mock.calls.filter(([value]) => value === 'OK')).toHaveLength(1);
+        expect(folder.get('ok')?.meta?.['fr']).toEqual({
+          checksum: hasLocaleMetadata ? 'kept' : md5('Oui'),
+          baseChecksum: md5('OK'),
+          status: 'verified',
+        });
+      },
+    );
 
     it.each([
       { strategy: 'translation-service', incoming: undefined, status: 'translated', refreshed: true },
@@ -345,55 +343,51 @@ describe('ResourceFolder', () => {
       incoming: domain.TranslationStatus | undefined;
       status: domain.TranslationStatus;
       refreshed: boolean;
-    }[])('reconfirms unchanged values with $strategy (incoming $incoming)', ({
-      strategy,
-      incoming,
-      status,
-      refreshed,
-    }) => {
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
-      folder.setEntry(
-        'ok',
-        { source: 'OK', fr: 'Oui' },
-        {
-          en: { checksum: md5('OK') },
-          fr: { checksum: 'kept', baseChecksum: md5('Old'), status: 'stale' },
-        },
-      );
+    }[])(
+      'reconfirms unchanged values with $strategy (incoming $incoming)',
+      ({ strategy, incoming, status, refreshed }) => {
+        const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+        folder.setEntry(
+          'ok',
+          { source: 'OK', fr: 'Oui' },
+          {
+            en: { checksum: md5('OK') },
+            fr: { checksum: 'kept', baseChecksum: md5('Old'), status: 'stale' },
+          },
+        );
 
-      expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({
-        status,
-        changed: refreshed || status !== 'stale',
-      });
-      expect(folder.get('ok')?.meta?.['fr']).toEqual({
-        checksum: 'kept',
-        baseChecksum: md5(refreshed ? 'OK' : 'Old'),
-        status,
-      });
-      expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({ status, changed: false });
-    });
+        expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({
+          status,
+          changed: refreshed || status !== 'stale',
+        });
+        expect(folder.get('ok')?.meta?.['fr']).toEqual({
+          checksum: 'kept',
+          baseChecksum: md5(refreshed ? 'OK' : 'Old'),
+          status,
+        });
+        expect(folder.reconfirmTranslation('ok', 'fr', strategy, incoming)).toEqual({ status, changed: false });
+      },
+    );
 
-    it.each([
-      'translation-service',
-      'verification',
-      'migration',
-      'update',
-    ] as const)('handles missing metadata under %s', (strategy) => {
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
-      folder.setEntry('ok', { source: 'OK', fr: 'Oui' }, {});
-      const status = strategy === 'verification' ? 'verified' : 'translated';
-      const changed = strategy !== 'update';
-      expect(folder.reconfirmTranslation('ok', 'fr', strategy)).toEqual({ status, changed });
-      expect(folder.get('ok')?.meta?.['fr']).toEqual(
-        changed
-          ? {
-              checksum: md5('Oui'),
-              baseChecksum: md5('OK'),
-              status,
-            }
-          : undefined,
-      );
-    });
+    it.each(['translation-service', 'verification', 'migration', 'update'] as const)(
+      'handles missing metadata under %s',
+      (strategy) => {
+        const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+        folder.setEntry('ok', { source: 'OK', fr: 'Oui' }, {});
+        const status = strategy === 'verification' ? 'verified' : 'translated';
+        const changed = strategy !== 'update';
+        expect(folder.reconfirmTranslation('ok', 'fr', strategy)).toEqual({ status, changed });
+        expect(folder.get('ok')?.meta?.['fr']).toEqual(
+          changed
+            ? {
+                checksum: md5('Oui'),
+                baseChecksum: md5('OK'),
+                status,
+              }
+            : undefined,
+        );
+      },
+    );
 
     it('prefers stored base metadata and otherwise hashes the source during reconfirmation', () => {
       const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });

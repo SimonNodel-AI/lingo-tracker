@@ -321,9 +321,15 @@ class ThrowingController {
     throw new Error('Disk write failure');
   }
 
+  @Get('plain-status-code')
+  plainStatusCode(): never {
+    throw Object.assign(new Error('x'), { statusCode: 418 });
+  }
+
   @Get('status-code')
   statusCode(): never {
-    throw Object.assign(new Error('request entity too large'), { statusCode: 413 });
+    // Mirrors the http-errors shape body-parser throws, which NestJS 12 requires before it honours statusCode.
+    throw Object.assign(new Error('request entity too large'), { statusCode: 413, status: 413, expose: true });
   }
 }
 
@@ -385,6 +391,13 @@ describe('LingoTrackerExceptionFilter (registered with APP_FILTER)', () => {
       body: { statusCode: 500, error: 'Internal Server Error' },
     });
     expect(loggerError).toHaveBeenCalledWith('Disk write failure', expect.any(String));
+  });
+
+  it("answers a plain Error carrying only statusCode with Nest's generic 500", async () => {
+    await expect(get('plain-status-code')).resolves.toEqual({
+      status: 500,
+      body: { statusCode: 500, message: 'Internal server error' },
+    });
   });
 
   it("leaves an error that carries its own statusCode to Nest's default handling", async () => {

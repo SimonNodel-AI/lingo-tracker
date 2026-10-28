@@ -1,7 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import type { ComponentFixture } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { TranslocoService } from '@jsverse/transloco';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
@@ -87,7 +86,6 @@ describe('CollectionsManager', () => {
   const createComponent = createComponentFactory({
     component: CollectionsManager,
     imports: [
-      NoopAnimationsModule,
       getTranslocoTestingModule({
         translocoConfig: { availableLangs: ['en', 'fr'], defaultLang: 'en', reRenderOnLangChange: true },
       }),
@@ -990,7 +988,7 @@ describe('CollectionsManager', () => {
         item?.click();
 
         expect(item?.disabled).toBe(true);
-        expect(item?.getAttribute('aria-disabled')).toBe('true');
+        expect(item?.hasAttribute('disabled')).toBe(true);
         expect(item?.parentElement?.classList.contains('menu-item-tooltip')).toBe(true);
         expect(dialog.open).not.toHaveBeenCalled();
       });

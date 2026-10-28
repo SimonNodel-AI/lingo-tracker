@@ -9,11 +9,11 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 import { IMPORT_UPLOAD_MAX_BYTES, IMPORT_UPLOAD_MAX_FILES } from '@simoncodes-ca/data-transfer';
 import { defer, finalize, type Observable } from 'rxjs';
 
-// Nest's option type predates busboy's filename charset option; multer forwards it at runtime.
-const uploadOptions = {
+const uploadOptions: MulterOptions = {
   preservePath: true,
   defParamCharset: 'utf8',
   limits: {

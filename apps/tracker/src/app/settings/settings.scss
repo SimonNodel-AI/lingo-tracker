@@ -239,7 +239,8 @@
     linear-gradient(var(--terms-surface) 30%, transparent) top / 100% 20px no-repeat local,
     linear-gradient(transparent, var(--terms-surface) 70%) bottom / 100% 20px no-repeat local,
     radial-gradient(farthest-side at 50% 0, var(--terms-scroll-shadow), transparent) top / 100% 8px no-repeat scroll,
-    radial-gradient(farthest-side at 50% 100%, var(--terms-scroll-shadow), transparent) bottom / 100% 8px no-repeat scroll;
+    radial-gradient(farthest-side at 50% 100%, var(--terms-scroll-shadow), transparent) bottom / 100% 8px no-repeat
+      scroll;
 }
 
 [data-theme='dark'] .terms {
@@ -597,7 +598,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  transition: color var(--transition-normal), background var(--transition-normal),
+  transition:
+    color var(--transition-normal),
+    background var(--transition-normal),
     border-color var(--transition-normal);
 }
 
@@ -913,4 +916,3 @@
 .term-edit-input {
   caret-color: var(--color-primary);
 }
-

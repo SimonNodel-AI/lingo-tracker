@@ -52,17 +52,14 @@ describe('GoogleTranslateV2Provider', () => {
     });
   });
 
-  it.each([
-    0,
-    -1,
-    Number.POSITIVE_INFINITY,
-    Number.NEGATIVE_INFINITY,
-    Number.NaN,
-  ])('rejects an invalid request timeout of %s at construction', (requestTimeoutMs) => {
-    expect(() => new GoogleTranslateV2Provider({ apiKey: 'test-api-key', requestTimeoutMs })).toThrowError(
-      expect.objectContaining({ code: 'INVALID_REQUEST_TIMEOUT', retryable: false }),
-    );
-  });
+  it.each([0, -1, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN])(
+    'rejects an invalid request timeout of %s at construction',
+    (requestTimeoutMs) => {
+      expect(() => new GoogleTranslateV2Provider({ apiKey: 'test-api-key', requestTimeoutMs })).toThrowError(
+        expect.objectContaining({ code: 'INVALID_REQUEST_TIMEOUT', retryable: false }),
+      );
+    },
+  );
 
   describe('translate', () => {
     describe('empty input', () => {
@@ -241,7 +238,7 @@ describe('GoogleTranslateV2Provider', () => {
 
           await vi.advanceTimersByTimeAsync(25);
           await failure;
-          expect((fetchSpy.mock.calls[0]?.[1] as RequestInit).signal?.aborted).toBe(true);
+          expect((fetchSpy.mock.calls[0]?.[1] as RequestInit | undefined)?.signal?.aborted).toBe(true);
         } finally {
           vi.useRealTimers();
         }

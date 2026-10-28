@@ -592,7 +592,7 @@
             {{ TOKENS.EXPORT.DIALOG.FOOTER.FILESX | transloco: { count: plan()?.files?.length ?? 0 } }}
             · {{ TOKENS.EXPORT.DIALOG.FOOTER.ENTRIESX | transloco: { count: plan()?.entriesTotal ?? 0 } }}
             @if ((plan()?.overwriteCount ?? 0) > 0) {
-              · <span class="warn">{{ TOKENS.EXPORT.DIALOG.FOOTER.OVERWRITESX | transloco: { count: plan()?.overwriteCount } }}</span>
+              · <span class="warn">{{ TOKENS.EXPORT.DIALOG.FOOTER.OVERWRITESX | transloco: { count: plan()?.overwriteCount ?? 0 } }}</span>
             }
           </span>
         }

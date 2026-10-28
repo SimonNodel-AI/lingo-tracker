@@ -392,26 +392,25 @@ describe('ImportsController HTTP (real project)', () => {
     expect(project.read('dist/import/café.json')).toBe('{}');
   });
 
-  it.each([
-    '../x.json',
-    'a/b.json',
-    'a\\b.json',
-  ])('rejects raw multipart paths %p without writing a file', async (name) => {
-    const response = await project.requestMultipart('/imports/sources?collection=test-collection', [
-      { name, contents: '{}' },
-    ]);
-    expect(response).toMatchObject({
-      status: 400,
-      body: {
-        message: 'Invalid upload',
-        errors: expect.arrayContaining([`"${name}" must not contain path separators or control characters.`]),
-      },
-    });
-    expect(project.exists('dist/import/x.json')).toBe(false);
-    expect(project.exists('dist/import/b.json')).toBe(false);
-    expect(project.exists('dist/import/a')).toBe(false);
-    expect(project.exists('dist/x.json')).toBe(false);
-  });
+  it.each(['../x.json', 'a/b.json', 'a\\b.json'])(
+    'rejects raw multipart paths %p without writing a file',
+    async (name) => {
+      const response = await project.requestMultipart('/imports/sources?collection=test-collection', [
+        { name, contents: '{}' },
+      ]);
+      expect(response).toMatchObject({
+        status: 400,
+        body: {
+          message: 'Invalid upload',
+          errors: expect.arrayContaining([`"${name}" must not contain path separators or control characters.`]),
+        },
+      });
+      expect(project.exists('dist/import/x.json')).toBe(false);
+      expect(project.exists('dist/import/b.json')).toBe(false);
+      expect(project.exists('dist/import/a')).toBe(false);
+      expect(project.exists('dist/x.json')).toBe(false);
+    },
+  );
 
   it('rejects a multipart POST from a different localhost port without writing a file', async () => {
     expect(

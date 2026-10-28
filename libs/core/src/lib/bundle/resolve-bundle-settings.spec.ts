@@ -34,11 +34,14 @@ describe('resolveBundleSettings', () => {
       'CLI_TOKENS',
       false,
     ],
-  ] as const)('%s wins in precedence', (_label, global, bundle, overrides, tokenCasing, tokenConstantName, transformICUToTransloco) => {
-    expect(resolveBundleSettings('main', { ...base, ...global }, { ...definition, ...bundle }, overrides)).toEqual({
-      tokenCasing,
-      tokenConstantName,
-      transformICUToTransloco,
-    });
-  });
+  ] as const)(
+    '%s wins in precedence',
+    (_label, global, bundle, overrides, tokenCasing, tokenConstantName, transformICUToTransloco) => {
+      expect(resolveBundleSettings('main', { ...base, ...global }, { ...definition, ...bundle }, overrides)).toEqual({
+        tokenCasing,
+        tokenConstantName,
+        transformICUToTransloco,
+      });
+    },
+  );
 });

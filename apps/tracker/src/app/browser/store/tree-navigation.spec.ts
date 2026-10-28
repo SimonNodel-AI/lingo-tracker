@@ -139,21 +139,16 @@ describe('tree navigation', () => {
       expect([...expandedPaths]).toEqual(test.expanded);
     });
 
-    it.each([
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'Enter',
-      ' ',
-      'Escape',
-    ])(`${mode}: empty tree %s`, (key) => {
-      const state = treeState([], new Set<string>(), null);
-      expect(navigateTree(state, key, mode === 'picker' ? PICKER_NAVIGATION : SIDEBAR_NAVIGATION)).toEqual({
-        intent: { kind: 'none' },
-        preventDefault: false,
-      });
-    });
+    it.each(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', ' ', 'Escape'])(
+      `${mode}: empty tree %s`,
+      (key) => {
+        const state = treeState([], new Set<string>(), null);
+        expect(navigateTree(state, key, mode === 'picker' ? PICKER_NAVIGATION : SIDEBAR_NAVIGATION)).toEqual({
+          intent: { kind: 'none' },
+          preventDefault: false,
+        });
+      },
+    );
   }
 
   it.each([

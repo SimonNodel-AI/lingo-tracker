@@ -13,7 +13,7 @@ export default [
       '**/.angular/**',
       '**/.claude/**',
       '**/.cursor/**',
-      '**/apps/tracker/src/i18n-types/**',
+      '**/src/i18n-types/**', // generated Transloco tokens (apps/tracker)
     ],
   },
   {
@@ -70,6 +70,24 @@ export default [
     files: ['**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  {
+    // Separate from `no-restricted-imports` above so neither block overrides the other.
+    files: ['**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@angular/animations', '@angular/animations/*', '@angular/platform-browser/animations*'],
+              message:
+                '@angular/animations is deprecated; use animate.enter/animate.leave. Spectator already disables Material animations in specs.',
+            },
+          ],
+        },
+      ],
     },
   },
 ];

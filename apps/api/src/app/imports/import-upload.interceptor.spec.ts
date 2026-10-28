@@ -5,11 +5,11 @@ import { lastValueFrom, of, Subject, throwError } from 'rxjs';
 import { ImportUploadInterceptor, mapImportUploadError } from './import-upload.interceptor';
 import type { UploadedImportFile } from './import-upload.service';
 
-async function parse(parts: string[]): Promise<UploadedImportFile[]> {
+async function parse(parts: string[], contentType = 'multipart/form-data'): Promise<UploadedImportFile[]> {
   const boundary = 'upload-test-boundary';
   const body = Buffer.from(`${parts.map((part) => `--${boundary}\r\n${part}\r\n`).join('')}--${boundary}--\r\n`);
   const request = Object.assign(Readable.from([body]), {
-    headers: { 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': String(body.length) },
+    headers: { 'content-type': `${contentType}; boundary=${boundary}`, 'content-length': String(body.length) },
     method: 'POST',
     files: [] as UploadedImportFile[],
   });
@@ -70,6 +70,13 @@ describe('ImportUploadInterceptor', () => {
         error: 'Bad Request',
         errors: ['Invalid multipart fields or limits exceeded.'],
       },
+    });
+  });
+
+  it('preserves the 415 response for an unsupported multipart content type', async () => {
+    await expect(parse([part('fr.json')], 'multipart/mixed')).rejects.toMatchObject({
+      status: 415,
+      response: { message: 'Unsupported content type', error: 'Unsupported Media Type', statusCode: 415 },
     });
   });
 

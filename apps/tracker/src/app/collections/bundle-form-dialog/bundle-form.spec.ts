@@ -567,22 +567,22 @@ describe('BundleForm definition preview and validation', () => {
     [['types', 'coll:1'], 'coll:1'],
     [['types'], 'types'],
     [[], undefined],
-  ] as [
-    BundleSection[],
-    BundleSection | undefined,
-  ][])('reveals the first section in rail order', (errors, expected) => {
-    const model = build({ data: { mode: 'create', name: 'main', bundle: minimal } });
-    model.form.controls.allCollections.setValue(true);
-    model.addCollection('extra');
-    if (errors.includes('output')) model.form.controls.dist.setErrors({ required: true });
-    if (errors.includes('collections')) model.form.controls.collections.setErrors({ collectionsEmpty: true });
-    for (let index = 0; index < 2; index++) {
-      if (errors.includes(`coll:${index}`)) model.form.controls.collections.at(index).setErrors({ invalid: true });
-    }
-    if (errors.includes('types')) model.form.controls.typeDistFile.setErrors({ required: true });
-    model.form.markAllAsTouched();
-    expect(model.firstInvalidSection()).toBe(expected);
-  });
+  ] as [BundleSection[], BundleSection | undefined][])(
+    'reveals the first section in rail order',
+    (errors, expected) => {
+      const model = build({ data: { mode: 'create', name: 'main', bundle: minimal } });
+      model.form.controls.allCollections.setValue(true);
+      model.addCollection('extra');
+      if (errors.includes('output')) model.form.controls.dist.setErrors({ required: true });
+      if (errors.includes('collections')) model.form.controls.collections.setErrors({ collectionsEmpty: true });
+      for (let index = 0; index < 2; index++) {
+        if (errors.includes(`coll:${index}`)) model.form.controls.collections.at(index).setErrors({ invalid: true });
+      }
+      if (errors.includes('types')) model.form.controls.typeDistFile.setErrors({ required: true });
+      model.form.markAllAsTouched();
+      expect(model.firstInvalidSection()).toBe(expected);
+    },
+  );
 });
 
 const rejection = (status: number, body: object) =>

@@ -480,37 +480,37 @@ describe('CollectionForm — submit', () => {
     return { env, form, dialog, create, update, submit };
   };
 
-  it.each([
-    false,
-    true,
-  ])('prepares removed locales with confirmation=%s and an explicit error reset', async (confirmed) => {
-    const { form, env, update, submit } = setup(editData);
-    form.removeLocale(1);
-    form.attempt.fail(['previous refusal']);
-    const result = vi.spyOn(form, 'result');
-    let answer: (value: boolean) => void = () => undefined;
-    const confirm = vi.fn(
-      () =>
-        new Promise<boolean>((resolve) => {
-          answer = resolve;
-        }),
-    );
-    env.confirm = confirm;
-    const attempt = submit();
-    expect(confirm).toHaveBeenCalledExactlyOnceWith({
-      title: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE,
-      message: { token: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, params: { locales: 'es' } },
-      confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.SAVE,
-      actionType: 'destructive',
-    });
-    expect(result).not.toHaveBeenCalled();
-    expect(form.submitError()).toBe('previous refusal');
-    answer(confirmed);
-    await attempt;
-    expect(result).toHaveBeenCalledTimes(confirmed ? 1 : 0);
-    expect(update).toHaveBeenCalledTimes(confirmed ? 1 : 0);
-    expect(form.submitError()).toBe(confirmed ? null : 'previous refusal');
-  });
+  it.each([false, true])(
+    'prepares removed locales with confirmation=%s and an explicit error reset',
+    async (confirmed) => {
+      const { form, env, update, submit } = setup(editData);
+      form.removeLocale(1);
+      form.attempt.fail(['previous refusal']);
+      const result = vi.spyOn(form, 'result');
+      let answer: (value: boolean) => void = () => undefined;
+      const confirm = vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      env.confirm = confirm;
+      const attempt = submit();
+      expect(confirm).toHaveBeenCalledExactlyOnceWith({
+        title: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMTITLE,
+        message: { token: TRACKER_TOKENS.COLLECTIONS.DIALOG.REMOVECONFIRMBODY, params: { locales: 'es' } },
+        confirmButtonText: TRACKER_TOKENS.COMMON.ACTIONS.SAVE,
+        actionType: 'destructive',
+      });
+      expect(result).not.toHaveBeenCalled();
+      expect(form.submitError()).toBe('previous refusal');
+      answer(confirmed);
+      await attempt;
+      expect(result).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+      expect(update).toHaveBeenCalledTimes(confirmed ? 1 : 0);
+      expect(form.submitError()).toBe(confirmed ? null : 'previous refusal');
+    },
+  );
 
   it('builds a result without clearing refusal rendering data', () => {
     const { form } = setup();

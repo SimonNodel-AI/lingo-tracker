@@ -1,6 +1,5 @@
 import { computed, signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { TranslationStatus } from '@simoncodes-ca/data-transfer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -31,7 +30,7 @@ describe('StatusFilter', () => {
 
   const createComponent = createComponentFactory({
     component: StatusFilter,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [{ provide: BrowserStore, useFactory: () => mockStore }],
   });
 

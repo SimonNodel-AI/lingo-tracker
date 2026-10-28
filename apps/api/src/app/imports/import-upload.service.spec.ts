@@ -390,79 +390,75 @@ describe('ImportUploadService (real filesystem)', () => {
     expect(fs.existsSync(path(''))).toBe(false);
   });
 
-  it.each([
-    'darwin',
-    'win32',
-    'linux',
-  ] as const)('rejects case-variant protected uploads on %s and leaves resources byte-for-byte unchanged', (platform) => {
-    const stored = join(project.projectRoot, 'i18n/resource_entries.json');
-    const before = fs.readFileSync(stored);
-    const uploader = new ImportUploadService(new ImportSourceService(), platform);
-    for (const folder of ['I18N', 'I18n/nested', 'NODE_MODULES/x']) {
-      rejection(
-        () =>
-          uploader.upload(project, { collection: 'app', folder, overwrite: 'true' }, [file('resource_entries.json')]),
-        ['folder is not allowed for uploads.'],
-      );
-      expect(fs.readFileSync(stored)).toEqual(before);
-      if (platform !== 'linux') {
-        const collection = project.sourceConfig.collections?.app;
-        if (collection === undefined) throw new Error('Missing collection');
-        collection.importFolder = folder;
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'rejects case-variant protected uploads on %s and leaves resources byte-for-byte unchanged',
+    (platform) => {
+      const stored = join(project.projectRoot, 'i18n/resource_entries.json');
+      const before = fs.readFileSync(stored);
+      const uploader = new ImportUploadService(new ImportSourceService(), platform);
+      for (const folder of ['I18N', 'I18n/nested', 'NODE_MODULES/x']) {
         rejection(
-          () => uploader.upload(project, { collection: 'app', overwrite: 'true' }, [file('resource_entries.json')]),
+          () =>
+            uploader.upload(project, { collection: 'app', folder, overwrite: 'true' }, [file('resource_entries.json')]),
           ['folder is not allowed for uploads.'],
         );
         expect(fs.readFileSync(stored)).toEqual(before);
-        collection.importFolder = 'dist/import';
+        if (platform !== 'linux') {
+          const collection = project.sourceConfig.collections?.app;
+          if (collection === undefined) throw new Error('Missing collection');
+          collection.importFolder = folder;
+          rejection(
+            () => uploader.upload(project, { collection: 'app', overwrite: 'true' }, [file('resource_entries.json')]),
+            ['folder is not allowed for uploads.'],
+          );
+          expect(fs.readFileSync(stored)).toEqual(before);
+          collection.importFolder = 'dist/import';
+        }
       }
-    }
-  });
+    },
+  );
 
-  it.each([
-    'darwin',
-    'win32',
-    'linux',
-  ] as const)('compares pending allowlist tails according to the injected %s platform', (platform) => {
-    const collection = project.sourceConfig.collections?.app;
-    if (collection === undefined) throw new Error('Missing collection');
-    collection.importFolder = 'dist/Import';
-    const uploader = new ImportUploadService(new ImportSourceService(), platform);
-    const action = () => uploader.upload(project, { collection: 'app', folder: 'dist/import/nested' }, [file()]);
-    if (platform === 'linux') rejection(action, ['folder is not allowed for uploads.']);
-    else expect(action().files.map((entry) => entry.name)).toEqual(['fr.json']);
-  });
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'compares pending allowlist tails according to the injected %s platform',
+    (platform) => {
+      const collection = project.sourceConfig.collections?.app;
+      if (collection === undefined) throw new Error('Missing collection');
+      collection.importFolder = 'dist/Import';
+      const uploader = new ImportUploadService(new ImportSourceService(), platform);
+      const action = () => uploader.upload(project, { collection: 'app', folder: 'dist/import/nested' }, [file()]);
+      if (platform === 'linux') rejection(action, ['folder is not allowed for uploads.']);
+      else expect(action().files.map((entry) => entry.name)).toEqual(['fr.json']);
+    },
+  );
 
-  it.each([
-    'darwin',
-    'win32',
-    'linux',
-  ] as const)('compares pending translations-folder tails according to the injected %s platform', (platform) => {
-    project.sourceConfig.collections = {
-      ...project.sourceConfig.collections,
-      other: { translationsFolder: 'dist/import/Reserved' },
-    };
-    const uploader = new ImportUploadService(new ImportSourceService(), platform);
-    // Stop before mkdir so the tail stays nonexistent on case-insensitive test filesystems too.
-    const reachedMkdir = new Error('Reached mkdir after pending-tail validation');
-    jest.spyOn(fs, 'mkdirSync').mockImplementationOnce(() => {
-      throw reachedMkdir;
-    });
-    const action = () =>
-      uploader.upload(project, { collection: 'app', folder: 'dist/import/RESERVED/nested' }, [file()]);
-    if (platform === 'linux') expect(action).toThrow(reachedMkdir);
-    else rejection(action, ['folder is not allowed for uploads.']);
-  });
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'compares pending translations-folder tails according to the injected %s platform',
+    (platform) => {
+      project.sourceConfig.collections = {
+        ...project.sourceConfig.collections,
+        other: { translationsFolder: 'dist/import/Reserved' },
+      };
+      const uploader = new ImportUploadService(new ImportSourceService(), platform);
+      // Stop before mkdir so the tail stays nonexistent on case-insensitive test filesystems too.
+      const reachedMkdir = new Error('Reached mkdir after pending-tail validation');
+      jest.spyOn(fs, 'mkdirSync').mockImplementationOnce(() => {
+        throw reachedMkdir;
+      });
+      const action = () =>
+        uploader.upload(project, { collection: 'app', folder: 'dist/import/RESERVED/nested' }, [file()]);
+      if (platform === 'linux') expect(action).toThrow(reachedMkdir);
+      else rejection(action, ['folder is not allowed for uploads.']);
+    },
+  );
 
-  it.each([
-    'darwin',
-    'win32',
-    'linux',
-  ] as const)('applies the node_modules deny rule inside the allowlist according to %s', (platform) => {
-    const uploader = new ImportUploadService(new ImportSourceService(), platform);
-    const action = () =>
-      uploader.upload(project, { collection: 'app', folder: 'dist/import/Node_Modules/pkg' }, [file()]);
-    if (platform === 'linux') expect(action().files.map((entry) => entry.name)).toEqual(['fr.json']);
-    else rejection(action, ['folder is not allowed for uploads.']);
-  });
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'applies the node_modules deny rule inside the allowlist according to %s',
+    (platform) => {
+      const uploader = new ImportUploadService(new ImportSourceService(), platform);
+      const action = () =>
+        uploader.upload(project, { collection: 'app', folder: 'dist/import/Node_Modules/pkg' }, [file()]);
+      if (platform === 'linux') expect(action().files.map((entry) => entry.name)).toEqual(['fr.json']);
+      else rejection(action, ['folder is not allowed for uploads.']);
+    },
+  );
 });

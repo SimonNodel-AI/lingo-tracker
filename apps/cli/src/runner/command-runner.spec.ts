@@ -422,74 +422,74 @@ describe('defineCommand', () => {
       expect(received).toEqual(['first', 'second']);
     });
 
-    it.each([
-      false,
-      true,
-    ])('awaits preflight after opening resources and before prompts (interactive: %s)', async (interactive) => {
-      mockInteractive.mockReturnValue(interactive);
-      if (interactive) mockPrompts.mockResolvedValueOnce({ key: 'a.b' });
-      const order: string[] = [];
-      const preflight = vi.fn(async () => {
-        await Promise.resolve();
-        order.push('preflight');
-      });
-      const builder = vi.fn(() => {
-        order.push('prompts');
-        return [{ type: 'text' as const, name: 'key', message: 'Key' }];
-      });
-      const { invoke } = command({
-        preflight,
-        prompts: builder,
-        run: () => {
-          order.push('run');
-        },
-      });
+    it.each([false, true])(
+      'awaits preflight after opening resources and before prompts (interactive: %s)',
+      async (interactive) => {
+        mockInteractive.mockReturnValue(interactive);
+        if (interactive) mockPrompts.mockResolvedValueOnce({ key: 'a.b' });
+        const order: string[] = [];
+        const preflight = vi.fn(async () => {
+          await Promise.resolve();
+          order.push('preflight');
+        });
+        const builder = vi.fn(() => {
+          order.push('prompts');
+          return [{ type: 'text' as const, name: 'key', message: 'Key' }];
+        });
+        const { invoke } = command({
+          preflight,
+          prompts: builder,
+          run: () => {
+            order.push('run');
+          },
+        });
 
-      await invoke({ collection: 'main' });
+        await invoke({ collection: 'main' });
 
-      expect(preflight).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({
-          cwd: '/project',
-          interactive,
-          config: twoCollections,
-          collection: expect.objectContaining({ name: 'main', translationsFolder: resolve('/project', 'src/i18n') }),
-          options: { collection: 'main' },
-        }),
-      );
-      expect(order).toEqual(['preflight', 'prompts', 'run']);
-      expect(mockPrompts).toHaveBeenCalledTimes(interactive ? 1 : 0);
-      expect(process.exitCode).toBe(0);
-    });
+        expect(preflight).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({
+            cwd: '/project',
+            interactive,
+            config: twoCollections,
+            collection: expect.objectContaining({ name: 'main', translationsFolder: resolve('/project', 'src/i18n') }),
+            options: { collection: 'main' },
+          }),
+        );
+        expect(order).toEqual(['preflight', 'prompts', 'run']);
+        expect(mockPrompts).toHaveBeenCalledTimes(interactive ? 1 : 0);
+        expect(process.exitCode).toBe(0);
+      },
+    );
 
-    it.each([
-      false,
-      true,
-    ])('reports typed preflight and run failures before the command formatter (interactive: %s)', async (interactive) => {
-      mockInteractive.mockReturnValue(interactive);
-      const error = new InvalidConfigError('Cannot continue', { cause: new Error('Underlying reason') });
-      const fail = () => {
-        throw error;
-      };
-      const builder = vi.fn(() => []);
-      const formatError = vi.fn(() => 'Formatted failure');
-      const { invoke, run } = command({ preflight: fail, prompts: builder, formatError });
+    it.each([false, true])(
+      'reports typed preflight and run failures before the command formatter (interactive: %s)',
+      async (interactive) => {
+        mockInteractive.mockReturnValue(interactive);
+        const error = new InvalidConfigError('Cannot continue', { cause: new Error('Underlying reason') });
+        const fail = () => {
+          throw error;
+        };
+        const builder = vi.fn(() => []);
+        const formatError = vi.fn(() => 'Formatted failure');
+        const { invoke, run } = command({ preflight: fail, prompts: builder, formatError });
 
-      await invoke({ collection: 'main' });
+        await invoke({ collection: 'main' });
 
-      expect(builder).not.toHaveBeenCalled();
-      expect(run).not.toHaveBeenCalled();
-      expect(mockPrompts).not.toHaveBeenCalled();
-      expect(formatError).not.toHaveBeenCalled();
-      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
-      expect(process.exitCode).toBe(1);
+        expect(builder).not.toHaveBeenCalled();
+        expect(run).not.toHaveBeenCalled();
+        expect(mockPrompts).not.toHaveBeenCalled();
+        expect(formatError).not.toHaveBeenCalled();
+        expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
+        expect(process.exitCode).toBe(1);
 
-      vi.mocked(console.error).mockClear();
-      await command({ run: fail, formatError }).invoke({ collection: 'main' });
+        vi.mocked(console.error).mockClear();
+        await command({ run: fail, formatError }).invoke({ collection: 'main' });
 
-      expect(formatError).not.toHaveBeenCalled();
-      expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
-      expect(process.exitCode).toBe(1);
-    });
+        expect(formatError).not.toHaveBeenCalled();
+        expect(vi.mocked(console.error).mock.calls).toEqual([['❌ Cannot continue'], ['  Underlying reason']]);
+        expect(process.exitCode).toBe(1);
+      },
+    );
 
     it('reports an asynchronous preflight failure without a custom formatter', async () => {
       const { invoke, run } = command({

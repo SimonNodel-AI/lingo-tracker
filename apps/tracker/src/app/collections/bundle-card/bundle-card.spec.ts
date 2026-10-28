@@ -1,5 +1,4 @@
 import type { ComponentFixture } from '@angular/core/testing';
-import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -48,7 +47,7 @@ describe('BundleCard', () => {
 
   const createComponent = createComponentFactory({
     component: BundleCard,
-    imports: [NoopAnimationsModule, getTranslocoTestingModule()],
+    imports: [getTranslocoTestingModule()],
     providers: [provideTranslocoMessageformat()],
     detectChanges: false,
   });

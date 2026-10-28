@@ -112,15 +112,18 @@ describe('translationListView', () => {
     ['status', 'desc', allLocales, ['no-target', 'gamma', 'delta', 'beta', 'epsilon', 'alpha']],
     ['status', 'asc', ['es'], ['alpha', 'beta', 'epsilon', 'delta', 'gamma', 'no-target']],
     ['status', 'asc', [], allKeys],
-  ])('sorts by %s %s over %j with key ties and no status ranked as verified', (sortField, sortDirection, locales, keys) => {
-    expect(
-      listView(items, { ...selection, sortField, sortDirection, locales }).rows.map((item) => item.fullKey),
-    ).toEqual(keys);
-    const scope = resourceStatusScope(items, locales);
-    expect(sortTranslationRecords(scope.resources, sortField, sortDirection).map(({ item }) => item.fullKey)).toEqual(
-      keys,
-    );
-  });
+  ])(
+    'sorts by %s %s over %j with key ties and no status ranked as verified',
+    (sortField, sortDirection, locales, keys) => {
+      expect(
+        listView(items, { ...selection, sortField, sortDirection, locales }).rows.map((item) => item.fullKey),
+      ).toEqual(keys);
+      const scope = resourceStatusScope(items, locales);
+      expect(sortTranslationRecords(scope.resources, sortField, sortDirection).map(({ item }) => item.fullKey)).toEqual(
+        keys,
+      );
+    },
+  );
 
   it('makes each count equal the rows its filter returns across every locale subset and status selection', () => {
     const localesToSelect = [...allLocales, 'unknown'];

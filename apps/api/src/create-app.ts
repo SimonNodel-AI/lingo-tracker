@@ -12,6 +12,14 @@ export const GLOBAL_PREFIX = 'api';
 const DEFAULT_PORT = 3030;
 export const DEFAULT_HOST = '127.0.0.1';
 
+class RootNotFoundExpressAdapter extends ExpressAdapter {
+  override setNotFoundHandler(handler: express.RequestHandler): void {
+    // Restore NestJS 11's root fallback while reusing Nest's exception handling. Dropping
+    // the prefix and excluded routes is safe only while setGlobalPrefix has no `exclude`.
+    super.setNotFoundHandler(handler);
+  }
+}
+
 interface CreateAppOptions {
   clientPath: string;
   allowedHosts?: string;
@@ -54,7 +62,7 @@ export async function createApp({
     res.sendFile('index.html', { root: clientPath });
   });
 
-  const adapter = new ExpressAdapter(server);
+  const adapter = new RootNotFoundExpressAdapter(server);
   const app = createNestApp ? await createNestApp(adapter) : await NestFactory.create(AppModule, adapter);
 
   // Let the Host middleware return a JSON 403 instead of Node's default bare 400 for a missing Host.
