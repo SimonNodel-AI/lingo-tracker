@@ -8,14 +8,20 @@ on:
 permissions: {}
 
 jobs:
-  unit:
-    if: contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) && github.event.workflow_run.name == 'PR Check'
+  report:
+    name: ${{ github.event.workflow_run.name == 'PR Check' && 'unit' || 'e2e' }}
+    if: contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       checks: write
       pull-requests: write
+    env:
+      # PR Check publishes unit results; Tracker E2E publishes Playwright results.
+      KIND: ${{ github.event.workflow_run.name == 'PR Check' && 'unit' || 'e2e' }}
+      ARTIFACT: ${{ github.event.workflow_run.name == 'PR Check' && 'unit-test-results' || 'tracker-e2e-results' }}
+      TITLE: ${{ github.event.workflow_run.name == 'PR Check' && 'Unit test results' || 'Tracker E2E results' }}
 
     steps:
       - name: Resolve PR
@@ -38,7 +44,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         continue-on-error: true
         with:
-          name: unit-test-results
+          name: ${{ env.ARTIFACT }}
           path: results
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
@@ -53,11 +59,12 @@ jobs:
         uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
         with:
           report_paths: results/**/junit.xml
-          check_name: Unit test results
+          check_name: ${{ env.TITLE }}
           commit: ${{ github.event.workflow_run.head_sha }}
           check_annotations: false
           detailed_summary: true
-          include_passed: false
+          # The e2e check lists every journey; the unit check lists only failures.
+          include_passed: ${{ env.KIND == 'e2e' }}
           require_tests: false
           comment: false
 
@@ -88,57 +95,25 @@ jobs:
             status='❌'
           fi
 
-          body=$(mktemp "$RUNNER_TEMP/unit-test-comment.XXXXXX")
+          # One comment per kind, updated in place on every run.
+          marker="<!-- lingo-tracker:test-report:$KIND -->"
+          body=$(mktemp "$RUNNER_TEMP/$KIND-test-comment.XXXXXX")
           trap 'rm -f "$body"' EXIT
           {
-            printf '### Unit test results\n\n'
+            printf '### %s\n\n' "$TITLE"
             printf '%s %s tests · %s passed · %s skipped · %s failed\n\n' "$status" "$TOTAL" "$PASSED" "$SKIPPED" "$FAILED"
             printf 'Commit %s' "${SHA:0:7}"
             if [[ -n "$REPORT_URL" ]]; then
               printf ' · [Check run](%s)' "$REPORT_URL"
             fi
             printf ' · [Workflow run](%s)\n\n' "$RUN_URL"
-            printf '<!-- lingo-tracker:test-report:unit -->'
+            printf '%s' "$marker"
           } > "$body"
 
-          comment_id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- lingo-tracker:test-report:unit -->"))) | .id')
+          comment_id=$(MARKER="$marker" gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains(env.MARKER))) | .id')
           comment_id=${comment_id%%$'\n'*}
           if [[ "$comment_id" =~ ^[0-9]+$ ]]; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -F "body=@$body"
           else
             gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F "body=@$body"
           fi
-
-  e2e:
-    if: contains(fromJSON('["success","failure"]'), github.event.workflow_run.conclusion) && github.event.workflow_run.name == 'Tracker E2E'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      actions: read
-      checks: write
-
-    steps:
-      - name: Download test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        continue-on-error: true
-        with:
-          name: tracker-e2e-results
-          path: results
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ github.token }}
-
-      - name: Detect test results
-        id: detect
-        run: find results -name junit.xml 2>/dev/null | grep -q . && echo found=true >> "$GITHUB_OUTPUT" || true
-
-      - name: Publish test results
-        if: steps.detect.outputs.found == 'true'
-        uses: mikepenz/action-junit-report@6ef3fdcfcd5f0b5d14df3e659ef19b8c6820f93d # v6.6.1
-        with:
-          report_paths: results/**/junit.xml
-          check_name: Tracker E2E results
-          commit: ${{ github.event.workflow_run.head_sha }}
-          check_annotations: false
-          detailed_summary: true
-          include_passed: true
-          require_tests: false
