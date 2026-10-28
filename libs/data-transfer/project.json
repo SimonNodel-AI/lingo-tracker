@@ -6,7 +6,27 @@
   "tags": [],
   "targets": {
     "typecheck": {
-      "dependsOn": ["^typecheck", "typecheck-spec"]
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["^typecheck", "typecheck-spec"],
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{workspaceRoot}/types/**/*",
+        {
+          "dependentTasksOutputFiles": "**/*.{d.ts,tsbuildinfo}",
+          "transitive": true
+        }
+      ],
+      "outputs": [
+        "{workspaceRoot}/dist/out-tsc/libs/data-transfer/**/*.d.ts",
+        "{workspaceRoot}/dist/out-tsc/libs/data-transfer/tsconfig.lib.tsbuildinfo"
+      ],
+      "options": {
+        "cwd": "libs/data-transfer",
+        "command": "tsc --build tsconfig.lib.json --emitDeclarationOnly"
+      }
     },
     "typecheck-spec": {
       "executor": "nx:run-commands",

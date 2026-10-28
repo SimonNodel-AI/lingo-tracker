@@ -75,7 +75,27 @@
       }
     },
     "typecheck": {
-      "dependsOn": ["^typecheck", "typecheck-spec"]
+      "executor": "nx:run-commands",
+      "cache": true,
+      "dependsOn": ["^typecheck", "typecheck-spec"],
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/tsconfig.base.json",
+        "{workspaceRoot}/types/**/*",
+        {
+          "dependentTasksOutputFiles": "**/*.{d.ts,tsbuildinfo}",
+          "transitive": true
+        }
+      ],
+      "outputs": [
+        "{workspaceRoot}/dist/out-tsc/apps/api/**/*.d.ts",
+        "{workspaceRoot}/dist/out-tsc/apps/api/tsconfig.app.tsbuildinfo"
+      ],
+      "options": {
+        "cwd": "apps/api",
+        "command": "tsc --build tsconfig.app.json --emitDeclarationOnly"
+      }
     },
     "typecheck-spec": {
       "executor": "nx:run-commands",
