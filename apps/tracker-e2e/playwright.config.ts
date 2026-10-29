@@ -17,5 +17,14 @@ export default defineConfig({
     ...(process.env.CI ? [['github'] as const] : []),
   ],
   use: { trace: 'on-first-retry', serviceWorkers: 'block' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    {
+      // Documentation screenshots; run only through the `screenshots` target, never by `e2e` or CI.
+      name: 'screenshots',
+      testMatch: 'screenshots/**/*.shot.ts',
+      retries: 0,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
+    },
+  ],
 });

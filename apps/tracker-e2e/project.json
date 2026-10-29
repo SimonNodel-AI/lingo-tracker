@@ -16,7 +16,28 @@
           "target": "build"
         }
       ],
-      "cache": false
+      "cache": false,
+      "options": {
+        "command": "playwright test --project=chromium"
+      }
+    },
+    "screenshots": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "projects": ["api"],
+          "target": "build"
+        },
+        {
+          "projects": ["tracker"],
+          "target": "build"
+        }
+      ],
+      "cache": false,
+      "options": {
+        "cwd": "apps/tracker-e2e",
+        "command": "playwright test --project=screenshots --workers=1"
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",

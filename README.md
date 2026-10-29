@@ -8,6 +8,11 @@ Translation files in a repository hold only values. When the source text changes
 
 LingoTracker stores a status next to every translation in your Git repo. A changed source string marks its existing translations `stale`. Untranslated copies stay `new`. `lingo-tracker validate` fails CI while anything is missing, stale, unreviewed or invalid ICU for its locale. It is built for Angular apps using [Transloco](https://github.com/jsverse/transloco). One npm package gives you a CLI, a local web UI with a REST API, and an installable skill for AI coding assistants. There is no hosted service and no account.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/simoncodes-ca/lingo-tracker/main/docs/images/translation-browser-dark.png">
+  <img src="https://raw.githubusercontent.com/simoncodes-ca/lingo-tracker/main/docs/images/translation-browser-light.png" width="100%" alt="LingoTracker translation browser: fr-ca translations for the checkout keys of a storefront collection, with stale, new, translated and verified statuses.">
+</picture>
+
 **Status:** pre-1.0. The CLI and API are stable. Every pull request to `develop` runs unit tests and CLI end-to-end tests for the affected projects. The web UI has a Playwright end-to-end suite. See the [roadmap](ROADMAP.md) and the [changelog](CHANGELOG.md).
 
 ## Why use it
