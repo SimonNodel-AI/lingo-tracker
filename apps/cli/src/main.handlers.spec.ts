@@ -237,7 +237,7 @@ const cases: Case[] = [
         debugKeys: '99',
       },
     ],
-    defaultCall: [{ transformICUToTransloco: true }],
+    defaultCall: [{}],
   },
   {
     name: 'export',

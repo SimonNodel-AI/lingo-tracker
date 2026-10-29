@@ -45,6 +45,23 @@ describe('export mapper', () => {
     });
   });
 
+  it('keeps rich JSON disabled when only include options are supplied', () => {
+    const { options } = mapExportRequestToRunOptions(
+      {
+        format: 'json',
+        json: {
+          includeBase: true,
+          includeComment: true,
+          includeStatus: true,
+          includeTags: true,
+          basePropertyName: 'source',
+        },
+      },
+      project,
+    );
+    expect(options.richJson).toBe(false);
+  });
+
   it('maps every supplied option without mutating the request', () => {
     const dto: ExportRequestDto = {
       format: 'json',

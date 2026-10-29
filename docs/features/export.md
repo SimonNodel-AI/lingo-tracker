@@ -39,10 +39,10 @@ lingo-tracker export --format <format> [options]
 |--------|-------------|---------|
 | `--structure <type>` | `hierarchical` or `flat`. | `hierarchical` |
 | `--rich` | Output rich objects with metadata instead of plain string values. | `false` |
-| `--include-base` | Include base locale value in the output object. | `false` |
-| `--include-status` | Include translation status in the output object. | `false` |
-| `--include-comment` | Include comments in the output object. | `false` |
-| `--include-tags` | Include tags array in the output object. | `false` |
+| `--include-base` | Include base locale value in the output object. Requires `--rich`. | `false` |
+| `--include-status` | Include translation status in the output object. Requires `--rich`. | `false` |
+| `--include-comment` | Include comments in the output object. Requires `--rich`. | `false` |
+| `--include-tags` | Include tags array in the output object. Requires `--rich`. | `false` |
 | `--base-property-name <name>` | Property name for the base locale value in JSON output. Only applies with `--include-base`. Reserved names (`value`, `comment`, `status`, `tags`) are rejected. | `baseValue` |
 
 ### Filename Placeholders
@@ -81,14 +81,14 @@ lingo-tracker export --format json --structure flat --filename "{locale}-transla
 # Generates: es-translations.json, fr-translations.json, etc.
 ```
 
-Export JSON with comments (any `--include-*` flag implies `--rich`):
+Export rich JSON with comments (the `--include-*` flags apply only with `--rich`):
 ```bash
-lingo-tracker export --format json --include-comment
+lingo-tracker export --format json --rich --include-comment
 ```
 
 Export rich JSON including base values and comments (useful for translator context):
 ```bash
-lingo-tracker export --format json --include-base --include-comment
+lingo-tracker export --format json --rich --include-base --include-comment
 ```
 
 Export rich JSON with a custom property name for the base value (e.g. for tools that expect `original` instead of `baseValue`):

@@ -16,6 +16,7 @@ const policies: readonly (readonly [ImportStrategy, ImportStrategyPolicy])[] = [
     'translation-service',
     {
       defaults: { createMissing: false, updateComments: false, updateTags: false },
+      honoursOptionOverrides: false,
       writesBaseLocale: false,
       resolvesReferences: false,
       honoursSourceStatusByDefault: false,
@@ -28,6 +29,7 @@ const policies: readonly (readonly [ImportStrategy, ImportStrategyPolicy])[] = [
     'verification',
     {
       defaults: { createMissing: false, updateComments: false, updateTags: false },
+      honoursOptionOverrides: false,
       writesBaseLocale: false,
       resolvesReferences: false,
       honoursSourceStatusByDefault: false,
@@ -40,6 +42,7 @@ const policies: readonly (readonly [ImportStrategy, ImportStrategyPolicy])[] = [
     'migration',
     {
       defaults: { createMissing: true, updateComments: true, updateTags: true },
+      honoursOptionOverrides: true,
       writesBaseLocale: true,
       resolvesReferences: true,
       honoursSourceStatusByDefault: true,
@@ -52,6 +55,7 @@ const policies: readonly (readonly [ImportStrategy, ImportStrategyPolicy])[] = [
     'update',
     {
       defaults: { createMissing: false, updateComments: false, updateTags: false },
+      honoursOptionOverrides: false,
       writesBaseLocale: false,
       resolvesReferences: false,
       honoursSourceStatusByDefault: false,

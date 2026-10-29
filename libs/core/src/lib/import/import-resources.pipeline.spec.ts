@@ -285,7 +285,7 @@ describe('importResources pipeline', () => {
     expect(folder('common').get('new')?.entry['es']).toBe('Adiós {name}');
   });
 
-  it('imports XLIFF, validates its base value and updates comments', async () => {
+  it('imports XLIFF and validates its base value while ignoring updateComments outside migration', async () => {
     seed('common', { ok: { source: 'OK' } });
     const path = source(
       'es.xliff',
@@ -293,6 +293,23 @@ describe('importResources pipeline', () => {
     );
     const result = importResources(collection, await parseXliffImport(path), {
       locale: 'es',
+      validateBase: true,
+      updateComments: true,
+    });
+    expect(result.warnings.join()).toContain('Base value mismatch');
+    expect(folder('common').get('ok')?.entry).toMatchObject({ es: 'Aceptar' });
+    expect(folder('common').get('ok')?.entry.comment).toBeUndefined();
+  });
+
+  it('imports XLIFF during migration, validates its base value and updates comments', async () => {
+    seed('common', { ok: { source: 'OK' } });
+    const path = source(
+      'es.xliff',
+      xliff('<trans-unit id="common.ok"><source>Okay</source><target>Aceptar</target><note>Button</note></trans-unit>'),
+    );
+    const result = importResources(collection, await parseXliffImport(path), {
+      locale: 'es',
+      strategy: 'migration',
       validateBase: true,
       updateComments: true,
     });

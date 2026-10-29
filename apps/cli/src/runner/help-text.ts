@@ -53,7 +53,7 @@ Import Strategies:
 Notes:
   - Format is auto-detected from file extension (.xlf, .xliff, .json)
   - Use ${flagName(flags.dryRun)} to preview changes before committing
-  - Summary report saved to {translationsFolder}/import-summary.md
+  - Summary report saved to the system temp folder (lingo-tracker-import-summary-<timestamp>.md); not written on a dry run
   - Large files (>5MB) will show a warning
 `;
 

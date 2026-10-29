@@ -492,6 +492,13 @@ describe('import-summary', () => {
       expect(summary).toContain('--create-missing=true');
       expect(summary).toContain('--preserve-status=false');
       expect(summary).toContain('--validate-base=true');
+      for (const strategy of ['translation-service', 'verification', 'update'] as const) {
+        const ignored = generateImportSummary({ ...result, strategy }, options);
+        expect(ignored).not.toContain('--update-comments=');
+        expect(ignored).not.toContain('--update-tags=');
+        expect(ignored).not.toContain('--create-missing=');
+        expect(ignored).toContain('--preserve-status=false');
+      }
     });
 
     it('should handle status transitions with same from/to status', () => {

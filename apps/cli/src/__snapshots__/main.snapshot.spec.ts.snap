@@ -91,6 +91,8 @@ Options:
                                    "upperCase", "camelCase")
   --token-constant-name <name>     Custom name for the generated TypeScript
                                    constant (single bundle only, e.g. MY_TOKENS)
+  --transform-icu-to-transloco     Enable ICU to Transloco format conversion in
+                                   bundle output
   --no-transform-icu-to-transloco  Disable ICU to Transloco format conversion in
                                    bundle output
   --debug-keys [locale]            Also emit a debug bundle where each value is

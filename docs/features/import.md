@@ -33,10 +33,10 @@ You can explicitly specify the format with `--format <format>` if needed.
 | `-f, --format <format>` | Import format (`xliff` or `json`). | Auto-detect from extension |
 | `-c, --collection <name>` | Target collection to import into. | The only collection, or a prompt |
 | `--strategy <strategy>` | Import strategy (see below). | `translation-service` |
-| `--update-comments` | Update resource comments from import data. | On for `migration`, off otherwise |
-| `--update-tags` | Update resource tags from rich JSON. | On for `migration`, off otherwise |
+| `--update-comments` | Update resource comments from import data. `migration` only. | On for `migration` |
+| `--update-tags` | Update resource tags from rich JSON. `migration` only. | On for `migration` |
 | `--preserve-status` | Honour a `status` field in rich JSON instead of the strategy's status. | `false` |
-| `--create-missing` | Create new resources if they don't exist. | On for `migration`, off otherwise |
+| `--create-missing` | Create new resources if they don't exist. `migration` only. | On for `migration` |
 | `--validate-base` | Warn if source base value differs from existing. | `true` |
 | `--dry-run` | Preview import without modifying files. | `false` |
 | `--verbose` | Show detailed import progress. | `false` |

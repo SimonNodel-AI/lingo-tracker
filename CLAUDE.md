@@ -35,10 +35,10 @@ pnpm run test:tracker
 pnpm nx e2e cli-e2e  # smoke tests the built CLI (builds cli first)
 pnpm nx e2e tracker-e2e  # Playwright suite against the built API + Tracker (builds both first)
 
-# Run a single test file (path relative to the project root)
-pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts   # core, domain, tracker (@nx/vitest)
-pnpm nx test cli -- src/commands/move.test.ts                # cli (vitest): positional path after --
-pnpm nx test api -- src/app/app.service.spec.ts              # api (jest): positional path after --
+# Run a single test file: positional path after --, relative to the project root.
+# Nx flags (--skip-nx-cache, --outputStyle) go before --; everything after it reaches the runner.
+pnpm nx test core -- src/lib/resource/checksum.spec.ts   # core, domain, tracker, cli (vitest)
+pnpm nx test api -- src/app/app.service.spec.ts          # api (jest)
 
 # Typecheck (tracker, core, cli and api also typecheck their specs via typecheck-spec)
 pnpm nx typecheck tracker

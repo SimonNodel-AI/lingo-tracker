@@ -333,7 +333,7 @@ lingo-tracker bundle [options]
 | `--locale <a,b>` | Locales to generate, from the global `locales`. Default: all. |
 | `--token-casing <upperCase\|camelCase>` | Overrides config |
 | `--token-constant-name <name>` | Overrides config. Requires a single bundle: pass `--name`, or have only one bundle configured. |
-| `--no-transform-icu-to-transloco` | Keep `{name}` instead of converting to `{{ name }}` |
+| `--[no-]transform-icu-to-transloco` | Convert `{name}` to `{{ name }}`, or keep `{name}`. Overrides config; when omitted, the bundle and global settings apply. |
 | `--debug-keys [locale]` | Also write a bundle where every value is its own key, under locale code `99` unless given |
 | `--quiet` | Suppress progress and success lines |
 | `--verbose` | Print every warning |
@@ -384,7 +384,7 @@ lingo-tracker export --format <xliff|json> [options]
 | `--dry-run` | | Print the plan and summary; write nothing, not even the folder |
 | `--verbose` | | |
 
-JSON-only flags: `--structure <hierarchical|flat>` (default hierarchical), `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name <name>` (default `baseValue`; `value`, `comment`, `status` and `tags` are reserved). Any `--include-*` flag produces rich output even without `--rich`; the CLI currently still prints an advisory saying the flag has no effect without `--rich`, which you can ignore. Given with XLIFF these flags have no effect.
+JSON-only flags: `--structure <hierarchical|flat>` (default hierarchical), `--rich`, `--include-base`, `--include-status`, `--include-comment`, `--include-tags`, `--base-property-name <name>` (default `baseValue`; `value`, `comment`, `status` and `tags` are reserved). The `--include-*` flags and `--base-property-name` apply only with `--rich`; without it they print an advisory and have no effect. Given with XLIFF these flags have no effect.
 
 One file is written per target locale. Errors and hierarchical key conflicts exit 1. A completed dry run exits 0 even when its plan reports errors; a dry run that cannot start, for example because the output folder is unusable, exits 1.
 
@@ -417,7 +417,7 @@ lingo-tracker import --source <file> --locale <locale> [options]
 | `migration` | changed or new values `translated`, or the file's own status with `--preserve-status`; unchanged values keep their status | yes | moving in from another system, including the base locale |
 | `update` | unchanged | no | bulk corrections |
 
-Passing `--create-missing`, `--update-comments` or `--update-tags` with a strategy other than `migration` prints an advisory warning; the value is still applied. Entries that fail, for example because a protected term was altered, are reported and make the exit code 1; entries skipped because the key does not exist do not. Files over 5 MB print a size warning.
+Passing `--create-missing`, `--update-comments` or `--update-tags` with a strategy other than `migration` prints an advisory warning and has no effect; these flags apply only to `migration`. Entries that fail, for example because a protected term was altered, are reported and make the exit code 1; entries skipped because the key does not exist do not. Files over 5 MB print a size warning.
 
 ### glossary
 

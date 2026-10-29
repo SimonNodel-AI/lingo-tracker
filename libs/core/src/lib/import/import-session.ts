@@ -70,7 +70,7 @@ export interface ImportSession {
 
 /**
  * Starts an import run: applies the strategy defaults (`createMissing`, `updateComments`,
- * `updateTags`; explicit options win), refuses a base-locale import unless the strategy is
+ * `updateTags`; explicit options win only for migration), refuses a base-locale import unless the strategy is
  * `migration`, and reads the collection's Project Terms. A protected-terms file that cannot be
  * used stops the run before anything is written; a preferred-terminology problem only limits the
  * advisory check, so it opens the run's warnings (on a base-locale import, the only kind that
@@ -81,7 +81,7 @@ export interface ImportSession {
  */
 export function openImportSession(collection: Collection, options: ImportRunOptions): ImportSession {
   const strategy = options.strategy ?? DEFAULT_IMPORT_STRATEGY;
-  const defaults = importStrategyPolicy(strategy).defaults;
+  const { defaults, honoursOptionOverrides } = importStrategyPolicy(strategy);
   const isBaseLocaleImport = options.locale === collection.baseLocale;
 
   assertImportableLocale(collection, options.locale, strategy);
@@ -95,9 +95,13 @@ export function openImportSession(collection: Collection, options: ImportRunOpti
     options: {
       ...options,
       strategy,
-      createMissing: options.createMissing ?? defaults.createMissing,
-      updateComments: options.updateComments ?? defaults.updateComments,
-      updateTags: options.updateTags ?? defaults.updateTags,
+      createMissing: honoursOptionOverrides
+        ? (options.createMissing ?? defaults.createMissing)
+        : defaults.createMissing,
+      updateComments: honoursOptionOverrides
+        ? (options.updateComments ?? defaults.updateComments)
+        : defaults.updateComments,
+      updateTags: honoursOptionOverrides ? (options.updateTags ?? defaults.updateTags) : defaults.updateTags,
     },
     isBaseLocaleImport,
     changes: [],

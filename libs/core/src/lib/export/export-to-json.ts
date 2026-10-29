@@ -120,10 +120,7 @@ export function buildHierarchicalStructure(
 }
 
 function formatValue(resource: FilteredResource, options: ExportOptions): unknown {
-  const useRich =
-    options.richJson || options.includeBase || options.includeComment || options.includeStatus || options.includeTags;
-
-  if (useRich) {
+  if (options.richJson) {
     const richObj: Record<string, unknown> = {
       value: resource.value,
     };

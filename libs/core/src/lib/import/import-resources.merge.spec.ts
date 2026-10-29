@@ -64,16 +64,27 @@ describe('importResources merge behavior', () => {
       expect(stored('ok')?.meta?.['es']?.status).toBe('translated');
     });
 
-    it('should create new resource when createMissing is true and baseValue is provided', () => {
+    it('creates a new resource during migration when createMissing is true and baseValue is provided', () => {
       const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK' }], {
         locale: 'es',
+        strategy: 'migration',
         createMissing: true,
       });
       expect(result.changes[0]).toMatchObject({ type: 'created', newValue: 'Aceptar', newStatus: 'translated' });
       expect(result.filesModified.sort()).toEqual([entryPath, metaPath].sort());
       expect(stored('ok')?.entry).toMatchObject({ source: 'OK', es: 'Aceptar' });
     });
-    it('should fail to create resource when createMissing is false', () => {
+
+    it('should ignore createMissing outside migration', () => {
+      const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK' }], {
+        locale: 'es',
+        createMissing: true,
+      });
+      expect(result.changes[0]?.type).toBe('skipped');
+      expect(result.filesModified).toEqual([]);
+      expect(stored('ok')).toBeUndefined();
+    });
+    it('should skip a missing resource when the strategy does not allow creation', () => {
       const result = run([{ key: 'common.buttons.ok', value: 'Aceptar' }]);
       expect(result.changes[0]).toMatchObject({
         type: 'skipped',
@@ -82,7 +93,11 @@ describe('importResources merge behavior', () => {
       expect(result.filesModified).toEqual([]);
     });
     it('should fail to create resource when baseValue is missing', () => {
-      const result = run([{ key: 'common.buttons.ok', value: 'Aceptar' }], { locale: 'es', createMissing: true });
+      const result = run([{ key: 'common.buttons.ok', value: 'Aceptar' }], {
+        locale: 'es',
+        strategy: 'migration',
+        createMissing: true,
+      });
       expect(result.changes[0]).toMatchObject({
         type: 'failed',
         reason: expect.stringContaining('base value not provided'),
@@ -162,6 +177,7 @@ describe('importResources merge behavior', () => {
     const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK' }], {
       locale: 'es',
       createMissing: true,
+      strategy: 'migration',
       dryRun: true,
     });
     expect(result.changes[0]?.type).toBe('created');
@@ -176,49 +192,94 @@ describe('importResources merge behavior', () => {
       folder.setDetails('ok', { comment: 'Old comment', tags: ['old-tag'] });
       folder.save();
     });
-    it('should update comment when updateComments is true', () => {
+    it('updates comment during migration when updateComments is true', () => {
       run([{ key: 'common.buttons.ok', value: 'Aceptar', comment: 'New comment' }], {
         locale: 'es',
+        strategy: 'migration',
         updateComments: true,
       });
       expect(stored('ok')?.entry.comment).toBe('New comment');
     });
-    it('should not update comment when updateComments is false', () => {
+
+    it('should ignore updateComments outside migration', () => {
       run([{ key: 'common.buttons.ok', value: 'Aceptar', comment: 'New comment' }], {
         locale: 'es',
+        updateComments: true,
+      });
+      expect(stored('ok')?.entry.comment).toBe('Old comment');
+    });
+    it('should not update comment during migration when updateComments is false', () => {
+      run([{ key: 'common.buttons.ok', value: 'Aceptar', comment: 'New comment' }], {
+        locale: 'es',
+        strategy: 'migration',
         updateComments: false,
       });
       expect(stored('ok')?.entry.comment).toBe('Old comment');
     });
-    it('should update tags when updateTags is true', () => {
+    it('updates tags during migration when updateTags is true', () => {
       run([{ key: 'common.buttons.ok', value: 'Aceptar', tags: ['new-tag', 'another-tag'] }], {
         locale: 'es',
+        strategy: 'migration',
         updateTags: true,
       });
       expect(stored('ok')?.entry.tags).toEqual(['new-tag', 'another-tag']);
     });
-    it('should not update tags when updateTags is false', () => {
-      run([{ key: 'common.buttons.ok', value: 'Aceptar', tags: ['new-tag'] }], { locale: 'es', updateTags: false });
+
+    it('should ignore updateTags outside migration', () => {
+      run([{ key: 'common.buttons.ok', value: 'Aceptar', tags: ['new-tag', 'another-tag'] }], {
+        locale: 'es',
+        updateTags: true,
+      });
+      expect(stored('ok')?.entry.tags).toEqual(['old-tag']);
+    });
+    it('should not update tags during migration when updateTags is false', () => {
+      run([{ key: 'common.buttons.ok', value: 'Aceptar', tags: ['new-tag'] }], {
+        locale: 'es',
+        strategy: 'migration',
+        updateTags: false,
+      });
       expect(stored('ok')?.entry.tags).toEqual(['old-tag']);
     });
   });
 
   describe('source status handling', () => {
     it.each([
-      ['migration', true, 'verified'],
-      ['migration', undefined, 'verified'],
-      ['migration', false, 'translated'],
-      ['verification', true, 'verified'],
-      ['verification', undefined, 'translated'],
-      ['verification', false, 'translated'],
-    ] as const)('creates with %s and preserveStatus=%s', (strategy, preserveStatus, expected) => {
+      [true, 'verified'],
+      [undefined, 'verified'],
+      [false, 'translated'],
+    ] as const)('migration creates with preserveStatus=%s', (preserveStatus, expected) => {
       const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK', status: 'verified' }], {
         locale: 'es',
-        strategy,
+        strategy: 'migration',
         preserveStatus,
         createMissing: true,
       });
-      expect(result.changes[0]?.newStatus).toBe(expected);
+      expect(result.changes[0]).toMatchObject({ type: 'created', newStatus: expected });
+    });
+
+    it.each([true, undefined, false])('verification never creates, with preserveStatus=%s', (preserveStatus) => {
+      const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', baseValue: 'OK', status: 'verified' }], {
+        locale: 'es',
+        strategy: 'verification',
+        preserveStatus,
+        createMissing: true,
+      });
+      expect(result.changes[0]?.type).toBe('skipped');
+      expect(stored('ok')).toBeUndefined();
+    });
+
+    it.each([
+      [true, 'translated'],
+      [undefined, 'verified'],
+      [false, 'verified'],
+    ] as const)('verification update with preserveStatus=%s resolves to %s', (preserveStatus, expected) => {
+      seed({ ok: { source: 'OK', es: 'Bien' } });
+      const result = run([{ key: 'common.buttons.ok', value: 'Aceptar', status: 'translated' }], {
+        locale: 'es',
+        strategy: 'verification',
+        preserveStatus,
+      });
+      expect(result.changes[0]).toMatchObject({ type: 'value-changed', newValue: 'Aceptar', newStatus: expected });
     });
 
     it.each([
@@ -353,7 +414,7 @@ describe('importResources merge behavior', () => {
     expect(stored('ok')?.meta?.['es']?.status).toBe('verified');
   });
 
-  it('checks the supplied source before creating a target-locale resource', () => {
+  it('skips creation outside migration even when the supplied source has placeholder errors', () => {
     const result = run(
       [
         {
@@ -365,10 +426,10 @@ describe('importResources merge behavior', () => {
       { locale: 'es', createMissing: true },
     );
     expect(result.changes[0]).toMatchObject({
-      type: 'failed',
-      reason: "Placeholders disagree with the base value: missing '{name}', unexpected '{extra}', '{nombre}'",
+      type: 'skipped',
+      reason: expect.stringContaining('does not allow creation'),
     });
-    expect(result.resourcesFailed).toBe(1);
+    expect(result.resourcesFailed).toBe(0);
     expect(result.icuAutoFixErrors).toHaveLength(1);
     expect(result.filesModified).toEqual([]);
     expect(stored('ok')).toBeUndefined();
@@ -407,7 +468,7 @@ describe('importResources merge behavior', () => {
             value: 'Obtener teléfono',
           },
         ],
-        { locale: 'es', createMissing: true },
+        { locale: 'es', strategy: 'migration', createMissing: true },
       );
       expect(result.changes).toEqual([
         {
