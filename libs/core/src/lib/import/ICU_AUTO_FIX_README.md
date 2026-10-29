@@ -238,9 +238,9 @@ See `INTEGRATION_EXAMPLE.ts` for complete integration example.
 
 Run tests:
 ```bash
-pnpm nx test core --testFile=src/lib/import/icu-auto-fixer.spec.ts
-pnpm nx test core --testFile=src/lib/import/apply-icu-auto-fix.spec.ts
-pnpm nx test core --testFile=src/lib/import/icu-auto-fix.integration.spec.ts
+pnpm nx test core -- src/lib/import/icu-auto-fixer.spec.ts
+pnpm nx test core -- src/lib/import/apply-icu-auto-fix.spec.ts
+pnpm nx test core -- src/lib/import/icu-auto-fix.integration.spec.ts
 ```
 
 ## Performance

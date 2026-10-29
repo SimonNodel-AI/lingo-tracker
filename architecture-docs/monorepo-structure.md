@@ -262,11 +262,8 @@ Test output is cached by Nx (`"cache": true` in `targetDefaults.test`), so uncha
 To run a single test file (the path is relative to the project root):
 
 ```bash
-# domain, core, tracker (@nx/vitest:test)
-pnpm nx test core --testFile=src/lib/resource/checksum.spec.ts
-
-# cli (vitest): a positional path after -- (vitest rejects --testFile as an unknown option)
-pnpm nx test cli -- src/commands/move.test.ts
+# domain, core, tracker, cli (vitest): a positional path after -- (vitest rejects --testFile as an unknown option)
+pnpm nx test core -- src/lib/resource/checksum.spec.ts
 
 # api (jest): a positional path after --
 pnpm nx test api -- src/app/app.service.spec.ts
