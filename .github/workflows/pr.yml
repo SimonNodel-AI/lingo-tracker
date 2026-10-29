@@ -4,10 +4,13 @@ on:
   pull_request:
     branches:
       - develop
+  push:
+    branches:
+      - develop
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
@@ -55,7 +58,19 @@ jobs:
 
       - name: Derive NX_BASE
         id: nx-base
-        run: echo "NX_BASE=origin/${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          # Pull requests compare with the target branch. Pushes compare with the previous tip.
+          if [ "$EVENT_NAME" = pull_request ]; then
+            echo "NX_BASE=origin/$BASE_REF" >> "$GITHUB_OUTPUT"
+          elif git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            echo "NX_BASE=$BEFORE_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "NX_BASE=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Test (affected)
         run: pnpm nx affected -t test --base=${{ steps.nx-base.outputs.NX_BASE }}

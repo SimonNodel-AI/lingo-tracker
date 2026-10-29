@@ -1,12 +1,14 @@
 # LingoTracker
 
+[![npm version](https://img.shields.io/npm/v/@simoncodes-ca/lingo-tracker)](https://www.npmjs.com/package/@simoncodes-ca/lingo-tracker) [![CI](https://github.com/simoncodes-ca/lingo-tracker/actions/workflows/pr.yml/badge.svg?branch=develop&event=push)](https://github.com/simoncodes-ca/lingo-tracker/actions/workflows/pr.yml?query=branch%3Adevelop) [![License: MIT](https://img.shields.io/github/license/simoncodes-ca/lingo-tracker)](LICENSE) [![Node ^24.15 || >=26](https://img.shields.io/badge/node-%5E24.15%20%7C%7C%20%3E%3D26-339933)](https://nodejs.org/)
+
 Catch stale and unreviewed translations in CI, not in production.
 
 Translation files in a repository hold only values. When the source text changes, nothing marks the translations out of date, so stale translations ship silently.
 
 LingoTracker stores a status next to every translation in your Git repo. A changed source string marks its existing translations `stale`. Untranslated copies stay `new`. `lingo-tracker validate` fails CI while anything is missing, stale, unreviewed or invalid ICU for its locale. It is built for Angular apps using [Transloco](https://github.com/jsverse/transloco). One npm package gives you a CLI, a local web UI with a REST API, and an installable skill for AI coding assistants. There is no hosted service and no account.
 
-**Status:** pre-1.0. The CLI and API are stable. See the [roadmap](ROADMAP.md) and the [changelog](CHANGELOG.md).
+**Status:** pre-1.0. The CLI and API are stable. Every pull request to `develop` runs unit tests and CLI end-to-end tests for the affected projects. The web UI has a Playwright end-to-end suite. See the [roadmap](ROADMAP.md) and the [changelog](CHANGELOG.md).
 
 ## Why use it
 
@@ -94,7 +96,7 @@ For contributors, [architecture-docs](architecture-docs/README.md) describes the
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and the commit convention.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, tests and the commit convention. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
