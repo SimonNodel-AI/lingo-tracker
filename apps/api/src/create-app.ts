@@ -36,8 +36,8 @@ export async function createApp({
   const namedHosts = new Set(
     allowedHosts
       .split(',')
-      .map((name) => name.trim().toLowerCase())
-      .filter(Boolean),
+      .map((name) => parseHostname(name.trim()))
+      .filter((name): name is string => Boolean(name)),
   );
 
   server.use((req, res, next) => {
@@ -109,9 +109,13 @@ function isAllowedOrigin(origin: string | undefined, host: string | undefined): 
   }
 }
 
+function parseHostname(host: string): string | undefined {
+  return /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?$/i.exec(host)?.[1]?.toLowerCase();
+}
+
 function isAllowedHost(host: string | undefined, namedHosts: ReadonlySet<string>): boolean {
   if (host === undefined) return false;
-  const hostname = /^(\[[0-9a-f:.]+\]|[a-z0-9.-]+)(?::[0-9]+)?$/i.exec(host)?.[1]?.toLowerCase();
+  const hostname = parseHostname(host);
   if (hostname === undefined) return false;
   // DNS rebinding needs a DNS name. IP literals are safe; named hosts must be listed explicitly.
   if (hostname.startsWith('[')) return isIP(hostname.slice(1, -1)) === 6;

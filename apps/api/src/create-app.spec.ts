@@ -420,7 +420,7 @@ describe('createApp over HTTP', () => {
   });
 });
 
-describe.each(['', '  My-Laptop.Local , OTHER.local  '])(
+describe.each(['', '  My-Laptop.Local , OTHER.local  ', '  My-Laptop.Local:3030 , OTHER.local:4000 , :3030 ,  '])(
   'createApp with the production Nest factory (allowedHosts %s)',
   (allowedHosts) => {
     let root: string | undefined;
@@ -464,6 +464,11 @@ describe.each(['', '  My-Laptop.Local , OTHER.local  '])(
       const response = await requestWithHost(`${baseUrl}/api/health`, 'evil.example:3030');
       expect(response.status).toBe(403);
       expect(JSON.parse(response.body)).toEqual({ statusCode: 403, message: 'Host not allowed', error: 'Forbidden' });
+    });
+
+    it('allows listed hosts with a different port', async () => {
+      const response = await requestWithHost(`${baseUrl}/api/health`, 'MY-LAPTOP.local:9090');
+      expect(response.status).toBe(allowedHosts.length > 0 ? 200 : 403);
     });
 
     it('still rejects foreign Origins with explicitly allowed names', async () => {

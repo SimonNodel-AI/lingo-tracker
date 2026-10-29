@@ -13,6 +13,8 @@ export interface ImportStrategyPolicy {
     readonly updateComments: boolean;
     readonly updateTags: boolean;
   };
+  /** Whether creation, comment and tag options can override the defaults. */
+  readonly honoursOptionOverrides: boolean;
   readonly writesBaseLocale: boolean;
   readonly resolvesReferences: boolean;
   readonly honoursSourceStatusByDefault: boolean;
@@ -26,6 +28,7 @@ export interface ImportStrategyPolicy {
 const IMPORT_STRATEGY_POLICIES = Object.freeze({
   'translation-service': Object.freeze({
     defaults: Object.freeze({ createMissing: false, updateComments: false, updateTags: false }),
+    honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
     honoursSourceStatusByDefault: false,
@@ -35,6 +38,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
   }),
   verification: Object.freeze({
     defaults: Object.freeze({ createMissing: false, updateComments: false, updateTags: false }),
+    honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
     honoursSourceStatusByDefault: false,
@@ -44,6 +48,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
   }),
   migration: Object.freeze({
     defaults: Object.freeze({ createMissing: true, updateComments: true, updateTags: true }),
+    honoursOptionOverrides: true,
     writesBaseLocale: true,
     resolvesReferences: true,
     honoursSourceStatusByDefault: true,
@@ -53,6 +58,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
   }),
   update: Object.freeze({
     defaults: Object.freeze({ createMissing: false, updateComments: false, updateTags: false }),
+    honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
     honoursSourceStatusByDefault: false,

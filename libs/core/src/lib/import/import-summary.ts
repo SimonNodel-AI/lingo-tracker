@@ -1,3 +1,4 @@
+import { importStrategyPolicy } from '@simoncodes-ca/domain';
 import { capitalize, formatISODate, formatMarkdownList } from '../summary-utils';
 import type {
   ICUAutoFix,
@@ -42,7 +43,7 @@ export function generateImportSummary(result: ImportResult, options: ImportSumma
 **Target Locale**: ${result.locale}
 **Collection**: ${result.collection || '(default)'}
 **Strategy**: ${result.strategy}
-**Flags**: ${formatFlags(options)}
+**Flags**: ${formatFlags(options, result.strategy)}
 
 ## Results
 
@@ -126,23 +127,24 @@ ${formatDetailedChanges(result.changes, isDryRun)}
 /**
  * Formats the import flags/options as a comma-separated string.
  *
- * Only includes flags that were explicitly set in the options.
+ * Only includes applicable flags that were explicitly set in the options.
  * Returns "None" if no flags were specified.
  *
  * @param options - The import options
  * @returns Formatted string like "--update-comments=true, --create-missing=false" or "None"
  * @internal
  */
-function formatFlags(options: ImportSummaryOptions): string {
+function formatFlags(options: ImportSummaryOptions, strategy: ImportResult['strategy']): string {
+  const { honoursOptionOverrides } = importStrategyPolicy(strategy);
   const flags: string[] = [];
 
-  if (options.updateComments !== undefined) {
+  if (honoursOptionOverrides && options.updateComments !== undefined) {
     flags.push(`--update-comments=${options.updateComments}`);
   }
-  if (options.updateTags !== undefined) {
+  if (honoursOptionOverrides && options.updateTags !== undefined) {
     flags.push(`--update-tags=${options.updateTags}`);
   }
-  if (options.createMissing !== undefined) {
+  if (honoursOptionOverrides && options.createMissing !== undefined) {
     flags.push(`--create-missing=${options.createMissing}`);
   }
   if (options.preserveStatus !== undefined) {

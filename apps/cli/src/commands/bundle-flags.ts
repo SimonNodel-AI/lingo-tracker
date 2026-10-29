@@ -48,6 +48,10 @@ export const BUNDLE_FLAGS = defineFlags<
     description: 'Custom name for the generated TypeScript constant (single bundle only, e.g. MY_TOKENS)',
   },
   transformICUToTransloco: {
+    positive: {
+      flags: '--transform-icu-to-transloco',
+      description: 'Enable ICU to Transloco format conversion in bundle output',
+    },
     flags: '--no-transform-icu-to-transloco',
     description: 'Disable ICU to Transloco format conversion in bundle output',
   },

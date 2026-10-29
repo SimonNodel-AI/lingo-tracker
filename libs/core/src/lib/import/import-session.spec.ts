@@ -40,15 +40,31 @@ describe('import session', () => {
       });
     });
 
-    it('preserves explicitly provided flags over strategy defaults', () => {
+    it.each(['translation-service', 'verification', 'update'] as const)(
+      'ignores migration-only overrides for %s',
+      (strategy) => {
+        expect(
+          openImportSession(collection, {
+            locale: 'es',
+            strategy,
+            createMissing: true,
+            updateTags: true,
+            updateComments: true,
+          }).options,
+        ).toMatchObject({ createMissing: false, updateComments: false, updateTags: false });
+      },
+    );
+
+    it('honours explicit false overrides for migration', () => {
       expect(
         openImportSession(collection, {
           locale: 'es',
-          strategy: 'translation-service',
-          createMissing: true,
-          updateComments: true,
+          strategy: 'migration',
+          createMissing: false,
+          updateComments: false,
+          updateTags: false,
         }).options,
-      ).toMatchObject({ createMissing: true, updateComments: true, updateTags: false });
+      ).toMatchObject({ createMissing: false, updateComments: false, updateTags: false });
     });
 
     it('uses translation-service as the default strategy', () => {

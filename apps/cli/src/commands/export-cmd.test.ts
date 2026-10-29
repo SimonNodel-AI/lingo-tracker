@@ -511,10 +511,10 @@ describe('exportCommand (real project)', () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain('basePropertyName "value" is a reserved key');
   });
-  it('should pass basePropertyName through to the run', async () => {
+  it('should ignore basePropertyName and includeBase without rich JSON', async () => {
     const result = await run({ format: 'json', locale: ['fr'], basePropertyName: 'original', includeBase: true });
     expect(result.exitCode).toBe(0);
-    expect(payload()).toMatchObject({ buttons: { ok: { value: 'OK', original: 'OK' } } });
+    expect(payload()).toMatchObject({ buttons: { ok: 'OK' } });
     expect(project.read('dist/export/fr.json')).not.toContain('baseValue');
   });
 });

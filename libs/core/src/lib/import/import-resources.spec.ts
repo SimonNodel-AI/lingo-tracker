@@ -340,14 +340,27 @@ describe('importResources', () => {
       expect(stored('common', 'missing')).toBeUndefined();
     });
 
-    it('creates a missing resource from its baseValue when createMissing is set', () => {
+    it('creates a missing resource from its baseValue during migration when createMissing is set', () => {
+      const result = importResources(collection, [{ key: 'common.greeting', value: 'Hola', baseValue: 'Hello' }], {
+        locale: 'es',
+        strategy: 'migration',
+        createMissing: true,
+      });
+
+      expect(result.resourcesCreated).toBe(1);
+      expect(result.resourcesSkipped).toBe(0);
+      expect(stored('common', 'greeting')?.entry).toMatchObject({ source: 'Hello', es: 'Hola' });
+    });
+
+    it('ignores createMissing outside migration', () => {
       const result = importResources(collection, [{ key: 'common.greeting', value: 'Hola', baseValue: 'Hello' }], {
         locale: 'es',
         createMissing: true,
       });
 
-      expect(result.resourcesCreated).toBe(1);
-      expect(stored('common', 'greeting')?.entry).toMatchObject({ source: 'Hello', es: 'Hola' });
+      expect(result.resourcesCreated).toBe(0);
+      expect(result.resourcesSkipped).toBe(1);
+      expect(stored('common', 'greeting')).toBeUndefined();
     });
 
     it('refreshes a stale base checksum when a translation-service import re-confirms the value', () => {
@@ -388,7 +401,29 @@ describe('importResources', () => {
 
       expect(result.dryRun).toBe(true);
       expect(result.resourcesUpdated).toBe(1);
+      expect(result.resourcesCreated).toBe(0);
+      expect(result.resourcesSkipped).toBe(1);
+      expect(result.filesModified).toEqual([]);
+      expect(readFileSync(join(folderOf('common'), 'resource_entries.json'), 'utf8')).toBe(before);
+      expect(existsSync(folderOf('fresh'))).toBe(false);
+    });
+    it('reports migration updates and creations without writing anything', () => {
+      seed('common', { ok: { source: 'OK' } });
+      const before = readFileSync(join(folderOf('common'), 'resource_entries.json'), 'utf8');
+
+      const result = importResources(
+        collection,
+        [
+          { key: 'common.ok', value: 'Aceptar' },
+          { key: 'fresh.key', value: 'Nuevo', baseValue: 'New' },
+        ],
+        { locale: 'es', strategy: 'migration', dryRun: true, createMissing: true },
+      );
+
+      expect(result.dryRun).toBe(true);
+      expect(result.resourcesUpdated).toBe(1);
       expect(result.resourcesCreated).toBe(1);
+      expect(result.resourcesSkipped).toBe(0);
       expect(result.filesModified).toEqual([]);
       expect(readFileSync(join(folderOf('common'), 'resource_entries.json'), 'utf8')).toBe(before);
       expect(existsSync(folderOf('fresh'))).toBe(false);

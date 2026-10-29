@@ -23,7 +23,7 @@ describe('import-cmd (real project)', () => {
     project.cleanup();
   });
 
-  it('prints applicability advisories to stderr and retains supplied switches', async () => {
+  it('prints applicability advisories to stderr and still imports successfully', async () => {
     const message = '--update-tags has no effect with the default --strategy translation-service.';
     const result = await run({ ...flags, updateTags: false });
     expect(result.exitCode).toBe(0);

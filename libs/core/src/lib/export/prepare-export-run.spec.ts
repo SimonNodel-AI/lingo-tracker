@@ -180,7 +180,7 @@ describe('prepareExportRun', () => {
     expect(vi.mocked(jsonExporter.buildHierarchicalStructure).mock.calls.length).toBe(builds);
     expect(result.resourcesExported).toBe(2);
     expect(JSON.parse(readFileSync(join(prepared.outputDirectory, 'fr.json'), 'utf8'))).toEqual({
-      ok: { value: 'Oui', baseValue: 'OK' },
+      ok: 'Oui',
     });
   });
 

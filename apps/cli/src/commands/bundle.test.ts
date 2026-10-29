@@ -271,6 +271,24 @@ describe('bundleCommand (real project)', () => {
       greeting: { source: 'Hello {name}' },
     });
   });
+  it.each(['global', 'bundle'] as const)(
+    'preserves disabled %s ICU transformation when the flag is omitted',
+    async (level) => {
+      await project.seed('greeting', 'Hello {name}');
+      project.configure({
+        ...project.config,
+        transformICUToTransloco: level === 'global' ? false : true,
+        bundles: { main: { ...mainBundle, ...(level === 'bundle' ? { transformICUToTransloco: false } : {}) } },
+      });
+      const flags = parsedFlags('--name', 'main', '--locale', 'en');
+      expect(flags.transformICUToTransloco).toBeUndefined();
+      expect((await project.run(bundleCommand, flags)).exitCode).toBe(0);
+      expect(project.json('out/en.json')).toMatchObject({ greeting: 'Hello {name}' });
+      expect((await project.run(bundleCommand, { name: ['main'], locale: ['en'] })).exitCode).toBe(0);
+      expect(project.json('out/en.json')).toMatchObject({ greeting: 'Hello {name}' });
+    },
+  );
+
   it('parses the negated ICU flag and overrides enabled transformation in a real project', async () => {
     await project.seed('greeting', 'Hello {name}');
     configure({ main: { ...mainBundle, transformICUToTransloco: true } });

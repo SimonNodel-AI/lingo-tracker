@@ -61,7 +61,7 @@ Writes by the CLI, API or UI are guarded: if the file changed on disk between re
 | `exportFolder` | string | `dist/lingo-export` | Default output folder for `export`. |
 | `importFolder` | string | `dist/lingo-import` | Folder the UI's Import dialog lists. The CLI `import` takes an explicit `--source`. |
 | `tokenCasing` | `"upperCase"` or `"camelCase"` | `upperCase` | Default casing for generated TypeScript keys. Overridable per bundle and by the `--token-casing` flag. |
-| `transformICUToTransloco` | boolean | `true` | Convert `{name}` to `{{ name }}` in bundles. Overridable per bundle. **Current limitation:** the CLI `bundle` command always passes its own value for this flag, so a `false` in the config is ignored when bundling from the CLI; pass `--no-transform-icu-to-transloco` on each run instead. The API and UI honour the config. |
+| `transformICUToTransloco` | boolean | `true` | Convert `{name}` to `{{ name }}` in bundles. Overridable per bundle. |
 | `protectedTermsFile` | string | `.lingo-tracker-protected-terms.json` | Path to the global protected-terms file, resolved against the config directory. |
 | `preferredTerminologyFile` | string | `.lingo-tracker-preferred-terminology.json` | Path to the preferred-terminology rule file. Global only. |
 | `translation` | object | none | Machine translation settings, see below. |
@@ -150,7 +150,7 @@ See [Auto-Translation](./auto-translation.md).
 | `tokenConstantName` | | A valid JavaScript identifier. Default is the bundle key upper-cased, hyphens turned into underscores, with `_TOKENS` appended: `core-ui` gives `CORE_UI_TOKENS`. |
 | `transformICUToTransloco` | | Overrides the global value for this bundle. |
 
-Precedence for `tokenCasing`: CLI flag, then bundle, then global, then default. `transformICUToTransloco` follows the same order through the API and UI. From the CLI the flag value always wins; see the note in the [global fields](#global-fields) table.
+Precedence for `tokenCasing` and `transformICUToTransloco`: CLI flag, then bundle, then global, then default.
 
 See [Bundling](./guides/bundling.md) and [Bundle Type Generation](./features/bundle-type-generation.md).
 
@@ -182,7 +182,7 @@ See [Protected Terms](./features/protected-terms.md) and [Preferred Terminology]
 | the name in `translation.apiKeyEnv` | CLI, API | Machine translation API key |
 | `LINGO_TRACKER_PORT` | `lingo-tracker-app` | Listening port, default `3030`. The `--port` flag wins. |
 | `LINGO_TRACKER_HOST` | `lingo-tracker-app` | Bind address, default `127.0.0.1`. The `--host` flag wins. |
-| `LINGO_TRACKER_ALLOWED_HOSTS` | `lingo-tracker-app` | Comma-separated host names accepted in the `Host` header besides `localhost` and IP literals. |
+| `LINGO_TRACKER_ALLOWED_HOSTS` | `lingo-tracker-app` | Comma-separated host names accepted in the `Host` header besides `localhost` and IP literals. A port in an entry is ignored. |
 | `LINGO_TRACKER_REVALIDATE_INTERVAL_MS` | `lingo-tracker-app` | How often the in-memory index checks the disk for outside changes, default `2000`. |
 | `LINGO_TRACKER_MAX_CACHED_COLLECTIONS` | `lingo-tracker-app` | Collections kept indexed in memory, default `4`. |
 | `INIT_CWD` | CLI | Set by package managers. When present, the CLI uses it as the project root, so `pnpm lingo-tracker …` works from the directory you typed it in. |
