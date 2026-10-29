@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # Export Feature
 
-The Export feature allows you to export translation resources from LingoTracker into standard formats (XLIFF and JSON) for integration with translation services and external systems.
+Export writes translations to XLIFF 1.2 or JSON so you can hand them to a translation vendor, review them, or feed another system. By default it exports only what needs work: entries whose status is `new` or `stale`. The source files are never changed.
 
 ## Usage
 
@@ -81,7 +81,7 @@ lingo-tracker export --format json --structure flat --filename "{locale}-transla
 # Generates: es-translations.json, fr-translations.json, etc.
 ```
 
-Export JSON with comments only (any `--include-*` flag automatically produces rich objects):
+Export JSON with comments (any `--include-*` flag implies `--rich`):
 ```bash
 lingo-tracker export --format json --include-comment
 ```
@@ -103,17 +103,7 @@ lingo-tracker export --format xliff --dry-run
 
 ## Customising the Base Value Property Name
 
-When exporting to JSON with `--include-base`, the base locale value is added to each object under the key `baseValue` by default. Use `--base-property-name` to override this when integrating with translation management systems or external tools that expect a different property name:
-
-```bash
-# Produce: { "value": "Aceptar", "original": "OK" }
-lingo-tracker export --format json --include-base --base-property-name original
-
-# Produce rich objects: { "value": "Aceptar", "source": "OK", "comment": "OK button" }
-lingo-tracker export --format json --include-base --include-comment --base-property-name source
-```
-
-The names `value`, `comment`, `status`, and `tags` are reserved — they are existing fields in rich JSON objects and cannot be used as the base property name. Using a reserved name exits with an error before any files are written.
+Use `--base-property-name` to change the default `baseValue` field in rich JSON exports, for tools that expect another name such as `original`. The names `value`, `comment`, `status` and `tags` are reserved.
 
 ## Protected Term Annotations
 
@@ -146,7 +136,7 @@ Base-locale rows stay unmarked, because a base-locale row holds nothing to trans
 
 ## XLIFF Source and Target Language
 
-XLIFF 1.2 exports now include the `source-language` and `target-language` attributes on the `<file>` element, matching the XLIFF 1.2 spec. This improves compatibility with translation tools that parse these attributes to determine locale mapping:
+XLIFF 1.2 exports set `source-language` and `target-language` on the `<file>` element, which translation tools use to map locales. The import side reads `target-language` back to infer each file's locale:
 
 ```xml
 <file original="translations" source-language="en" target-language="es" datatype="plaintext">
@@ -162,7 +152,7 @@ Every export generates a timestamped `lingo-tracker-export-summary-<timestamp>.m
 - **Warnings**: e.g., files that were overwritten.
 - **Errors**: broken down into general errors, malformed files, resources omitted due to missing metadata, and hierarchical key conflicts (JSON only — when a key like `a.b.c` conflicts with a parent key `a.b`).
 
-In a dry run, the summary is printed to the console instead of written to disk.
+Errors and hierarchical conflicts make the command exit 1. In a dry run the summary is printed to the console instead of written, and the exit code is always 0.
 
 > **Note:** `--dry-run` does not create the output folder. It reports the files it would write and leaves the disk unchanged, even when the output directory does not exist yet.
 

@@ -1,10 +1,10 @@
 # Contributing to LingoTracker
 
-Thank you for your interest in contributing to LingoTracker! This guide will help you get started.
+Thank you for your interest in contributing to LingoTracker. This guide will help you get started.
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) >= 20
+- [Node.js](https://nodejs.org/) ^24.15.0 || >=26.0.0 (see `engines` in `package.json`)
 - [pnpm](https://pnpm.io/) >= 10
 
 ## Setup
@@ -67,7 +67,7 @@ pnpm run test:tracker    # Tracker UI tests only
 ### Linting and Formatting
 
 ```bash
-pnpm run lint            # Lint with Biome
+pnpm run lint            # Lint with Biome and ESLint
 pnpm run format:check    # Check formatting
 pnpm run format          # Auto-format
 ```
@@ -119,7 +119,7 @@ The docs site lives in `docs-site/` and is built with [Docusaurus](https://docus
 pnpm run docs:dev
 ```
 
-Documentation source files are located under `docs-site/src/pages/`. Add or edit pages there and open a pull request as you would for any other change.
+Markdown sources live in `docs/`. The Docusaurus site in `docs-site/` builds them. Add or edit pages in `docs/` and open a pull request as you would for any other change.
 
 ## Questions?
 

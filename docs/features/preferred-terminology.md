@@ -30,8 +30,6 @@ LingoTracker has three features that deal with terminology. They solve different
 | Locales it looks at | The base locale only | Target locales | Reads base-locale values, and outputs target-locale translations |
 | Scope | One global file | A global file, plus an optional file per collection | One run of the command, optionally limited to one collection |
 
-In short, preferred terminology changes the wording of your source text. Protected terms keep words intact through translation. The glossary helps translators reuse words that the app already translates.
-
 ## The file
 
 The rule file holds a bare JSON array. Each rule has a `discouraged` term, a `preferred` term, and an optional `reason`.
@@ -230,7 +228,7 @@ Imports into a target locale are not checked. The [Import](./import.md#preferred
 - `validate` has no flag to turn the check off. Remove the rules to stop it.
 - An unreadable rule file is a **failure**, and `validate` exits with code `1`. Without this, a typo in the file would switch the check off in CI without anyone noticing.
 
-The [Validate](./validate.md#preferred-terminology) page has the details.
+The [Validate](./validate.md#what-it-checks) page has the details.
 
 ## Missing or broken files
 
@@ -240,4 +238,4 @@ The [Validate](./validate.md#preferred-terminology) page has the details.
 | No file at the path in `preferredTerminologyFile` | No rules. The CLI prints a warning, and Settings shows a note. A path to nothing is usually a typo. | A warning, then no rules |
 | The file is not valid JSON, is not an array, or has an invalid rule | The check is skipped. The CLI prints a warning. The editor stays silent, and Settings shows the error. | A failure, with exit code `1` |
 
-LingoTracker treats an unreadable file differently in `validate` on purpose. Authoring tools should keep working while someone fixes the file. The CI check should not pass while no rules are in force.
+The difference is deliberate. Authoring continues while someone repairs the rule file. Validation fails until the file is repaired, so CI never passes with no rules in force.
