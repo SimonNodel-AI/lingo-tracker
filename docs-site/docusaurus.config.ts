@@ -2,7 +2,7 @@ import type * as Preset from '@docusaurus/preset-classic';
 import type { Config } from '@docusaurus/types';
 
 const config: Config = {
-  title: 'Lingo Tracker',
+  title: 'LingoTracker',
   tagline: 'Translation management that lives in your repository',
   favicon: 'img/favicon.png',
 
@@ -50,9 +50,9 @@ const config: Config = {
       respectPrefersColorScheme: true,
     },
     navbar: {
-      title: 'Lingo Tracker',
+      title: 'LingoTracker',
       logo: {
-        alt: 'Lingo Tracker Logo',
+        alt: 'LingoTracker Logo',
         src: 'img/logo.png',
         srcDark: 'img/logo-dark.png',
       },

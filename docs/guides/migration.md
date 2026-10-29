@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # Migration Guide
 
-This guide moves existing translation files into LingoTracker with the `migration` import strategy, then switches your application to the generated bundles. It covers Transloco and i18next JSON directly, and XLIFF, gettext and CSV through a short conversion step.
+This guide moves existing translation files into LingoTracker with the `migration` import strategy, then switches your application to the generated bundles. It covers Transloco and i18next JSON and XLIFF 1.2 directly, and gettext and CSV through a short conversion step.
 
 ## Table of Contents
 

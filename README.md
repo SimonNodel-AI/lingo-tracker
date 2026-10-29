@@ -1,32 +1,42 @@
 # LingoTracker
 
-Translation management that lives in your repository.
+Catch stale and unreviewed translations in CI, not in production.
 
-LingoTracker manages translations for teams that keep strings in Git and review changes in pull requests. It stores source strings and translations as JSON, tracks translation status, and generates the per-locale JSON bundles and optional TypeScript key constants your application loads. It is built for [Transloco](https://github.com/jsverse/transloco). Other libraries can consume the nested JSON bundles when their placeholder syntax matches, with ICU-to-Transloco conversion turned off if needed.
+Translation files in a repository hold only values. When the source text changes, nothing marks the translations out of date, so stale translations ship silently.
 
-One npm package gives you three ways in: a CLI, a local web UI with a REST API, and an installable skill for AI coding assistants. There is no hosted service and no account.
+LingoTracker stores a status next to every translation in your Git repo. A changed source string marks its existing translations `stale`. Untranslated copies stay `new`. `lingo-tracker validate` fails CI while anything is missing, stale, unreviewed or invalid ICU for its locale. It is built for Angular apps using [Transloco](https://github.com/jsverse/transloco). One npm package gives you a CLI, a local web UI with a REST API, and an installable skill for AI coding assistants. There is no hosted service and no account.
 
-**Status:** pre-1.0. The CLI and API are stable and the tool is being validated in an enterprise Angular application. The 1.0 milestone is documentation; see the [roadmap](ROADMAP.md).
+**Status:** pre-1.0. The CLI and API are stable. See the [roadmap](ROADMAP.md) and the [changelog](CHANGELOG.md).
 
 ## Why use it
 
-**Translations have a status.** Every translation is `new`, `translated`, `stale` or `verified`. When a source string changes, checksums mark every existing translation `stale`; untranslated copies stay `new`. Run `validate` in CI and nothing incomplete or unreviewed ships.
+**Gate the release.**
 
-**Storage is reviewable.** Resources live in folders derived from their dot-delimited keys. Each folder holds one file for values and one for metadata, so a pull request shows exactly which strings and statuses changed.
+- Every translation is `new`, `translated`, `stale` or `verified`. Checksums mark existing translations `stale` when the source changes. Untranslated copies stay `new`.
+- `validate` fails CI on missing, stale or unreviewed strings. Use `--allow-translated` for a staging gate.
+- Every value compiles as an ICU message under its own locale. A plural that is valid in English but invalid in Japanese is caught before it renders empty.
+- Pull requests show exactly which strings and statuses changed, because values and metadata are plain JSON per folder.
 
-**Bundles and typed keys are generated.** `lingo-tracker bundle` assembles one JSON file per locale from any mix of collections, key patterns and tags, and can emit a TypeScript constant tree so a mistyped key fails to compile.
+**Generate runtime bundles.**
 
-**`validate` is a release gate.** It fails CI when a translation is missing, stale or unreviewed. It also compiles every value as an ICU message under its own locale, so a plural that is valid in English but invalid in Japanese is caught before it renders as an empty string.
+- `bundle` writes one JSON file per locale from any mix of collections, key patterns and tags.
+- It can emit a TypeScript constant tree, so a mistyped key fails to compile.
+- `bundle --debug-keys` writes an extra bundle whose values are the keys themselves. Load it as its own locale to identify strings in the app.
+- Read-only collections let you bundle translations shipped by a component library without editing them. `add-collection` defaults folders under `node_modules` to read-only.
 
-**Vendor round trips are built in.** Export `new` and `stale` strings as XLIFF 1.2 or JSON. Import strategies set the resulting status. Import repairs placeholder names translators changed and rejects translations that altered a protected term.
+**Translate and review strings.**
 
-**Terminology stays consistent.** Protected terms survive translation unchanged. Preferred terminology flags discouraged wording in source text. The glossary command gives help-content translators the terms your UI already uses.
+- Export `new` and `stale` strings as XLIFF 1.2 or JSON. Import with `translation-service` for vendor deliveries, `verification` for approvals, `migration` for existing files, or `update` for bulk corrections that keep the current status.
+- Import repairs placeholder names that translators changed. It rejects translations that altered a protected term.
+- Protected terms survive translation. Preferred terminology flags discouraged wording in source text.
+- When enabled with a Google Cloud Translation v2 key, auto-translation fills target locales as you add strings. It skips complex ICU and any result with a lost or corrupted placeholder or a missing protected term. Results are marked `translated`, never `verified`.
 
-**Machine translation covers the simple cases.** When auto-translation is enabled and a Google Cloud Translation key is configured, new strings are translated as you add them. Placeholders are protected, complex ICU messages are left for people, and the result is marked `translated`, never `verified`.
+**Work in the UI or from an assistant.**
 
-**A local web UI.** Browse a folder tree, search keys and values, filter by status, edit with similar-string suggestions, and run exports, imports and bundle generation with a live preview.
+- A local web UI lets you browse, search and filter by status. You edit with similar-string suggestions and run exports, imports and bundles with a live preview.
+- `install-skill` writes a skill tailored to your collections. Claude Code or a similar assistant can then find hardcoded strings, reuse keys, add resources and update components.
 
-**AI assistants can do the chores.** `lingo-tracker install-skill` writes a skill tailored to your collections and bundles, so Claude Code or a similar tool can find hardcoded strings, reuse existing keys, add resources and update components.
+**Adopting it.** Existing Transloco or i18next JSON moves in through the `migration` import strategy. Gettext and CSV need a short conversion step. See the [migration guide](docs/guides/migration.md). After you resolve a merge conflict in the JSON files, run `normalize`. It recomputes checksums and reapplies the status rules. See the [normalize guide](docs/guides/normalize.md).
 
 ## Quick start
 
@@ -49,9 +59,10 @@ npx lingo-tracker bundle
 
 # Open the web UI at http://localhost:3030
 npx lingo-tracker-app
-```
 
-Before a release, run `npx lingo-tracker validate`. In this example it exits with code 1, because the French translation is not yet verified and the Spanish one is still the English text.
+# Gate the release
+npx lingo-tracker validate   # exits 1: fr-ca not verified, es still English
+```
 
 The [Getting Started guide](https://simoncodes-ca.github.io/lingo-tracker/docs/getting-started) explains each step and what the files look like.
 
@@ -61,6 +72,7 @@ The [Getting Started guide](https://simoncodes-ca.github.io/lingo-tracker/docs/g
 - It has no user accounts or history beyond what Git gives you.
 - Machine translation supports Google Cloud Translation v2 only and skips plural, select and formatted ICU messages.
 - The web UI runs locally without authentication. It is for one developer's machine, not a shared server.
+- Other libraries can consume the nested JSON bundles when their placeholder syntax matches, with ICU-to-Transloco conversion turned off.
 
 ## Documentation
 
@@ -72,10 +84,11 @@ The full documentation is at [simoncodes-ca.github.io/lingo-tracker](https://sim
 | [Concepts](docs/concepts.md) | Keys, folders, the two files, statuses and checksums |
 | [Configuration](docs/configuration.md) | Every field of `.lingo-tracker.json` |
 | [CLI Reference](docs/cli.md) | Every command, flag and exit code |
-| [API Reference](docs/api.md) | Every endpoint of `lingo-tracker-app` |
+| [API Reference](docs/api.md) | Every endpoint of `lingo-tracker-app`, with Swagger UI at `/api` |
 | [Tracker UI](docs/tracker-ui.md) | The web application |
 | [Guides](docs/guides/) | Bundling, translation workflow, CI/CD, migration, normalize, AI assistant |
 | [Features](docs/features/) | Validate, export, import, type generation, terminology, glossary |
+| [Changelog](CHANGELOG.md) | Release history |
 
 For contributors, [architecture-docs](architecture-docs/README.md) describes the monorepo, data model and application layers.
 
