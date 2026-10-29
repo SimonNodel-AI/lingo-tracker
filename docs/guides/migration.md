@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # Migration Guide
 
-This guide provides step-by-step instructions for migrating translation resources from other translation management systems to LingoTracker.
+This guide moves existing translation files into LingoTracker with the `migration` import strategy, then switches your application to the generated bundles. It covers Transloco and i18next JSON directly, and XLIFF, gettext and CSV through a short conversion step.
 
 ## Table of Contents
 
@@ -91,17 +91,19 @@ cp -r ./src/i18n.backup ./src/i18n
 
 ### 3. Choose Migration Strategy
 
-LingoTracker's import feature has a dedicated `migration` strategy that:
-- Creates new resources when `--create-missing` is specified
-- Resolves Transloco-style key references (`{{t('key')}}`)
-- Updates comments and tags when `--update-comments` / `--update-tags` are specified
-- Sets all imported translations to `translated` status
+The import command's `migration` strategy is built for this. With it, import:
 
-> **Tip**: Always do a dry run first to preview what will be created before committing to the import:
-> ```bash
-> lingo-tracker import --source en.json --locale en --strategy migration \
->   --create-missing --dry-run
-> ```
+- creates resources that do not exist yet (`--create-missing` is on by default)
+- is the only strategy allowed to write the base locale
+- resolves Transloco key references such as `{{t('other.key')}}` by inlining the referenced text
+- updates comments and tags from the file (`--update-comments` and `--update-tags` are on by default)
+- stores imported values as `translated`, or with the file's own status when you pass `--preserve-status` with rich JSON
+
+Always dry-run first. The preview uses "Would" language and writes nothing:
+
+```bash
+lingo-tracker import --source en.json --locale en --strategy migration --dry-run
+```
 
 ---
 
@@ -144,53 +146,22 @@ src/assets/i18n/
 Import the base locale first to create the resource structure. If you have multiple collections, add `--collection <name>`:
 
 ```bash
-lingo-tracker import \
-  --source ./src/assets/i18n/en.json \
-  --locale en \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags \
-  --verbose
+lingo-tracker import --source ./src/assets/i18n/en.json --locale en --strategy migration --verbose
 ```
 
-**Note**: Importing into the base locale is only supported with the `migration` strategy. It creates resources with the base locale value set from the JSON values.
+Importing into the base locale is only possible with the `migration` strategy. Each JSON value becomes a resource's source text. Target locales are not filled in at this point; the next steps import them, and `normalize` later seeds any locale that still has no value.
 
 ### Step 2: Import Target Locales
 
 Import each target locale:
 
 ```bash
-# Import Spanish
-lingo-tracker import \
-  --source ./src/assets/i18n/es.json \
-  --locale es \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags \
-  --verbose
-
-# Import French
-lingo-tracker import \
-  --source ./src/assets/i18n/fr.json \
-  --locale fr \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags
-
-# Import German
-lingo-tracker import \
-  --source ./src/assets/i18n/de.json \
-  --locale de \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags
+lingo-tracker import --source ./src/assets/i18n/es.json --locale es --strategy migration
+lingo-tracker import --source ./src/assets/i18n/fr.json --locale fr --strategy migration
+lingo-tracker import --source ./src/assets/i18n/de.json --locale de --strategy migration
 ```
 
-> **If your target locale files are missing base values**, you can add them with a transformation script before importing. See [Migrating from Other Systems > Generic JSON](#from-json-files-generic) for an example transform.
+Because the base locale went in first, plain string values are enough here. A target-locale file can only create a resource the base import did not create when it carries a `baseValue`, as in the rich JSON format shown under [Generic JSON](#from-json-files-generic). A key that exists only in a target file and has no base value fails to import, is listed in the summary, and makes the command exit 1.
 
 ### Step 3: Handle Transloco References
 
@@ -216,12 +187,7 @@ This happens automatically with the `migration` strategy.
 
 ### Step 4: Verify Migration
 
-Check the import summary — the exact path is printed at the end of each import command output (typically `{translationsFolder}/import-summary.md`):
-
-```bash
-# Example — adjust path to match your translationsFolder config
-cat translations/import-summary.md
-```
+Each import prints the path of its Markdown summary, which is written to the operating system's temp directory as `lingo-tracker-import-summary-<timestamp>.md`. Open it to check counts, warnings and any keys that were skipped or failed.
 
 Verify a few resources were created correctly:
 
@@ -383,38 +349,14 @@ node combine-namespaces.js
 Import the base locale (usually English). If you have multiple collections, add `--collection <name>`:
 
 ```bash
-lingo-tracker import \
-  --source ./migration/en.json \
-  --locale en \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags \
-  --verbose
+lingo-tracker import --source ./migration/en.json --locale en --strategy migration --verbose
 ```
 
 ### Step 3: Import Target Locales
 
-Import each target locale:
-
 ```bash
-# Import Spanish
-lingo-tracker import \
-  --source ./migration/es.json \
-  --locale es \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags
-
-# Import French
-lingo-tracker import \
-  --source ./migration/fr.json \
-  --locale fr \
-  --strategy migration \
-  --create-missing \
-  --update-comments \
-  --update-tags
+lingo-tracker import --source ./migration/es.json --locale es --strategy migration
+lingo-tracker import --source ./migration/fr.json --locale fr --strategy migration
 ```
 
 ### Step 4: Update i18next Configuration
@@ -449,7 +391,7 @@ lingo-tracker bundle
 }
 ```
 
-Your i18next configuration stays the same - it will load from the generated bundle files.
+This bundle writes the whole combined tree, with `common`, `dashboard` and `translation` as top-level keys, into one `translation.json` per locale. It does not recreate the separate namespace files. Either update your i18next setup to load one namespace from that file, or define one bundle per namespace with a `matchingPattern` such as `common.*` and a `bundleName` of `{locale}/common`.
 
 ---
 
@@ -498,17 +440,8 @@ Create a transformation script to convert your format to LingoTracker's expected
 #### Step 2: Import with Migration Strategy
 
 ```bash
-lingo-tracker import \
-  --source ./transformed-en.json \
-  --locale en \
-  --strategy migration \
-  --create-missing
-
-lingo-tracker import \
-  --source ./transformed-es.json \
-  --locale es \
-  --strategy migration \
-  --create-missing
+lingo-tracker import --source ./transformed-en.json --locale en --strategy migration
+lingo-tracker import --source ./transformed-es.json --locale es --strategy migration
 ```
 
 ### From XLIFF Files
@@ -517,27 +450,15 @@ If your source system exports XLIFF files (common for CAT tools like SDL Trados,
 
 #### Step 1: Ensure XLIFF 1.2 Format
 
-LingoTracker supports XLIFF 1.2. If you have XLIFF 2.0, convert it first:
-
-```bash
-# Using xliff-tool (install via npm)
-npm install -g xliff-tool
-xliff-tool convert --from xliff2 --to xliff es.xlf es-converted.xliff
-```
+LingoTracker reads XLIFF 1.2 only. Most CAT tools can export 1.2 directly; if you only have XLIFF 2.0, export again in 1.2 or convert with your tool of choice. The `<trans-unit id>` must be the dot-delimited key.
 
 #### Step 2: Import XLIFF Files
 
 ```bash
-# Import each locale
-lingo-tracker import \
-  --source ./es.xliff \
-  --locale es \
-  --strategy migration \
-  --create-missing \
-  --verbose
+lingo-tracker import --source ./es.xliff --locale es --strategy migration --verbose
 ```
 
-XLIFF files include both source and target values, so LingoTracker automatically creates resources with proper base values.
+XLIFF units carry both `<source>` and `<target>`, so resources are created with their base value even when the base locale was never imported separately. Units with an empty `<target>` are skipped.
 
 ### From PO Files (gettext)
 
@@ -545,14 +466,7 @@ If your source system uses PO files (gettext format):
 
 #### Step 1: Convert PO to JSON
 
-Use a conversion tool like `po2json`:
-
-```bash
-npm install -g po2json
-
-# Convert PO to JSON
-po2json es.po es.json --format mf
-```
+Convert each PO file to a flat JSON object of `msgid` to `msgstr` with the gettext tooling you already use, for example `po2json` from npm or a few lines of Python with `polib`. The transform below expects that shape.
 
 #### Step 2: Transform to LingoTracker Format
 
@@ -584,11 +498,7 @@ fs.writeFileSync('./es-transformed.json', JSON.stringify(transformed, null, 2));
 #### Step 3: Import
 
 ```bash
-lingo-tracker import \
-  --source ./es-transformed.json \
-  --locale es \
-  --strategy migration \
-  --create-missing
+lingo-tracker import --source ./es-transformed.json --locale es --strategy migration
 ```
 
 ### From CSV Files
@@ -643,9 +553,9 @@ buttons.ok,OK,Aceptar,OK,OK
 #### Step 2: Import
 
 ```bash
-lingo-tracker import --source ./es.json --locale es --strategy migration --create-missing
-lingo-tracker import --source ./fr.json --locale fr --strategy migration --create-missing
-lingo-tracker import --source ./de.json --locale de --strategy migration --create-missing
+lingo-tracker import --source ./es.json --locale es --strategy migration
+lingo-tracker import --source ./fr.json --locale fr --strategy migration
+lingo-tracker import --source ./de.json --locale de --strategy migration
 ```
 
 ---
@@ -654,12 +564,7 @@ lingo-tracker import --source ./de.json --locale de --strategy migration --creat
 
 ### 1. Verify Import Summary
 
-The import command prints the summary file path at the end of its output. Open it to check each locale import:
-
-```bash
-# Path depends on your translationsFolder config — check the import output
-cat translations/import-summary.md
-```
+Each import prints the path of its summary file in the temp directory. Open it to check each locale import:
 
 Look for:
 - Resources imported count
@@ -669,13 +574,13 @@ Look for:
 
 ### 2. Run Normalization
 
-Ensure all resources have entries for all configured locales:
+Ensure all resources have entries for all configured locales, normalized tags and consistent checksums:
 
 ```bash
 lingo-tracker normalize --all
 ```
 
-This adds missing locale entries with the base value as a placeholder.
+This adds missing locale entries as `new` copies of the source and brings tags imported from rich JSON into the normalized form. See the [Normalize guide](./normalize.md).
 
 ### 3. Review Missing Translations
 
@@ -795,13 +700,11 @@ Or import base locale first, then import target locales.
 
 ### Keys Not Created: Hierarchical conflict
 
-**Cause**: A key exists as both a parent and a leaf. For example:
+**Cause**: A key exists as both a parent and a leaf. For example, in a flat file:
 ```json
 {
   "app": "My App",
-  "app": {
-    "title": "App Title"
-  }
+  "app.title": "App Title"
 }
 ```
 
@@ -862,49 +765,34 @@ cat translations/path/to/resource/resource_entries.json
 
 ### Import Summary Shows Skipped Resources
 
-**Cause**: Using wrong strategy or missing `--create-missing`. Default `translation-service` strategy doesn't create new resources.
+**Cause**: The default `translation-service` strategy does not create resources, and a target-locale file cannot create a resource without a base value.
 
-**Solution**: Use `--strategy migration --create-missing` for migration imports:
+**Solution**: Use `--strategy migration`, and import the base locale first or supply `baseValue` in rich JSON:
 
 ```bash
-lingo-tracker import --source file.json --locale es --strategy migration --create-missing
+lingo-tracker import --source file.json --locale es --strategy migration
 ```
 
 ---
 
-## Summary
-
-Migrating to LingoTracker involves:
-
-1. **Prepare** source files (transform format if needed)
-2. **Dry run** with `--dry-run` to preview what will be created
-3. **Import** with `--strategy migration --create-missing`
-4. **Normalize** to add missing locale entries
-5. **Configure** bundles for your framework
-6. **Test** thoroughly before removing old files
-
-### Quick Reference
+## Quick Reference
 
 ```bash
 # Migration workflow (base locale first, then target locales)
-lingo-tracker import --source en.json --locale en --strategy migration \
-  --create-missing --update-comments --update-tags
-lingo-tracker import --source es.json --locale es --strategy migration \
-  --create-missing --update-comments --update-tags
-lingo-tracker import --source fr.json --locale fr --strategy migration \
-  --create-missing --update-comments --update-tags
+lingo-tracker import --source en.json --locale en --strategy migration --dry-run
+lingo-tracker import --source en.json --locale en --strategy migration
+lingo-tracker import --source es.json --locale es --strategy migration
+lingo-tracker import --source fr.json --locale fr --strategy migration
 
 # Post-migration
 lingo-tracker normalize --all
 lingo-tracker bundle
-
-# Verify (path printed at end of each import command)
-cat translations/import-summary.md
+lingo-tracker validate --allow-translated
 ```
 
 For additional help:
-- [Import Feature Documentation](../features/import.md)
+- [Import](../features/import.md)
 - [CLI Reference](../cli.md)
-- [Getting Started Guide](../getting-started.md)
+- [Getting Started](../getting-started.md)
 
-**Need Help?** Open an issue at [github.com/lingotracker/lingotracker/issues](https://github.com/lingotracker/lingotracker/issues)
+**Need help?** Open an issue at [github.com/simoncodes-ca/lingo-tracker/issues](https://github.com/simoncodes-ca/lingo-tracker/issues).

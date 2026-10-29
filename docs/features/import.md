@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # Import Feature
 
-The Import feature allows you to import translation resources from external sources in standard formats (XLIFF and JSON), supporting professional translation workflows, system migrations, and expert verification processes.
+Import reads an XLIFF 1.2 or JSON file into one collection and one locale. A strategy decides what status the imported values get and whether missing keys are created, so the same command serves vendor deliveries, reviewer approvals, migrations from other systems and bulk corrections. Import repairs placeholder names a translator changed, refuses translations that altered a protected term, and writes a Markdown summary of everything it did.
 
 ## Usage
 
@@ -31,12 +31,12 @@ You can explicitly specify the format with `--format <format>` if needed.
 | `-s, --source <file>` | Path to import file (required). | - |
 | `-l, --locale <locale>` | Target locale for import (e.g., `es`, `fr-ca`). | - |
 | `-f, --format <format>` | Import format (`xliff` or `json`). | Auto-detect from extension |
-| `-c, --collection <name>` | Target collection to import into. | Default collection |
+| `-c, --collection <name>` | Target collection to import into. | The only collection, or a prompt |
 | `--strategy <strategy>` | Import strategy (see below). | `translation-service` |
-| `--update-comments` | Update resource comments from import data. | `false` |
-| `--update-tags` | Update resource tags from rich JSON. | `false` |
-| `--preserve-status` | Allow rich JSON to specify status (advanced). | `false` |
-| `--create-missing` | Create new resources if they don't exist. | Strategy-dependent |
+| `--update-comments` | Update resource comments from import data. | On for `migration`, off otherwise |
+| `--update-tags` | Update resource tags from rich JSON. | On for `migration`, off otherwise |
+| `--preserve-status` | Honour a `status` field in rich JSON instead of the strategy's status. | `false` |
+| `--create-missing` | Create new resources if they don't exist. | On for `migration`, off otherwise |
 | `--validate-base` | Warn if source base value differs from existing. | `true` |
 | `--dry-run` | Preview import without modifying files. | `false` |
 | `--verbose` | Show detailed import progress. | `false` |
@@ -45,18 +45,18 @@ You can explicitly specify the format with `--format <format>` if needed.
 
 ## Import Strategies
 
-Different import workflows require different approaches. The `--strategy` option selects the appropriate behavior:
+The `--strategy` option selects what happens to statuses and missing keys:
 
 ### translation-service (Default)
 
 **Use Case**: Importing translations from professional translation houses/services
 
 **Behavior**:
-- Sets status to `translated` for all imported values
-- Preserves existing base values (warns if source differs)
-- Does NOT create new resources (skips missing resources; counted in Resources Skipped, not an error)
-- Does NOT update comments or tags by default
-- Collection-level inherited tags are **not** stored in bundle files — they re-apply automatically based on the destination collection's own config after import
+- A value that differs from the stored one is written with status `translated`
+- A value identical to the stored one is re-confirmed: it keeps its status, except that a `stale` entry, or one whose source changed since, becomes `translated` again
+- Preserves existing base values (warns if the file's source differs)
+- Does NOT create new resources (missing keys are counted as skipped, not as errors)
+- Does NOT update comments or tags unless asked
 
 **Typical Workflow**:
 1. Export resources with status `new,stale` to XLIFF
@@ -90,20 +90,17 @@ lingo-tracker import --source verified-fr.xliff --locale fr --strategy verificat
 
 **Behavior**:
 - Creates new resources with base values from XLIFF `<source>` or JSON `baseValue`
-- Sets status to `translated` (use `--preserve-status` with rich JSON to honor source status)
+- Sets status to `translated`, or to the `status` found in rich JSON when `--preserve-status` is given
 - Resolves Transloco key references (e.g., `{{t('other.key')}}`, `{{key}}`) by inlining the referenced value; missing references emit a "Missing reference target" warning and circular references emit a "Circular reference detected" warning — both are preserved as literals
 - Normalizes Transloco plural/select syntax to ICU format
 - Overwrites existing values and metadata
+- Is the only strategy allowed to import into the base locale
 
-**Flags Default**:
-- `--create-missing`: `true` (applied automatically for migration strategy)
-- `--update-comments`: `false` (pass explicitly to enable)
-- `--update-tags`: `false` (pass explicitly to enable)
+**Flag defaults**: `--create-missing`, `--update-comments` and `--update-tags` are on for this strategy.
 
 **Example**:
 ```bash
-lingo-tracker import --source old-system-fr.json --locale fr --strategy migration \
-  --update-comments --update-tags
+lingo-tracker import --source old-system-fr.json --locale fr --strategy migration
 ```
 
 ### update
@@ -180,6 +177,8 @@ JSON import provides flexible format options for system migrations and integrati
 }
 ```
 
+Imported tags are stored as given; run `normalize` afterwards to bring them into the normalized lowercase form.
+
 **Flat with Rich Objects**:
 ```json
 {
@@ -244,7 +243,7 @@ Original: "Hola {nombre}, tienes {numero} mensajes"
 Auto-Fixed: "Hola {name}, tienes {count} mensajes"
 ```
 
-This ensures translations work correctly even when translators accidentally modify placeholder names.
+Review the reported repairs before you accept the import.
 
 ## Import Summary
 
@@ -324,8 +323,8 @@ lingo-tracker import --source de.xliff --locale de --strategy translation-servic
 ### Language Expert Verification
 
 ```bash
-# Export all translations for review
-lingo-tracker export --format xliff --locale es
+# Export the translations that await review
+lingo-tracker export --format xliff --locale es --status translated
 
 # After expert review
 lingo-tracker import --source es-reviewed.xliff --locale es --strategy verification
@@ -334,8 +333,8 @@ lingo-tracker import --source es-reviewed.xliff --locale es --strategy verificat
 ### Bulk Corrections
 
 ```bash
-# Export current translations
-lingo-tracker export --format json --locale es
+# Export every current translation, whatever its status
+lingo-tracker export --format json --locale es --status new,stale,translated,verified
 
 # Edit JSON file to fix typos
 # Import corrections
@@ -404,7 +403,7 @@ When the import finishes, a result strip appears on the Collections page:
 - **Dismiss** removes the strip.
 - **Retry** opens the dialog again with the same request. It appears when the import failed.
 
-The import runs as a background job. The API behind it is described in the [Imports API](../api.md#imports-api) section of the API reference.
+The import runs as a background job. The API behind it is described in the [Imports API](../api.md#imports) section of the API reference.
 
 ### Round trip in the UI
 

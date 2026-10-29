@@ -3,7 +3,7 @@ import type { Config } from '@docusaurus/types';
 
 const config: Config = {
   title: 'Lingo Tracker',
-  tagline: 'Effortlessly Track, Validate, and Manage Your Translations',
+  tagline: 'Translation management that lives in your repository',
   favicon: 'img/favicon.png',
 
   url: 'https://simoncodes-ca.github.io',
@@ -33,7 +33,8 @@ const config: Config = {
           path: '../docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/simoncodes-ca/lingo-tracker/edit/develop/',
+          exclude: ['**/adr/**'],
+          editUrl: 'https://github.com/simoncodes-ca/lingo-tracker/edit/develop/docs-site/',
         },
         blog: false,
         theme: {
@@ -76,6 +77,7 @@ const config: Config = {
           title: 'Docs',
           items: [
             { label: 'Getting Started', to: '/docs/getting-started' },
+            { label: 'Concepts', to: '/docs/concepts' },
             { label: 'CLI Reference', to: '/docs/cli' },
             { label: 'API Reference', to: '/docs/api' },
           ],
