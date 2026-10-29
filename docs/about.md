@@ -62,6 +62,10 @@ Knowing the limits saves time:
 - The editor does not validate ICU syntax as you type, beyond rejecting placeholders in literal braces. The `validate` command does.
 - Bundle output is plain nested JSON. Framework-specific integration beyond Transloco is up to you.
 
+## Status
+
+LingoTracker is pre-1.0. Every pull request to `develop` runs unit tests and CLI end-to-end tests for the affected projects. The web UI has a Playwright end-to-end suite.
+
 ## Where to go next
 
 - [Getting Started](./getting-started.md) installs the CLI, creates a project and generates a first bundle.

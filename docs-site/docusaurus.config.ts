@@ -34,7 +34,7 @@ const config: Config = {
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
           exclude: ['**/adr/**'],
-          editUrl: 'https://github.com/simoncodes-ca/lingo-tracker/edit/develop/docs-site/',
+          editUrl: ({ docPath }) => `https://github.com/simoncodes-ca/lingo-tracker/edit/develop/docs/${docPath}`,
         },
         blog: false,
         theme: {
