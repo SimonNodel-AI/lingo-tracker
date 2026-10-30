@@ -88,10 +88,14 @@ function resolveImportReferences(session: ImportSession, resources: readonly Imp
 function rejectUnsafeStoredValues(session: ImportSession, resources: ImportedResource[]): ImportedResource[] {
   return resources.filter((resource) => {
     const descriptions = [
-      ...checkStoredValue(resource.value).map((found) => `Value: ${describeStoredValueFinding(found)}`),
+      ...checkStoredValue(resource.value, { simpleArgumentPaths: session.collection.runtime === 'transloco' }).map(
+        (found) => `Value: ${describeStoredValueFinding(found)}`,
+      ),
       ...(resource.baseValue === undefined
         ? []
-        : checkStoredValue(resource.baseValue).map((found) => `Base value: ${describeStoredValueFinding(found)}`)),
+        : checkStoredValue(resource.baseValue, { simpleArgumentPaths: session.collection.runtime === 'transloco' }).map(
+            (found) => `Base value: ${describeStoredValueFinding(found)}`,
+          )),
     ];
     if (descriptions.length === 0) return true;
     const message = descriptions.join('\n');
@@ -111,6 +115,7 @@ function repairImportPlaceholders(session: ImportSession, resources: ImportedRes
   const baseValues = loadBaseLocaleValues(resources, session.collection);
   const autoFix = applyICUAutoFixToResources({
     resources,
+    simpleArgumentPaths: session.collection.runtime === 'transloco',
     getBaseValue: (key) => baseValues.get(key),
     verbose,
     onProgress: verbose ? onProgress : undefined,

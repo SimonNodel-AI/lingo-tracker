@@ -1,10 +1,10 @@
-import { repairPlaceholders } from '@simoncodes-ca/domain';
+import { type IcuParseOptions, repairPlaceholders } from '@simoncodes-ca/domain';
 import type { ICUAutoFix, ICUAutoFixError, ImportedResource } from './types';
 
 /**
  * Configuration for applying ICU auto-fixes to imported resources
  */
-interface ApplyICUAutoFixConfig {
+interface ApplyICUAutoFixConfig extends IcuParseOptions {
   /** The imported resource to potentially auto-fix */
   resource: ImportedResource;
   /**
@@ -61,11 +61,14 @@ interface ApplyICUAutoFixResult {
 export function applyICUAutoFixToResource(config: ApplyICUAutoFixConfig): ApplyICUAutoFixResult {
   const { resource, storedBaseValue, importedBaseValue, verbose, onProgress } = config;
 
-  const repair = repairPlaceholders({
-    translation: resource.value,
-    storedBase: storedBaseValue,
-    importedBase: importedBaseValue,
-  });
+  const repair = repairPlaceholders(
+    {
+      translation: resource.value,
+      storedBase: storedBaseValue,
+      importedBase: importedBaseValue,
+    },
+    config,
+  );
 
   if (repair.outcome === 'skipped') return { resource };
 
@@ -130,12 +133,14 @@ export function applyICUAutoFixToResource(config: ApplyICUAutoFixConfig): ApplyI
  * console.log(`Failed to auto-fix ${result.autoFixErrors.length} resources`);
  * ```
  */
-export function applyICUAutoFixToResources(params: {
-  resources: ImportedResource[];
-  getBaseValue: (key: string) => string | undefined;
-  verbose?: boolean;
-  onProgress?: (message: string) => void;
-}): {
+export function applyICUAutoFixToResources(
+  params: IcuParseOptions & {
+    resources: ImportedResource[];
+    getBaseValue: (key: string) => string | undefined;
+    verbose?: boolean;
+    onProgress?: (message: string) => void;
+  },
+): {
   resources: ImportedResource[];
   autoFixes: ICUAutoFix[];
   autoFixErrors: ICUAutoFixError[];
@@ -153,6 +158,7 @@ export function applyICUAutoFixToResources(params: {
   for (const resource of resources) {
     const result = applyICUAutoFixToResource({
       resource,
+      simpleArgumentPaths: params.simpleArgumentPaths,
       storedBaseValue: getBaseValue(resource.key),
       importedBaseValue: resource.baseValue,
       verbose,

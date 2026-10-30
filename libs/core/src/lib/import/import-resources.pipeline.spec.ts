@@ -107,6 +107,47 @@ describe('importResources pipeline', () => {
     });
   }
 
+  it('imports dotted Transloco arguments without repair, mismatch or round-trip warnings', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { greeting: { source: 'Hello {user.name}' } });
+    const path = source(
+      'es.json',
+      JSON.stringify({
+        'common.greeting': { value: 'Hello {{ user.name }}', baseValue: 'Hello {{ user.name }}' },
+      }),
+    );
+    const result = importResources(collection, parseJsonImport(path).resources, {
+      locale: 'es',
+      strategy: 'migration',
+      validateBase: true,
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.resourcesFailed).toBe(0);
+    expect(result.errors).toEqual([]);
+    // Migration still reports unresolved dotted references; this is not an ICU warning.
+    expect(result.warnings).toEqual(['Missing reference target: "user.name" - preserving literal']);
+    expect(result.icuAutoFixes).toEqual([]);
+    expect(result.icuAutoFixErrors).toEqual([]);
+    expect(folder('common').get('greeting')?.entry).toEqual({
+      source: 'Hello {user.name}',
+      es: 'Hello {user.name}',
+    });
+  });
+
+  it('repairs dotted stored arguments in a translation-service import under Transloco', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { greeting: { source: 'Hello {user.name}' } });
+    const result = importResources(collection, [{ key: 'common.greeting', value: 'Hola {user.nam}' }], {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.errors).toEqual([]);
+    expect(result.icuAutoFixErrors).toEqual([]);
+    expect(result.icuAutoFixes).toMatchObject([{ fixedValue: 'Hola {user.name}' }]);
+    expect(folder('common').get('greeting')?.entry['es']).toBe('Hola {user.name}');
+  });
+
   it('normalizes XLIFF migration values and base values before argument checks under plain Transloco', async () => {
     collection = { ...collection, runtime: 'transloco' };
     seed('common', { booklore: { source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries" } });

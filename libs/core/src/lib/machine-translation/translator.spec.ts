@@ -76,6 +76,24 @@ describe('openTranslator', () => {
 });
 
 describe('Translator.translate', () => {
+  it('protects and restores dotted simple arguments for a Transloco collection', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Bonjour'));
+    const outcome = await openTranslator(collection({ runtime: 'transloco' }), { provider }).translate(
+      [
+        { key: 'greeting', source: 'Hello {user.name}' },
+        { key: 'count', source: '{user.name} has {n, plural, other {# items}}' },
+      ],
+      ['fr'],
+    );
+    expect(provider.calls).toEqual([
+      [{ text: 'Hello <span class="notranslate">__PH0__</span>', sourceLocale: 'en', targetLocale: 'fr' }],
+    ]);
+    expect(outcome).toEqual({
+      values: [{ key: 'greeting', locale: 'fr', value: 'Bonjour {user.name}' }],
+      skipped: [{ key: 'count', locale: 'fr', reason: 'complex-icu' }],
+    });
+  });
+
   it('makes one provider call per locale, with every sendable entry, and ignores the base locale', async () => {
     const provider = new InMemoryTranslationProvider();
     const translator = openTranslator(collection(), { provider });

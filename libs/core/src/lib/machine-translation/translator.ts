@@ -21,7 +21,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { admitValue, classifyICUContent, icuQuotedRuns } from '@simoncodes-ca/domain';
+import { type AppRuntime, admitValue, classifyICUContent, icuQuotedRuns } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -129,10 +129,12 @@ export function openPreparedTranslator(
   return {
     problems: terms?.warnings ?? [],
     async translate(entries, locales) {
-      const prepared = entries.map(prepare);
+      const prepared = entries.map((entry) => prepare(entry, collection.runtime));
       const targets = [...new Set(locales)].filter((locale) => locale !== baseLocale);
       const perLocale = await Promise.all(
-        targets.map((locale) => translateForLocale(provider, prepared, baseLocale, locale, protectedTerms)),
+        targets.map((locale) =>
+          translateForLocale(provider, prepared, baseLocale, locale, protectedTerms, collection.runtime),
+        ),
       );
       return {
         values: perLocale.flatMap(({ values }) => values),
@@ -164,8 +166,8 @@ type PreparedEntry =
       readonly placeholders: ReadonlyArray<ExtractedPlaceholder>;
     };
 
-function prepare(entry: TranslatorEntry): PreparedEntry {
-  const classification = classifyICUContent(entry.source);
+function prepare(entry: TranslatorEntry, runtime: AppRuntime): PreparedEntry {
+  const classification = classifyICUContent(entry.source, { simpleArgumentPaths: runtime === 'transloco' });
   if (classification === 'complex-icu') {
     return { entry, kind: 'complex-icu' };
   }
@@ -182,6 +184,7 @@ async function translateForLocale(
   sourceLocale: string,
   targetLocale: string,
   protectedTerms: readonly string[],
+  runtime: AppRuntime,
 ): Promise<TranslationOutcome> {
   const sendable = prepared.filter((item) => item.kind === 'sendable');
   const results =
@@ -212,10 +215,15 @@ async function translateForLocale(
       skipped.push({ key, locale: targetLocale, reason: 'placeholder-mismatch' });
       continue;
     }
-    const admission = admitValue(source, restored.value, {
-      name: 'machine-translation',
-      protectedTerms,
-    });
+    const admission = admitValue(
+      source,
+      restored.value,
+      {
+        name: 'machine-translation',
+        protectedTerms,
+      },
+      { simpleArgumentPaths: runtime === 'transloco' },
+    );
     if (admission.admitted === false) {
       skipped.push(
         admission.reason.kind === 'protected-term-dropped'

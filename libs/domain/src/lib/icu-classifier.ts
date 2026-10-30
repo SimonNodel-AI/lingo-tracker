@@ -1,4 +1,4 @@
-import { type IcuError, parseIcuMessage } from './icu-message';
+import { type IcuError, type IcuParseOptions, parseIcuMessage } from './icu-message';
 
 /**
  * ICU Message Format Classification
@@ -65,8 +65,8 @@ export type ICUClassification = 'plain' | 'simple-placeholders' | 'complex-icu';
  * // → 'complex-icu'  (mixed)
  * ```
  */
-export function classifyICUContent(value: string): ICUClassification {
-  const message = parseIcuMessage(value, { interpolation: true });
+export function classifyICUContent(value: string, options: IcuParseOptions = {}): ICUClassification {
+  const message = parseIcuMessage(value, { ...options, interpolation: true });
   let foundSimple = false;
   let foundComplex = false;
 

@@ -31,7 +31,8 @@ import {
  */
 
 /** What the sweep needs from a collection. A resolved `Collection` fits. */
-export type CollectionSweepTarget = Pick<Collection, 'translationsFolder' | 'baseLocale'>;
+export type CollectionSweepTarget = Pick<Collection, 'translationsFolder' | 'baseLocale'> &
+  Partial<Pick<Collection, 'runtime'>>;
 
 /** One folder of a sweep: opened, or a problem. */
 export type SweptFolder<Folder extends ReadonlyResourceFolder = ReadonlyResourceFolder> =
@@ -70,6 +71,7 @@ export function* sweepCollection(
       const openFolder = options.unreported ? openUnreportedResourceFolder : openReadonlyResourceFolder;
       folder = openFolder(absolutePath, {
         baseLocale: collection.baseLocale,
+        runtime: collection.runtime,
         translationsFolder: collection.translationsFolder,
       });
     } catch (error) {

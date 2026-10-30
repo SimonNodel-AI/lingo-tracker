@@ -2,6 +2,7 @@ import {
   CONVERSION_SAFETY_RULES,
   checkStoredValue,
   describeStoredValueFinding,
+  type IcuParseOptions,
   isIcuLocaleSupported,
   type StoredValueRule,
 } from '@simoncodes-ca/domain';
@@ -9,7 +10,7 @@ import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { IcuValidationDetail, IcuValidationOptions, IcuValidationResult } from './types';
 
 /** {@link IcuValidationOptions} for one collection. */
-export interface IcuPassOptions extends IcuValidationOptions {
+export interface IcuPassOptions extends IcuValidationOptions, IcuParseOptions {
   /** The collection's base locale, whose `source` values are compiled alongside the targets. Omit to check targets only. */
   readonly baseLocale?: string;
 }
@@ -62,7 +63,7 @@ export function validateIcuValues(
       const rules: StoredValueRule[] = [...CONVERSION_SAFETY_RULES];
       if (compileValue) rules.push('icu-compile');
       if (options.requirePortablePlurals && locale === baseLocale) rules.push('portable-plurals');
-      const findings = checkStoredValue(value, { rules, locale });
+      const findings = checkStoredValue(value, { ...options, rules, locale });
       const first = findings.find((finding) => finding.severity === 'error');
       if (first) {
         failures.push({

@@ -12,6 +12,7 @@
 import { escapeRegExp } from './escape-regexp';
 import {
   hasQuotedInterpolationDelimiter,
+  type IcuParseOptions,
   icuQuotedRuns,
   isSubMessageKeyword,
   parseIcuMessage,
@@ -99,8 +100,8 @@ export { hasQuotedInterpolationDelimiter };
  * // }
  * ```
  */
-export function extractICUPlaceholders(value: string): PlaceholderExtractionResult {
-  const message = parseIcuMessage(value);
+export function extractICUPlaceholders(value: string, options: IcuParseOptions = {}): PlaceholderExtractionResult {
+  const message = parseIcuMessage(value, options);
   const firstError = message.errors[0];
   if (firstError) return { placeholders: [], textSegments: [], success: false, error: firstError.message };
   const placeholders: ICUPlaceholder[] = [];
@@ -331,7 +332,11 @@ export function extractTranslocoPlaceholders(value: string): TranslocoPlaceholde
  * // { wasFixed: true, value: "Hola {{ name }}", description: "Inserted missing placeholder ..." }
  * ```
  */
-export function autoFixTranslocoPlaceholders(baseValue: string, translationValue: string): ICUAutoFixResult {
+export function autoFixTranslocoPlaceholders(
+  baseValue: string,
+  translationValue: string,
+  options: IcuParseOptions = {},
+): ICUAutoFixResult {
   if (!hasTranslocoPlaceholders(baseValue)) {
     return { wasFixed: false, value: translationValue };
   }
@@ -356,6 +361,7 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
           fixedPlaceholders: [basePlaceholders[0].fullText],
         },
         true,
+        options,
       );
     }
 
@@ -433,6 +439,7 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
       fixedPlaceholders: fixedPlaceholderNames,
     },
     true,
+    options,
   );
 }
 
@@ -468,7 +475,11 @@ export function autoFixTranslocoPlaceholders(baseValue: string, translationValue
  * // Returns: { wasFixed: true, value: "{count, plural, one {# elemento} other {# elementos}}", ... }
  * ```
  */
-export function autoFixICUPlaceholders(baseValue: string, translationValue: string): ICUAutoFixResult {
+export function autoFixICUPlaceholders(
+  baseValue: string,
+  translationValue: string,
+  options: IcuParseOptions = {},
+): ICUAutoFixResult {
   // Skip if base has no placeholders
   if (!hasICUPlaceholders(baseValue)) {
     return {
@@ -486,7 +497,7 @@ export function autoFixICUPlaceholders(baseValue: string, translationValue: stri
   }
 
   // Extract placeholders from base value
-  const baseExtraction = extractICUPlaceholders(baseValue);
+  const baseExtraction = extractICUPlaceholders(baseValue, options);
   if (!baseExtraction.success) {
     return {
       wasFixed: false,
@@ -497,11 +508,17 @@ export function autoFixICUPlaceholders(baseValue: string, translationValue: stri
 
   // If base has placeholders but translation doesn't, we need to insert them
   if (!hasICUPlaceholders(translationValue)) {
-    return checkAutoFix(baseValue, translationValue, handleMissingPlaceholders(baseExtraction, translationValue));
+    return checkAutoFix(
+      baseValue,
+      translationValue,
+      handleMissingPlaceholders(baseExtraction, translationValue),
+      false,
+      options,
+    );
   }
 
   // Extract placeholders from translation value
-  const translationExtraction = extractICUPlaceholders(translationValue);
+  const translationExtraction = extractICUPlaceholders(translationValue, options);
   if (!translationExtraction.success) {
     return {
       wasFixed: false,
@@ -523,6 +540,8 @@ export function autoFixICUPlaceholders(baseValue: string, translationValue: stri
     baseValue,
     translationValue,
     replaceTranslationPlaceholders(baseExtraction, translationExtraction, translationValue),
+    false,
+    options,
   );
 }
 
@@ -532,14 +551,15 @@ function checkAutoFix(
   translationValue: string,
   result: ICUAutoFixResult,
   transloco = false,
+  options: IcuParseOptions = {},
 ): ICUAutoFixResult {
   if (!result.wasFixed) return result;
   const base = transloco ? translocoToICU(baseValue) : baseValue;
   const fixed = transloco ? translocoToICU(result.value) : result.value;
-  const baseExtraction = extractICUPlaceholders(base);
-  const fixedExtraction = extractICUPlaceholders(fixed);
+  const baseExtraction = extractICUPlaceholders(base, options);
+  const fixedExtraction = extractICUPlaceholders(fixed, options);
   if (
-    !validateICUSyntax(fixed) ||
+    !validateICUSyntax(fixed, options) ||
     !baseExtraction.success ||
     !fixedExtraction.success ||
     !placeholdersMatch(baseExtraction.placeholders, fixedExtraction.placeholders)
@@ -778,6 +798,6 @@ function replaceTranslationPlaceholders(
  * validateICUSyntax("Hello {count, plural, one {# item} other {# items}}"); // true
  * ```
  */
-export function validateICUSyntax(value: string): boolean {
-  return parseIcuMessage(value).ok;
+export function validateICUSyntax(value: string, options: IcuParseOptions = {}): boolean {
+  return parseIcuMessage(value, options).ok;
 }

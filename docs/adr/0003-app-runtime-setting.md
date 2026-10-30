@@ -32,13 +32,15 @@ This is the rule the spec builds on, so `'{'first'}'` stores literal `{first}` w
 
 Add one global setting, `runtime`, to `.lingo-tracker.json`.
 Its values are `"transloco-messageformat"` (the default and today's behaviour) and `"transloco"`.
-Storage stays ICU for every runtime; the setting changes only what the two conversions do at the import and bundle boundaries.
+Storage stays ICU for every runtime.
+The setting selects boundary conversions and permits dotted simple arguments in stored-value checks under `transloco`.
 Both boundaries read the same setting, so import and bundle cannot disagree.
 A missing field means `transloco-messageformat`, so existing projects behave exactly as before.
 
 Under `transloco`, import stores every literal `{`, `}` and `'` as ICU-quoted text, and bundle unquotes them.
 Values whose ICU constructs plain Transloco cannot render (`plural`, `select`, `selectordinal`, `number`, `date`, `time`) are still bundled, in today's messageformat form, with a generation warning.
-Authoring paths (CLI `add-resource`/`edit-resource`, the Tracker editor, machine translation, `normalize`) keep writing ICU and are not runtime-aware; they gain advisories only.
+Authoring paths (CLI `add-resource`/`edit-resource`, the Tracker editor, machine translation, `normalize`) keep writing ICU.
+Their stored-value checks accept dotted simple arguments under `transloco`.
 
 ## Config contract
 
@@ -126,6 +128,14 @@ Under `transloco` the round trip is identity modulo whitespace inside `{{ }}` (`
 `unrenderableIcuConstructs(value, 'transloco')` returns the kinds of every top-level and nested `group` node and every argument with a `format`, deduplicated and in source order.
 It returns `[]` for an unparsable value, which the malformed-ICU warning already covers.
 
+### Dotted arguments
+
+Under `transloco`, every strict stored-value check accepts simple argument names that match `\w+(?:\.\w+)*`, including `{user.name}`.
+Argument agreement, placeholder repair, admission, locale compilation, bundle checks and editor validation use the same rule.
+Only simple arguments accept dotted names, including simple arguments inside plural or select branches.
+Plural, select and formatter argument names keep their existing rules.
+Under `transloco-messageformat`, all checks keep their existing behavior.
+
 ## Import
 
 Import entry points are the CLI `import` (`apps/cli/src/commands/import-cmd.ts`), the API import job (`apps/api/src/app/imports/import-job.service.ts`, used by the Tracker import dialog in `apps/tracker/src/app/collections/import-dialog`), and both go through core `runImport` and `importResources` (`libs/core/src/lib/import/run-import.ts`, `import-resources.ts`).
@@ -176,11 +186,11 @@ The debug-keys bundle and `transformICUToTransloco: false` skip conversion as th
 
 | Path | Runtime awareness | Why |
 |---|---|---|
-| Tracker editor (`apps/tracker/src/app/browser/dialogs/translation-editor/`) | Advisory only | Users author ICU in LingoTracker; the editor's ICU hint (`ICUHINTX`) documents it. Under `transloco`, `EditorAdvisories` (`editor-advisories.ts`) adds a non-blocking advisory from `unrenderableIcuConstructs(value, store.config()?.runtime ?? DEFAULT_APP_RUNTIME)`, and the hint text gains one sentence on `'{'` quoting. No new validator; `bracedPlaceholderValidator` stays as is. |
-| CLI/API `add-resource`, `edit-resource` (`libs/core/src/lib/resource/resource-entry.ts`) | No | Inputs are ICU; `translocoToICU` on `{{ x }}` stays a convenience for every runtime. Adding runtime conversion here would make `{first}` mean different things in the editor and the import file, with no way to tell which the user meant. |
-| `validate` (`libs/core/src/lib/validate/`) | Yes, fails | New check `validateRuntimeRenderability` in `validate-resources.ts`: under `transloco`, a value with non-empty `unrenderableIcuConstructs` is a failure of kind `runtime-unrenderable`, per locale, listed with the ICU failures. `--skip-runtime` disables it, mirroring `--skip-icu`. Under `transloco-messageformat` the check is a no-op. Exit code follows `exitForRunOutcome`, so CI fails. |
-| Machine translation (`libs/core/src/lib/machine-translation/`) | No, but a prerequisite fix | `classifyICUContent` (`libs/domain/src/lib/icu-classifier.ts`) is quote-aware and classifies `'{'first'}'` as `plain`, so the whole value goes to the provider raw. The provider may turn `'` into `’` or drop it, which `admitValue` cannot detect because `compareIcuArguments` returns `null` on the then-unparsable value. Fix in `placeholder-protector.ts`: `protectPlaceholders` also wraps every `icuQuotedRuns` span as a `notranslate` marker, and `prepare` in `translator.ts` sends a value through the protector whenever it has a placeholder or a quoted run. This is storage-level and applies to every runtime, so it is not keyed on the setting. |
-| Placeholder validation (`icu-arguments.ts`, `check-translated-value.ts`, `stored-value-check.ts`) | No | Parse-based and quote-aware already. |
+| Tracker editor (`apps/tracker/src/app/browser/dialogs/translation-editor/`) | Dotted arguments and advisory | Users author ICU in LingoTracker; the editor's ICU hint (`ICUHINTX`) documents it. Under `transloco`, `EditorAdvisories` (`editor-advisories.ts`) adds a non-blocking advisory from `unrenderableIcuConstructs(value, store.config()?.runtime ?? DEFAULT_APP_RUNTIME)`, and the hint text gains one sentence on `'{'` quoting. The existing `bracedPlaceholderValidator` passes the runtime to stored-value checks for dotted simple arguments. |
+| CLI/API `add-resource`, `edit-resource` (`libs/core/src/lib/resource/resource-entry.ts`) | Dotted arguments only | Admission accepts dotted simple arguments under `transloco`. Inputs are ICU; `translocoToICU` on `{{ x }}` stays a convenience for every runtime. Adding runtime conversion here would make `{first}` mean different things in the editor and the import file, with no way to tell which the user meant. |
+| `validate` (`libs/core/src/lib/validate/`) | Yes, fails | The ICU compile check accepts dotted simple arguments under `transloco`, while retaining locale checks. New check `validateRuntimeRenderability` in `validate-resources.ts`: under `transloco`, a value with non-empty `unrenderableIcuConstructs` is a failure of kind `runtime-unrenderable`, per locale, listed with the ICU failures. `--skip-runtime` disables it, mirroring `--skip-icu`. Under `transloco-messageformat` the check is a no-op. Exit code follows `exitForRunOutcome`, so CI fails. |
+| Machine translation (`libs/core/src/lib/machine-translation/`) | Dotted arguments and quoted-run protection | Classification and admission accept dotted simple arguments under `transloco`. `classifyICUContent` (`libs/domain/src/lib/icu-classifier.ts`) is quote-aware and classifies `'{'first'}'` as `plain`, so the whole value goes to the provider raw. The provider may turn `'` into `’` or drop it, which `admitValue` cannot detect because `compareIcuArguments` returns `null` on the then-unparsable value. Fix in `placeholder-protector.ts`: `protectPlaceholders` also wraps every `icuQuotedRuns` span as a `notranslate` marker, and `prepare` in `translator.ts` sends a value through the protector whenever it has a placeholder or a quoted run. This is storage-level and applies to every runtime, so it is not keyed on the setting. |
+| Placeholder validation (`icu-arguments.ts`, `check-translated-value.ts`, `stored-value-check.ts`) | Dotted arguments only | Parse-based and quote-aware. Under `transloco`, argument agreement, admission and placeholder repair accept dotted simple arguments. |
 | XLIFF export/import (`export-to-xliff.ts`, `parse-xliff-import.ts`) | No | Export writes stored ICU verbatim; import is a `stored`-syntax strategy. Translators of a `transloco` project see `'{'first'}'`; see Open questions. |
 | JSON export (`export-to-json.ts`) | No | Same as XLIFF. |
 | API/DTOs (`libs/data-transfer`) | Read-only field | `LingoTrackerConfigDto.runtime`, mapped by `mapConfigToDto`. `BundleGenerateJobResultDto.warnings` and `ImportResultDto.warnings` already exist. |
@@ -188,7 +198,7 @@ The debug-keys bundle and `transformICUToTransloco: false` skip conversion as th
 | Glossary (`libs/core/src/lib/glossary/`) | No | Tokenises `[\p{L}\p{N}]+`; `first` inside `'{'first'}'` is a token either way, as `{first}` is today. |
 | Protected terms (`libs/domain/src/lib/protected-terms.ts`) | No | Word-boundary regex over raw text, unaffected by quoting. |
 | Preferred terminology (`libs/domain/src/lib/preferred-terminology.ts`) | No | `extractVisibleTextRanges` is parse-based; quoted runs are visible text, which is correct for literals. |
-| `normalize` (`libs/core/src/lib/normalize/`) | No | Rewrites stored values through `translocoToICU` only; stored ICU is runtime-neutral. It does not touch the config. |
+| `normalize` (`libs/core/src/lib/normalize/`) | Dotted arguments only | Stored-value checks accept dotted simple arguments under `transloco`. Rewrites stored values through `translocoToICU` only; stored ICU is runtime-neutral. It does not touch the config. |
 
 ## Init and existing configs
 

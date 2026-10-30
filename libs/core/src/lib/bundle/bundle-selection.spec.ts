@@ -245,6 +245,10 @@ describe('Bundle Selection (real fs)', () => {
         const common = seeded('common', { greeting: { source: 'Hello {user.name}' } });
         const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
         expect(selectionValues(selection)).toEqual({ greeting: 'Hello {{ user.name }}' });
+        expect(selection.warnings).toEqual([]);
+        expect(selectBundleEntries([bundled(common)], 'en', transform).warnings).toEqual([
+          "Key 'greeting': value has malformed ICU syntax and was included as-is",
+        ]);
       });
 
       it('keeps a plural in messageformat form and warns only under transloco', () => {

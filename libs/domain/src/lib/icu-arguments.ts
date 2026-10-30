@@ -1,4 +1,4 @@
-import { parseIcuMessage, visitIcuNodes } from './icu-message';
+import { type IcuParseOptions, parseIcuMessage, visitIcuNodes } from './icu-message';
 
 /**
  * The set of arguments a message interpolates.
@@ -46,8 +46,8 @@ import { parseIcuMessage, visitIcuNodes } from './icu-message';
  *
  * @internal
  */
-function parseArguments(value: string): Set<string> | null {
-  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+function parseArguments(value: string, options: IcuParseOptions): Set<string> | null {
+  const message = parseIcuMessage(value, { ...options, interpolation: true, lenient: true });
   if (!message.ok) return null;
 
   const found = new Set<string>();
@@ -108,9 +108,13 @@ export interface ArgumentMismatch {
  * // → null — a parse error, reported by the ICU pass rather than as a mismatch
  * ```
  */
-export function compareIcuArguments(baseValue: string, translatedValue: string): ArgumentMismatch | null {
-  const expected = parseArguments(baseValue);
-  const actual = parseArguments(translatedValue);
+export function compareIcuArguments(
+  baseValue: string,
+  translatedValue: string,
+  options: IcuParseOptions = {},
+): ArgumentMismatch | null {
+  const expected = parseArguments(baseValue, options);
+  const actual = parseArguments(translatedValue, options);
 
   // A value that will not parse has no arguments to compare, which is not the
   // same as having none. Reporting it here would dress a syntax error up as a

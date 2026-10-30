@@ -61,7 +61,7 @@ export {
 export type { ArgumentMismatch } from './lib/icu-arguments';
 export { hasQuotedInterpolationDelimiter, type ICUAutoFixResult, validateICUSyntax } from './lib/icu-auto-fixer';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
-export { icuQuotedRuns } from './lib/icu-message';
+export { type IcuParseOptions, icuQuotedRuns } from './lib/icu-message';
 export { bundledFormIfLost } from './lib/icu-round-trip';
 export { hasUnbundlableBranchBody } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission

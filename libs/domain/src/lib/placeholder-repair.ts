@@ -5,6 +5,8 @@ import {
   hasTranslocoPlaceholders,
 } from './icu-auto-fixer';
 
+import type { IcuParseOptions } from './icu-message';
+
 type RepairEngine = 'transloco' | 'icu';
 
 export type PlaceholderRepair =
@@ -21,15 +23,18 @@ export type PlaceholderRepair =
   | { outcome: 'failed'; engine: RepairEngine; error: string };
 
 /** Selects the trusted base and repairs the translation's placeholders. */
-export function repairPlaceholders({
-  translation,
-  storedBase,
-  importedBase,
-}: {
-  translation: string;
-  storedBase?: string;
-  importedBase?: string;
-}): PlaceholderRepair {
+export function repairPlaceholders(
+  {
+    translation,
+    storedBase,
+    importedBase,
+  }: {
+    translation: string;
+    storedBase?: string;
+    importedBase?: string;
+  },
+  options: IcuParseOptions = {},
+): PlaceholderRepair {
   let engine: RepairEngine;
   let base: string;
 
@@ -48,8 +53,8 @@ export function repairPlaceholders({
 
   const result =
     engine === 'transloco'
-      ? autoFixTranslocoPlaceholders(base, translation)
-      : autoFixICUPlaceholders(base, translation);
+      ? autoFixTranslocoPlaceholders(base, translation, options)
+      : autoFixICUPlaceholders(base, translation, options);
 
   if (result.error) return { outcome: 'failed', engine, error: result.error };
   if (!result.wasFixed) return { outcome: 'matched', engine };

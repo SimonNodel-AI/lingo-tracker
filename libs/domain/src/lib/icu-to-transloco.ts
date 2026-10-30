@@ -37,6 +37,7 @@ import {
   type IcuArgument,
   type IcuGroup,
   type IcuNode,
+  type IcuParseOptions,
   type IcuRange,
   icuQuotedRuns,
   parseIcuMessage,
@@ -228,13 +229,13 @@ function expandPlaceholderOnlyBodies(value: string, construct: IcuArgument | Icu
  * // → false — the bundler encodes it as the triple
  * ```
  */
-export function hasUnbundlableBranchBody(value: string): boolean {
+export function hasUnbundlableBranchBody(value: string, options: IcuParseOptions = {}): boolean {
   if (!value.includes('{{')) {
     return false;
   }
 
   let found = false;
-  visitIcuNodes(parseIcuMessage(value, { interpolation: true }).nodes, (node) => {
+  visitIcuNodes(parseIcuMessage(value, { ...options, interpolation: true }).nodes, (node) => {
     if (found || node.kind !== 'group') return !found;
     found = node.cases.some((branch) => {
       const [only, ...rest] = branch.nodes;

@@ -1,4 +1,5 @@
 import {
+  type AppRuntime,
   admitValue,
   isUntranslatedCopy,
   needsTranslation,
@@ -221,8 +222,13 @@ function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): Loca
   };
 }
 
-function assertConversionSafe(locale: string, value: string): void {
-  const admission = admitValue(undefined, value, { name: 'stored-entry' });
+function assertConversionSafe(locale: string, value: string, runtime: AppRuntime): void {
+  const admission = admitValue(
+    undefined,
+    value,
+    { name: 'stored-entry' },
+    { simpleArgumentPaths: runtime === 'transloco' },
+  );
   if (admission.admitted === false) {
     throw new BracedPlaceholderError(
       locale,
@@ -237,12 +243,12 @@ function validateAddChanges(collection: Collection, changes: EntryAddChanges): v
     collection,
     (changes.translations ?? []).map(({ locale }) => locale),
   );
-  assertConversionSafe(collection.baseLocale, changes.baseValue);
+  assertConversionSafe(collection.baseLocale, changes.baseValue, collection.runtime);
   for (const translation of changes.translations ?? []) {
     if (translation.status !== undefined) assertTranslationStatus(translation.status);
   }
   for (const translation of (changes.translations ?? []).filter(({ locale }) => locale !== collection.baseLocale)) {
-    assertConversionSafe(translation.locale, translation.value);
+    assertConversionSafe(translation.locale, translation.value, collection.runtime);
   }
 }
 
@@ -510,7 +516,7 @@ function validateEntryEdit(
   if (!current?.meta) throw new ResourceNotFoundError(resource.resolvedKey);
 
   if (changes.baseValue !== undefined && changes.baseValue !== current.entry.source) {
-    assertConversionSafe(baseLocale, changes.baseValue);
+    assertConversionSafe(baseLocale, changes.baseValue, collection.runtime);
   }
   const requestedTranslations = Object.entries(changes.translations ?? {});
   for (const [, translation] of requestedTranslations) {
@@ -519,7 +525,7 @@ function validateEntryEdit(
   const translations = requestedTranslations.filter(([locale]) => locale !== baseLocale);
   for (const [locale, translation] of translations) {
     if (translation.value !== current.entry[locale]) {
-      assertConversionSafe(locale, translation.value);
+      assertConversionSafe(locale, translation.value, collection.runtime);
     }
   }
   assertCollectionLocales(

@@ -1,8 +1,10 @@
 import { existsSync, unlinkSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import {
+  type AppRuntime,
   admitValue,
   applyBaseChange,
+  DEFAULT_APP_RUNTIME,
   type ImportStrategy,
   importStrategyPolicy,
   type LocaleMetadata,
@@ -173,14 +175,18 @@ export interface ResourceFolderSaveResult {
 }
 
 export interface UnreportedResourceFolderOptions {
+  readonly runtime?: AppRuntime;
   /** Collection root for guarded reads and saves; omit only for standalone folder fixtures. */
   readonly translationsFolder?: string;
   /** Base locale of the collection. Needed to find the base checksum in metadata. */
   readonly baseLocale: string;
 }
 
-function convertStored(value: string): string {
-  return admitValue(undefined, value, { name: 'stored-entry' }).admitted ? translocoToICU(value) : value;
+function convertStored(value: string, runtime: AppRuntime): string {
+  return admitValue(undefined, value, { name: 'stored-entry' }, { simpleArgumentPaths: runtime === 'transloco' })
+    .admitted
+    ? translocoToICU(value)
+    : value;
 }
 
 const NON_LOCALE_PROPS: ReadonlySet<string> = new Set(['source', 'comment', 'tags']);
@@ -199,14 +205,22 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
  */
 export function openResourceFolder(
   folderPath: string,
-  collection: Pick<OpenedCollection, 'baseLocale' | 'translationsFolder' | 'onMutation'>,
+  collection: Pick<OpenedCollection, 'baseLocale' | 'translationsFolder' | 'onMutation'> & {
+    readonly runtime?: AppRuntime;
+  },
 ): ResourceFolder {
   const onMutation = collection.onMutation;
   if (typeof onMutation !== 'function') {
     throw new TypeError('Reported Resource Folder requires an Opened Collection Mutation Sink');
   }
   assertCollectionFolderPath(collection.translationsFolder, folderPath);
-  return new FileResourceFolder(folderPath, collection.baseLocale, collection.translationsFolder, onMutation);
+  return new FileResourceFolder(
+    folderPath,
+    collection.baseLocale,
+    collection.translationsFolder,
+    onMutation,
+    collection.runtime,
+  );
 }
 
 /** Opens a folder for reading; its type exposes no setters or save. */
@@ -223,7 +237,7 @@ export function openUnreportedResourceFolder(
   options: UnreportedResourceFolderOptions,
 ): ResourceFolder {
   if (options.translationsFolder !== undefined) assertCollectionFolderPath(options.translationsFolder, folderPath);
-  return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder);
+  return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder, undefined, options.runtime);
 }
 
 /** Checks presence without reading either file, for operations that require existing storage. */
@@ -280,6 +294,7 @@ class FileResourceFolder implements ResourceFolder {
     private readonly baseLocale: string,
     private readonly translationsFolder?: string,
     private readonly onMutation?: MutationSink,
+    private readonly runtime: AppRuntime = DEFAULT_APP_RUNTIME,
   ) {
     this.entriesPath = join(folderPath, RESOURCE_ENTRIES_FILENAME);
     this.metaPath = join(folderPath, TRACKER_META_FILENAME);
@@ -482,7 +497,7 @@ class FileResourceFolder implements ResourceFolder {
 
     // Conversion changes syntax, not meaning. Keep a copied status and update only the
     // checksums that referred to a converted value.
-    const normalizedBase = convertStored(entry.source);
+    const normalizedBase = convertStored(entry.source, this.runtime);
     if (normalizedBase !== entry.source) {
       stored.source = normalizedBase;
       const baseMeta = storedMeta[this.baseLocale];
@@ -497,7 +512,7 @@ class FileResourceFolder implements ResourceFolder {
     for (const locale of translationLocales(stored)) {
       const value = stored[locale];
       if (typeof value !== 'string') continue;
-      const normalized = convertStored(value);
+      const normalized = convertStored(value, this.runtime);
       if (normalized === value) continue;
       stored[locale] = normalized;
       const localeMeta = locale === this.baseLocale ? undefined : storedMeta[locale];
@@ -526,7 +541,7 @@ class FileResourceFolder implements ResourceFolder {
     for (const prop of ['source', ...translationLocales(entry)]) {
       const value = entry[prop];
       if (typeof value !== 'string') continue;
-      const converted = convertStored(value);
+      const converted = convertStored(value, this.runtime);
       if (converted !== value) {
         entry[prop] = converted;
         valuesConverted++;
@@ -673,7 +688,7 @@ class FileResourceFolder implements ResourceFolder {
     if (typeof entry !== 'object' || entry === null || typeof entry.source !== 'string') return false;
     if (locale === this.baseLocale || typeof entry[locale] === 'string') return false;
 
-    this.setTranslationICU(key, locale, normalizedBase ?? convertStored(entry.source), 'new');
+    this.setTranslationICU(key, locale, normalizedBase ?? convertStored(entry.source, this.runtime), 'new');
     return true;
   }
 

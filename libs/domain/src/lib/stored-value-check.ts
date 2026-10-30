@@ -1,6 +1,7 @@
 import { type BracedPlaceholder, describeBracedPlaceholder, findBracedPlaceholders } from './braced-placeholders';
 import { type CollapsedCaseBody, findCollapsedCaseBodies } from './collapsed-case-bodies';
 import { findIcuCompileError } from './icu-locale-validation';
+import type { IcuParseOptions } from './icu-message';
 import { findUnportablePluralCases, type UnportablePluralCase } from './portable-plural-categories';
 
 // Locale support is a configuration question, independent of any value.
@@ -30,7 +31,7 @@ export type StoredValueFinding =
   | (UnportablePluralCase & (typeof RULE_PROPERTIES)['portable-plurals'] & { readonly kind: 'unportable-plural-case' })
   | ((typeof RULE_PROPERTIES)['icu-compile'] & { readonly kind: 'icu-compile-error'; readonly message: string });
 
-export interface StoredValueCheckOptions {
+export interface StoredValueCheckOptions extends IcuParseOptions {
   /** Rules to run, in the module's fixed order. Default: the conversion-safety rules. */
   readonly rules?: readonly StoredValueRule[];
   /** Required only by 'icu-compile'; that rule is skipped when absent. */
@@ -45,24 +46,24 @@ export function checkStoredValue(value: string, options: StoredValueCheckOptions
     if (!rules.includes(rule)) continue;
     switch (rule) {
       case 'collapsed-case-body':
-        for (const found of findCollapsedCaseBodies(value)) {
+        for (const found of findCollapsedCaseBodies(value, options)) {
           findings.push({ kind: 'collapsed-case-body', ...RULE_PROPERTIES[rule], ...found });
         }
         break;
       case 'braced-placeholder':
-        for (const found of findBracedPlaceholders(value)) {
+        for (const found of findBracedPlaceholders(value, options)) {
           findings.push({ kind: 'braced-placeholder', ...RULE_PROPERTIES[rule], ...found });
         }
         break;
       case 'icu-compile': {
         // A braced placeholder explains why conversion is unsafe; do not blame ICU as well.
         if (options.locale === undefined || findings.some((finding) => finding.blocksConversion)) break;
-        const message = findIcuCompileError(value, options.locale);
+        const message = findIcuCompileError(value, options.locale, options);
         if (message !== undefined) findings.push({ kind: 'icu-compile-error', ...RULE_PROPERTIES[rule], message });
         break;
       }
       case 'portable-plurals':
-        for (const found of findUnportablePluralCases(value)) {
+        for (const found of findUnportablePluralCases(value, options)) {
           findings.push({ kind: 'unportable-plural-case', ...RULE_PROPERTIES[rule], ...found });
         }
         break;

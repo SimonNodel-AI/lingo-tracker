@@ -215,3 +215,16 @@ describe('restorePlaceholders', () => {
     expect(result).toEqual({ success: false, reason: 'marker-count-mismatch' });
   });
 });
+
+// Dotted names already use the protector's existing pattern under both runtimes.
+describe('dotted simple arguments', () => {
+  it('protects an entire dotted argument and restores its exact name', () => {
+    const { protectedText, placeholders } = protectPlaceholders('Hello {user.name}');
+    expect(protectedText).toBe('Hello <span class="notranslate">__PH0__</span>');
+    expect(placeholders).toEqual([{ original: '{user.name}', marker: '__PH0__' }]);
+    expect(restorePlaceholders('Bonjour __PH0__', placeholders)).toEqual({
+      success: true,
+      value: 'Bonjour {user.name}',
+    });
+  });
+});

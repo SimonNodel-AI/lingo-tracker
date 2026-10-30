@@ -104,7 +104,10 @@ function normalizeFolder(
         const value = entry[prop];
         if (typeof value !== 'string') continue;
         const address = { key: fullKeyOf(folderPath, key), locale: prop === 'source' ? collection.baseLocale : prop };
-        for (const found of checkStoredValue(value, { rules: ['collapsed-case-body', 'braced-placeholder'] })) {
+        for (const found of checkStoredValue(value, {
+          rules: ['collapsed-case-body', 'braced-placeholder'],
+          simpleArgumentPaths: collection.runtime === 'transloco',
+        })) {
           if (found.kind === 'collapsed-case-body' || found.kind === 'braced-placeholder') {
             findings.push({ ...address, kind: found.kind, detail: describeStoredValueFinding(found) });
           }

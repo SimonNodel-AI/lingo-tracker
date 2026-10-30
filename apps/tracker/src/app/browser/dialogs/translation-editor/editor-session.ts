@@ -6,7 +6,7 @@ import type {
   SearchResultDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
-import { type PreferredTermRule, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
+import { DEFAULT_APP_RUNTIME, type PreferredTermRule, TRANSLATION_STATUSES } from '@simoncodes-ca/domain';
 import { Subscription } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { copyWithFeedback } from '../../../shared/clipboard';
@@ -21,8 +21,8 @@ import type { BrowserStore } from '../../store/browser.store';
 import { filterFolderTree } from '../../store/folder-tree.utils';
 import { EditorAdvisories, suggestTags } from './editor-advisories';
 import { EditorEntryForm } from './editor-entry-form';
-import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import type { EditorFocus } from './editor-focus';
+import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import { EditorPanels } from './editor-panels';
 import { EditorPresentation } from './editor-presentation';
 import { type EditorOutcome, type EditorReveal, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
@@ -65,7 +65,7 @@ export class EditorSession {
   readonly presentation: EditorPresentation;
 
   readonly errorMessage = signal<string | null>(null);
-  readonly entry = new EditorEntryForm(() => this.location.keyCollision());
+  readonly entry: EditorEntryForm;
   readonly advisories: EditorAdvisories;
 
   /** True for a moment after the footer key is copied, so the button can confirm it. */
@@ -118,6 +118,10 @@ export class EditorSession {
     private readonly data: TranslationEditorDialogData,
     private readonly options: EditorSessionOptions,
   ) {
+    this.entry = new EditorEntryForm(
+      () => this.location.keyCollision(),
+      () => this.options.config()?.runtime ?? DEFAULT_APP_RUNTIME,
+    );
     this.panels = new EditorPanels({
       editorFocus: this.options.editorFocus,
       canOpenFolderPopover: () => !this.isReadOnly(),

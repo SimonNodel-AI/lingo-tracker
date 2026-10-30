@@ -1,5 +1,5 @@
-import type { AbstractControl, ValidationErrors, ValidatorFn } from '@angular/forms';
-import { checkStoredValue } from '@simoncodes-ca/domain';
+import type { AbstractControl, ValidationErrors } from '@angular/forms';
+import { type AppRuntime, checkStoredValue, DEFAULT_APP_RUNTIME } from '@simoncodes-ca/domain';
 
 /**
  * Rejects a Transloco interpolation inside literal braces, `{{{name}}}`, which
@@ -10,11 +10,16 @@ import { checkStoredValue } from '@simoncodes-ca/domain';
  * outer opening brace. Like `Validators.required`'s partner validators, it
  * leaves an empty value to `Validators.required`.
  */
-export const bracedPlaceholderValidator: ValidatorFn = (control: AbstractControl<unknown>): ValidationErrors | null => {
+export function bracedPlaceholderValidator(
+  control: AbstractControl<unknown>,
+  runtime: AppRuntime = DEFAULT_APP_RUNTIME,
+): ValidationErrors | null {
   const value = control.value;
   if (typeof value !== 'string' || value.length === 0) {
     return null;
   }
-  const first = checkStoredValue(value).find((finding) => finding.kind === 'braced-placeholder');
+  const first = checkStoredValue(value, { simpleArgumentPaths: runtime === 'transloco' }).find(
+    (finding) => finding.kind === 'braced-placeholder',
+  );
   return first ? { bracedPlaceholder: { name: first.name, position: first.range.start } } : null;
-};
+}

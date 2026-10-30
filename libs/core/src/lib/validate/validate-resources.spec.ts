@@ -265,6 +265,54 @@ describe('validateResources (real fs)', () => {
     });
   });
 
+  describe('dotted simple arguments', () => {
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      it(`validates dotted simple arguments according to ${runtime}`, () => {
+        const main = collection('main', { runtime, locales: ['en', 'es'] });
+        seedResources(main, {
+          greeting: {
+            source: 'Hello {user.name}',
+            translations: { es: { value: 'Hola {user.name}', status: 'verified' } },
+          },
+        });
+        const result = validateResources(
+          [main],
+          {
+            allowTranslated: false,
+            icu: { compileValues: true, requirePortablePlurals: false },
+            placeholders: true,
+          },
+          termsByCollection,
+        );
+        expect(result.passed).toBe(runtime === 'transloco');
+        expect(result.icu?.failures).toHaveLength(runtime === 'transloco' ? 0 : 2);
+        expect(result.placeholders?.failures).toEqual([]);
+      });
+    }
+
+    it('reports dotted argument renames and retains the runtime warning for a plural', () => {
+      const main = collection('main', { runtime: 'transloco', locales: ['en', 'es'] });
+      seedResources(main, {
+        count: {
+          source: '{user.name} has {n, plural, other {# items}}',
+          translations: { es: { value: '{user.nam} tiene {n, plural, other {# cosas}}', status: 'verified' } },
+        },
+      });
+      const result = validateResources(
+        [main],
+        {
+          allowTranslated: false,
+          icu: { compileValues: true, requirePortablePlurals: false },
+          placeholders: true,
+        },
+        termsByCollection,
+      );
+      expect(result.icu?.failures).toHaveLength(2);
+      expect(result.icu?.failures.every((failure) => failure.kind === 'runtime-unrenderable')).toBe(true);
+      expect(result.placeholders?.failures).toMatchObject([{ missing: ['user.name'], unexpected: ['user.nam'] }]);
+    });
+  });
+
   describe('runtime renderability', () => {
     const plural = '{n, plural, one {# item} other {# items}}';
 

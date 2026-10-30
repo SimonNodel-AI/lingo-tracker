@@ -153,13 +153,14 @@ function matchesRule(resource: FlatResource, rule: EntrySelectionRule): boolean 
 }
 
 function toTransloco(resource: FlatResource, runtime: AppRuntime, warnings: string[]): string {
-  if (resource.value.includes('{') && !validateICUSyntax(resource.value)) {
+  const options = { simpleArgumentPaths: runtime === 'transloco' };
+  if (resource.value.includes('{') && !validateICUSyntax(resource.value, options)) {
     warnings.push(`Key '${resource.key}': value has malformed ICU syntax and was included as-is`);
   }
   if (hasQuotedInterpolationDelimiter(resource.value)) {
     warnings.push(`Key '${resource.key}': quoted literal '{{' or '}}' will be consumed by Transloco interpolation`);
   }
-  if (hasUnbundlableBranchBody(resource.value)) {
+  if (hasUnbundlableBranchBody(resource.value, options)) {
     warnings.push(
       `Key '${resource.key}': a branch body cannot be carried to a Transloco runtime, so the bundled ` +
         'value does not render as written. A branch body survives only as a plain parameter name — ' +
