@@ -181,9 +181,21 @@
             <!-- The <code> run is ours, never translator input. -->
             <span
               [innerHTML]="
-                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX | transloco: { placeholder: presentation.icuPlaceholderMarkup }
+                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX
+                  | transloco: { placeholder: presentation.icuPlaceholderMarkup, example: presentation.icuQuotedBracesMarkup }
               "
             ></span>
+          </p>
+        }
+        @if (session.advisories.unrenderableConstructs().length > 0) {
+          <p class="field-hint field-hint--icon field-hint--warning" data-testid="runtime-advisory">
+            <mat-icon aria-hidden="true">warning</mat-icon>
+            <span>
+              {{
+                TOKENS.BROWSER.TRANSLATIONEDITOR.RUNTIMEUNRENDERABLEX
+                  | transloco: { kinds: session.advisories.unrenderableConstructs().join(', ') }
+              }}
+            </span>
           </p>
         }
         @if (session.advisories.preferredTermFindings().length > 0) {

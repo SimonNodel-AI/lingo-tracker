@@ -342,6 +342,8 @@ LingoTracker uses two formats at different points in the pipeline:
 
 **Going the other direction**: when importing external translation files (XLIFF or JSON), `transloco-to-icu.ts` converts Transloco `{{ varName }}` back to ICU `{varName}` before the values are stored.
 
+**The `runtime` setting.** Both conversions assume `@jsverse/transloco-messageformat`. The global `runtime` field (`AppRuntime`, `app-runtime.ts`) selects the pair: `toStoredIcu` and `toRuntimeValue` in `runtime-conversion.ts` dispatch on it, and `unrenderableIcuConstructs` reports ICU that plain Transloco cannot render. Under `transloco`, import quotes literal `{`, `}` and `'` into ICU and bundle unquotes them, so storage stays ICU for every runtime. Only the `migration` import strategy applies `toStoredIcu`, because its source is app syntax; other strategies read exported, already-stored ICU. The round trip is identity apart from whitespace inside `{{ }}`. See [ADR-0003](../docs/adr/0003-app-runtime-setting.md).
+
 The `transformICUToTransloco` flag in `BundleDefinition` (default `true`) controls whether conversion happens for a given bundle. Setting it to `false` emits raw ICU format — useful for non-Transloco consumers.
 
 See [bundle-generation.md](bundle-generation.md) *(phase 5, coming soon)* for the full bundle pipeline including how `icuToTransloco()` is called in context.

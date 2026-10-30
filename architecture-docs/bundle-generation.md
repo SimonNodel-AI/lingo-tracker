@@ -323,6 +323,8 @@ LingoTracker stores translation values in [ICU format](glossary.md#icu-format) i
 
 **Conversion happens per value, inside `selectBundleEntries()`, after filtering and before merging.** It is part of the selection so that the bundle and the dry-run plan report the same warnings. The prepared run's base selection, which gives the debug-keys bundle and the type file their keys, uses the resolved conversion flag and reports distinct base-selection warnings once.
 
+`toRuntimeValue(value, runtime)` dispatches on the global `runtime` setting, which `resolveBundleSettings` puts on the bundle settings. For `transloco-messageformat` it is `icuToTransloco()`, and the rules below apply. For `transloco` it parses with `simpleArgumentPaths`, rewrites simple arguments (dotted paths included) to `{{ name }}`, and unquotes literal text, so `'{'name'}'` becomes `{name}`; groups and formatted arguments are emitted as `icuToTransloco()` does. Each value with a non-empty `unrenderableIcuConstructs()` result adds one warning and is still written. When `transformICUToTransloco` is off and `runtime` is `transloco`, `prepareBundleRun` adds one config-origin warning per bundle. The decision record is [ADR-0003](../docs/adr/0003-app-runtime-setting.md).
+
 The conversion rules applied by `icuToTransloco()`:
 
 | Internal ICU value | Emitted in bundle | Notes |

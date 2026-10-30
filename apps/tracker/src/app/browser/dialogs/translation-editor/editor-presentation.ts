@@ -113,6 +113,9 @@ export class EditorPresentation {
    */
   readonly icuPlaceholderMarkup = '<code>&#123;count&#125;</code>';
 
+  /** Same entity trick as `icuPlaceholderMarkup`; the apostrophes are literal, not ICU quoting. */
+  readonly icuQuotedBracesMarkup = "<code>'&#123;'name'&#125;'</code>";
+
   /**
    * The braced-placeholder error's params as markup, `undefined` without the error.
    * Braces are HTML entities for the same reason as `icuPlaceholderMarkup`. The

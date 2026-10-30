@@ -79,14 +79,16 @@ export function unrenderableIcuConstructs(value: string, runtime: AppRuntime): r
 `IcuConstructKind` is `'plural' | 'select' | 'selectordinal' | 'number' | 'date' | 'time' | 'duration'`, drawn from `SubMessageKeyword` and `IcuFormat` in `icu-message.ts`.
 
 For `transloco-messageformat`, `toStoredIcu` is `translocoToICU` and `toRuntimeValue` is `icuToTransloco`, unchanged, and `unrenderableIcuConstructs` always returns `[]`.
-The existing two functions keep their names and exports; nothing that calls them today changes behaviour.
+`translocoToICU` keeps its export; nothing that calls it today changes behaviour.
+The `icuToTransloco` domain barrel export was dropped because it has no outside consumer; `toRuntimeValue(v, 'transloco-messageformat')` is the public form.
 
 ### `toStoredIcu(value, 'transloco')`
 
 The input is plain Transloco syntax, where the only syntax is `{{ name }}`.
 
 1. Find interpolations with the parser's `INTERPOLATION` pattern, `\{\{\s*(\w+(?:\.\w+)*)\s*\}\}`, the same shape `translocoToICU` accepts today. Each becomes the ICU argument `{name}`.
-2. Everything else is literal text. Each maximal run of literal brace characters becomes one quoted run: `{` becomes `'{'`, `}}` becomes `'}}'`, `}{` becomes `'}{'`. Runs must merge, because `'{'` directly followed by `'{'` lexes as one run whose body holds an escaped apostrophe. A `{{ … }}` whose body is not an identifier path (Booklore's `{{ '{' }}`) is literal text and its braces follow this rule.
+2. Everything else is literal text. Each maximal run of literal brace characters becomes one quoted run: `{` becomes `'{'`, `}}` becomes `'}}'`, `}{` becomes `'}{'`. Runs must merge, because `'{'` directly followed by `'{'` lexes as one run whose body holds an escaped apostrophe.
+   A run also spans apostrophes between brace characters, so `{'}` is stored as `'{''}'`. A `{{ … }}` whose body is not an identifier path (Booklore's `{{ '{' }}`) is literal text and its braces follow this rule.
 3. A run of k apostrophes in literal text becomes `''` repeated k times when k ≥ 2, or when the character before or after the run is `{` or `}`, or when the character after it is `#`. Otherwise it stays a single `'`.
 
 Rule 3 is derived from `icuQuotedRuns`: an apostrophe is only syntax when it is doubled or when it opens a run before `{`, `}` or `#`.
@@ -112,13 +114,14 @@ It is not idempotent, which is why only the import boundary may call it (see Imp
 ### `toRuntimeValue(value, 'transloco')`
 
 The input is stored ICU.
-Parse with `parseIcuMessage(value)` in strict mode, as `icuToTransloco` does.
+Parse with `parseIcuMessage(value, { simpleArgumentPaths: true })` in strict mode.
+`simpleArgumentPaths` is a new opt-in option that accepts dotted arguments, so `{user.name}` bundles as `{{ user.name }}`; `unrenderableIcuConstructs` parses with it too.
 When the parse is not ok, return the value unchanged; `bundle-selection.ts` already warns on that case.
 Walk the top-level nodes.
 A simple argument `{name}` becomes `{{ name }}`.
 A literal node is unquoted: each quoted run yields its content with `''` collapsed to `'`, and outside runs `''` collapses to `'`.
 A group or a formatted argument is emitted exactly as `icuToTransloco` emits it today, so the key is present and `unrenderableIcuConstructs` reports it.
-`toRuntimeValue(toStoredIcu(v, 'transloco'), 'transloco') === v` for every string `v`; this is the property test.
+Under `transloco` the round trip is identity modulo whitespace inside `{{ }}` (`{{name}}` returns as `{{ name }}`); the property test asserts this.
 
 `unrenderableIcuConstructs(value, 'transloco')` returns the kinds of every top-level and nested `group` node and every argument with a `format`, deduplicated and in source order.
 It returns `[]` for an unparsable value, which the malformed-ICU warning already covers.
@@ -254,7 +257,7 @@ Domain (`libs/domain`, vitest):
 - `runtime-conversion.spec.ts`: every row of the worked-results table in both directions; `toStoredIcu` under `transloco-messageformat` equals `translocoToICU` and `toRuntimeValue` equals `icuToTransloco` on the existing spec corpus.
 - Apostrophes: `Don't`, `It's {{ name }}`, `''`, `'{'`, `{'`, `'}'`, `a'{b`, `#` after an apostrophe, apostrophe at string end.
 - Mixed: `{{ count }} of {total}`, `{{ a }}{b}{{ c }}`, `{{ a.b }} {c.d}`.
-- Property test (`runtime-conversion.property.spec.ts`, fast-check as in `icu-message.property.spec.ts`): `toRuntimeValue(toStoredIcu(v, 'transloco'), 'transloco') === v` for arbitrary strings over the alphabet `{ } ' # a-z space`, and `parseIcuMessage(toStoredIcu(v, 'transloco')).ok` is true for all of them.
+- Property test (`runtime-conversion.property.spec.ts`, fast-check as in `icu-message.property.spec.ts`): `toRuntimeValue(toStoredIcu(v, 'transloco'), 'transloco')` equals `v` modulo whitespace inside `{{ }}` for arbitrary strings over the alphabet `{ } ' # a-z space`, and `parseIcuMessage(toStoredIcu(v, 'transloco')).ok` is true for all of them.
 - `unrenderableIcuConstructs`: plural, select, selectordinal, `{n, number}`, `{d, date, short}`, nested group inside select, returns `[]` for simple arguments, literals and malformed input, and `[]` under `transloco-messageformat`.
 - `icu-round-trip.spec.ts`: #156's five cases keep their exact bundled form under `transloco-messageformat`; under `transloco`, Booklore, Kavita, `{{ '{' }}SeriesName{{ '}' }}` and `Don't` return `undefined`.
 - Round trip through the Transloco replica in `transloco-runtime-round-trip.spec.ts`: bundling Booklore's value under `transloco` and running pass 1 only yields the source text unchanged.
