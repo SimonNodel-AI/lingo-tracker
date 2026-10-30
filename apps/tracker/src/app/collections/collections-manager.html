@@ -229,7 +229,6 @@
       }
 
       @if (importStrip(); as strip) {
-        @let result = strip.details.result;
         <app-run-result-strip
           data-testid="import-strip"
           [view]="strip.view"

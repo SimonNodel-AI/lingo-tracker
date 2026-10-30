@@ -36,13 +36,6 @@ async function seedDemoCollection(request: APIRequestContext): Promise<void> {
 test.describe.configure({ mode: 'serial' });
 
 test('translation browser screenshots', async ({ request, page, browserPage, appHeader }) => {
-  // Deliberate trade-off: the Tracker loads Material Icons and its text fonts from Google Fonts, and the network
-  // guard stubs those with empty bodies, which renders icon ligatures as plain text. Page routes run before the
-  // guard's context route, so this route fetches the real fonts for these hosts only; the guard still blocks every
-  // other external request. Capturing therefore needs network access.
-  await page.route(/^https:\/\/fonts\.(googleapis|gstatic)\.com\//, (route) =>
-    route.fetch().then((r) => route.fulfill({ response: r })),
-  );
   // The list has no sort-field control, but the Browser restores `sortField` from its saved view preferences.
   // Sorting by status puts the stale and new rows first.
   await page.addInitScript(
@@ -79,6 +72,8 @@ test('translation browser screenshots', async ({ request, page, browserPage, app
     await page.screenshot({
       path: join(imagesFolder, `translation-browser-${theme.toLowerCase()}.png`),
       clip: { x: 0, y: 0, width: viewport.width, height: footer.y },
+      // Finish ripples and transitions the theme menu left running.
+      animations: 'disabled',
     });
   }
 });
