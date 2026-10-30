@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
+import type { AppRuntime, BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
 import { DEFAULT_BUNDLE_DIST, DEFAULT_BUNDLE_NAME } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
@@ -17,6 +17,7 @@ export interface InitProjectAnswers {
   importFolder?: string;
   baseLocale?: string;
   locales?: string[];
+  runtime?: AppRuntime;
   setupBundle?: boolean;
   bundleDist?: string;
   bundleName?: string;
@@ -43,6 +44,7 @@ export function initProject(cwd: string, input: InitProjectAnswers): InitProject
     locales: answers.locales,
     collections: {},
     bundles: { main: buildBundleDefinition(answers) },
+    ...(input.runtime !== undefined && { runtime: input.runtime }),
     ...(answers.translation !== undefined && { translation: answers.translation }),
   };
   config.collections = {

@@ -8,7 +8,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  *   from it (`createTranslationProvider`, API key read from `process.env[apiKeyEnv]`) unless one
  *   is injected.
  * - **ICU skip**: complex ICU (plural, select, number, date, time) is never sent to the provider.
- * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) are sent as notranslate
+ * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) and quoted runs are sent as notranslate
  *   markers and restored afterwards; a translation that loses or duplicates a marker is skipped.
  * - **Protected-term guard**: a translation that drops a protected term present in the source
  *   (the collection's Project Terms, read once when the Translator is opened) is skipped, as
@@ -21,7 +21,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { admitValue, classifyICUContent } from '@simoncodes-ca/domain';
+import { admitValue, classifyICUContent, icuQuotedRuns } from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -169,7 +169,7 @@ function prepare(entry: TranslatorEntry): PreparedEntry {
   if (classification === 'complex-icu') {
     return { entry, kind: 'complex-icu' };
   }
-  if (classification === 'plain') {
+  if (classification === 'plain' && icuQuotedRuns(entry.source).length === 0) {
     return { entry, kind: 'sendable', text: entry.source, placeholders: [] };
   }
   const { protectedText, placeholders } = protectPlaceholders(entry.source);

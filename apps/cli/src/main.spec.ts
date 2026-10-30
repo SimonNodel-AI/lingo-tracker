@@ -35,6 +35,31 @@ describe('main.ts flag wiring', () => {
     expect(handler('add-resource')).toHaveBeenCalledWith(expect.objectContaining({ tags: ['a', 'b'] }));
   });
 
+  it('passes --runtime to init', async () => {
+    await runCli('init', '--runtime', 'transloco');
+
+    expect(handler('init')).toHaveBeenCalledWith(expect.objectContaining({ runtime: 'transloco' }));
+  });
+
+  it('rejects an invalid --runtime through the flag record', async () => {
+    let stderr = '';
+    const program = createCli(recordingManifest);
+    program.commands
+      .find((command) => command.name() === 'init')
+      ?.exitOverride()
+      .configureOutput({
+        writeErr: (text) => {
+          stderr += text;
+        },
+      });
+
+    await expect(program.parseAsync(['init', '--runtime', 'bogus'], { from: 'user' })).rejects.toMatchObject({
+      exitCode: 1,
+    });
+    expect(stderr).toContain('Allowed choices are transloco-messageformat, transloco');
+    expect(handler('init')).not.toHaveBeenCalled();
+  });
+
   it('parses edit-collection --set-tags before invoking the command', async () => {
     await runCli('edit-collection', 'app', '--set-tags', 'a, b');
     expect(handler('edit-collection')).toHaveBeenCalledWith(

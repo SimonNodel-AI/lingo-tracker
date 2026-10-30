@@ -337,6 +337,9 @@ Options:
   --import-folder <path>              dist/lingo-import
   --base-locale <locale>              en
   --locales <locales...>              supported locales
+  --runtime <value>                   App runtime for translation bundles
+                                      (choices: "transloco-messageformat",
+                                      "transloco")
   --setup-bundle <bool>               Setup bundle configuration during init
                                       (true/false)
   --bundle-dist <path>                Bundle output directory
