@@ -1,4 +1,5 @@
 import {
+  bundledFormIfLost,
   checkStoredValue,
   describeStoredValueFinding,
   importStrategyPolicy,
@@ -26,7 +27,8 @@ import type { ImportedResource, ImportResult, ImportRunOptions, ParsedImport } f
  * 4. Converts Transloco `{{ name }}` placeholders to ICU `{name}`.
  * 5. Repairs placeholders that differ from the stored base value (ICU auto-fix).
  * 6. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
- * 7. Uses Value Check as a backstop after ICU auto-fix, then applies the resources per folder
+ * 7. Warns for accepted migration keys whose resolved source changes through the ICU round trip.
+ * 8. Uses Value Check as a backstop after ICU auto-fix, then applies the resources per folder
  *    with the strategy's rules for creation, status, comments, tags, and preferred terminology.
  *    Migration skips argument agreement for unresolved references but still checks protected terms.
  *    The collection's Project Terms are read when the session opens; a rule-file problem is reported in `warnings`.
@@ -62,6 +64,7 @@ export function importResources(
   const normalized = normalizeTranslocoSyntaxInResources(safe);
   const repaired = repairImportPlaceholders(session, normalized);
   const valid = validateResources(session, repaired);
+  warnAboutRoundTripLoss(session, safe, valid);
   applyResourceGroups(session, valid);
 
   const result = sessionResult(session);
@@ -119,6 +122,25 @@ function validateResources(session: ImportSession, resources: ImportedResource[]
   session.warnings.push(...validation.warnings);
   recordImportIssues(session, validation.issues);
   return validation.validResources;
+}
+
+function warnAboutRoundTripLoss(
+  session: ImportSession,
+  sources: ImportedResource[],
+  validResources: ImportedResource[],
+): void {
+  if (importStrategyPolicy(session.options.strategy).resolvesReferences === false) return;
+  const validKeys = new Set(validResources.map(({ key }) => key));
+  const sourceValues = new Map(sources.map(({ key, value }) => [key, value]));
+  for (const [key, value] of sourceValues) {
+    if (!validKeys.has(key)) continue;
+    const bundled = bundledFormIfLost(value);
+    if (bundled === undefined) continue;
+    session.warnings.push(
+      `Key '${key}': value will not survive the ICU round trip and bundles as written below. ` +
+        `Source: ${JSON.stringify(value)} Bundled: ${JSON.stringify(bundled)}`,
+    );
+  }
 }
 
 function applyResourceGroups(session: ImportSession, resources: ImportedResource[]): void {

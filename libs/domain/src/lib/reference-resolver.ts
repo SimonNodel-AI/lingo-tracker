@@ -110,6 +110,8 @@ function resolveKey(
   resourceMap: Map<string, string>,
   visited: Set<string>,
   warnings: string[],
+  warnIfMissing: boolean,
+  unresolvedParams?: Set<string>,
 ): string | null {
   // Check for circular reference
   if (visited.has(key)) {
@@ -118,7 +120,8 @@ function resolveKey(
 
   // Check if key exists
   if (!resourceMap.has(key)) {
-    warnings.push(`Missing reference target: "${key}" - preserving literal`);
+    if (warnIfMissing) warnings.push(`Missing reference target: "${key}" - preserving literal`);
+    else unresolvedParams?.add(key.trim());
     return null;
   }
 
@@ -130,7 +133,7 @@ function resolveKey(
   // If the value contains references, resolve them recursively
   if (hasReferences(value)) {
     visited.add(key);
-    const resolved = resolveReferences(value, resourceMap, visited, warnings);
+    const resolved = resolveReferences(value, resourceMap, visited, warnings, unresolvedParams);
     visited.delete(key);
     return resolved;
   }
@@ -147,7 +150,10 @@ function resolveKey(
  *
  * Resolution behavior:
  * - If a referenced key exists, the pattern is replaced with its value
- * - If a referenced key doesn't exist, the literal pattern is preserved and a warning is added
+ * - If a referenced key doesn't exist, the literal pattern is preserved. A warning is added
+ *   for `{{t('key')}}` calls and direct references whose trimmed key matches a dotted key path
+ *   (`/^[\w-]+(\.[\w-]+)+$/`); other missing direct parameters add their trimmed key to
+ *   `unresolvedParams` when given, and stay quiet otherwise
  * - If a circular reference is detected, the literal pattern is preserved
  * - Nested references are resolved recursively (e.g., key1 -> key2 -> "final value")
  *
@@ -155,6 +161,7 @@ function resolveKey(
  * @param resourceMap - Map of translation keys to their values for lookup
  * @param visited - Internal set tracking visited keys to detect circular references (default: empty set)
  * @param warnings - Array to accumulate warning messages for missing or circular references (default: empty array)
+ * @param unresolvedParams - Optional collector for trimmed keys of missing non-dotted direct references (such as `{{name}}`)
  * @returns The value with all resolvable references replaced by their actual values
  *
  * @example
@@ -200,6 +207,7 @@ export function resolveReferences(
   resourceMap: Map<string, string>,
   visited: Set<string> = new Set(),
   warnings: string[] = [],
+  unresolvedParams?: Set<string>,
 ): string {
   if (!hasReferences(value)) {
     return value;
@@ -209,7 +217,9 @@ export function resolveReferences(
   let result = value;
 
   for (const { pattern, key } of references) {
-    const resolvedValue = resolveKey(key, resourceMap, visited, warnings);
+    const warnIfMissing =
+      pattern.startsWith('{{t(') || /^t\(/.test(key.trim()) || /^[\w-]+(\.[\w-]+)+$/.test(key.trim());
+    const resolvedValue = resolveKey(key, resourceMap, visited, warnings, warnIfMissing, unresolvedParams);
 
     if (resolvedValue !== null) {
       // Replace the pattern with the resolved value
@@ -236,6 +246,8 @@ export function resolveReferences(
  *    - Detects circular references to prevent infinite loops
  *    - Replaces patterns with resolved values
  * 3. Returns new array with resolved values
+ * 4. Adds one grouped warning listing the missing non-dotted parameters (such as `{{name}}`),
+ *    which stay as placeholders
  *
  * Typical usage: Called automatically during migration strategy imports to convert
  * Transloco's reference-based translations to LingoTracker's flat value format.
@@ -297,11 +309,12 @@ export function resolveAllReferences<T extends KeyedValue>(
 
   // Resolve references in each resource
   const resolved: T[] = [];
+  const unresolvedParams = new Set<string>();
 
   for (const resource of resources) {
     if (hasReferences(resource.value)) {
       const visited = new Set<string>();
-      const resolvedValue = resolveReferences(resource.value, resourceMap, visited, warnings);
+      const resolvedValue = resolveReferences(resource.value, resourceMap, visited, warnings, unresolvedParams);
 
       // Check for circular reference (value didn't change)
       if (resolvedValue === resource.value && hasReferences(resolvedValue)) {
@@ -321,6 +334,11 @@ export function resolveAllReferences<T extends KeyedValue>(
     } else {
       resolved.push(resource);
     }
+  }
+
+  if (unresolvedParams.size > 0) {
+    const names = [...unresolvedParams].sort((a, b) => a.localeCompare(b)).map((name) => `"${name}"`);
+    warnings.push(`Unresolved parameters kept as placeholders (no matching key): ${names.join(', ')}`);
   }
 
   return resolved;

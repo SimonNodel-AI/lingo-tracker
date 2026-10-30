@@ -29,6 +29,25 @@ describe('generateBundles', () => {
     return { ...config, collections: { common: { translationsFolder: 'resources' } } };
   };
 
+  it('warns about malformed stored ICU and writes its value unchanged', async () => {
+    const value = 'No-show fee of {{amount, currency}} charged for {title} at {date}';
+    seedResources(testCollection(join(cwd(), 'resources'), { name: 'common', locales: ['en'] }), {
+      'booking.fee': { source: value },
+    });
+
+    const result = await generateBundles(
+      { ...config, collections: { common: { translationsFolder: 'resources' } } },
+      { names: ['first'], cwd: cwd() },
+    );
+
+    expect(result.outcome).toBe('succeeded');
+    expect(result.outcomes[0]?.result?.findings.messages).toContain(
+      "Key 'booking.fee': value has malformed ICU syntax and was included as-is",
+    );
+    expect(result.outcomes[0]?.result?.writtenFiles).toEqual(['out/first-en.json']);
+    expect(JSON.parse(readFileSync(join(cwd(), 'out/first-en.json'), 'utf8'))).toEqual({ booking: { fee: value } });
+  });
+
   it('runs all bundles and totals their outcomes', async () => {
     const result = await generateBundles(config, { cwd: cwd() });
     expect(result.outcomes.map(({ name }) => name)).toEqual(['first', 'second']);
