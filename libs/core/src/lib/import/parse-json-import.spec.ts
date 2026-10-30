@@ -129,16 +129,22 @@ describe('parse JSON import', () => {
           'common.empty': { value: 'Oui', status: '' },
         }),
       );
-      expect(parseJsonImport(path)).toEqual([
+      expect(parseJsonImport(path).resources).toEqual([
         { key: 'common.null', value: 'Oui' },
         { key: 'common.empty', value: 'Oui' },
       ]);
     });
 
-    it('rejects an unknown status in a rich object', () => {
+    it('skips an unknown status in a flat rich object with a warning', () => {
       const path = join(dir, 'bad-status.json');
       writeFileSync(path, JSON.stringify({ 'common.ok': { value: 'OK', status: 'verifed' } }));
-      expect(() => parseJsonImport(path)).toThrow('Invalid translation status "verifed"');
+      expect(parseJsonImport(path)).toEqual({
+        resources: [],
+        skipped: [
+          { key: 'common.ok', reason: 'object looks like rich-format metadata but "status" is not a valid status' },
+        ],
+        warnings: ['"common.ok": object looks like rich-format metadata but "status" is not a valid status; skipped'],
+      });
     });
 
     it('throws when the source file is missing', () => {
@@ -155,7 +161,7 @@ describe('parse JSON import', () => {
       const path = join(dir, 'flat.json');
       writeFileSync(path, JSON.stringify({ 'common.ok': 'Aceptar', 'common.cancel': 'Cancelar' }));
       const onProgress = vi.fn();
-      expect(parseJsonImport(path, { onProgress })).toEqual([
+      expect(parseJsonImport(path, { onProgress }).resources).toEqual([
         { key: 'common.ok', value: 'Aceptar' },
         { key: 'common.cancel', value: 'Cancelar' },
       ]);
@@ -168,12 +174,223 @@ describe('parse JSON import', () => {
     it('parses a hierarchical file', () => {
       const path = join(dir, 'tree.json');
       writeFileSync(path, JSON.stringify({ common: { ok: 'Aceptar' } }));
-      expect(parseJsonImport(path)).toEqual([{ key: 'common.ok', value: 'Aceptar' }]);
+      expect(parseJsonImport(path).resources).toEqual([{ key: 'common.ok', value: 'Aceptar' }]);
     });
     it('parses rich objects', () => {
       const path = join(dir, 'rich.json');
       writeFileSync(path, JSON.stringify({ 'common.ok': { value: 'Aceptar', baseValue: 'OK', tags: ['ui'] } }));
-      expect(parseJsonImport(path)).toEqual([{ key: 'common.ok', value: 'Aceptar', baseValue: 'OK', tags: ['ui'] }]);
+      expect(parseJsonImport(path).resources).toEqual([
+        { key: 'common.ok', value: 'Aceptar', baseValue: 'OK', tags: ['ui'] },
+      ]);
+    });
+
+    it('imports value namespaces without losing siblings and reports arrays', () => {
+      const path = join(dir, 'filter.json');
+      writeFileSync(
+        path,
+        JSON.stringify({
+          filter: { value: 'Value', field: 'Field', operator: 'Operator' },
+          list: ['one', 'two'],
+          title: 'Title',
+        }),
+      );
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [
+          { key: 'filter.value', value: 'Value' },
+          { key: 'filter.field', value: 'Field' },
+          { key: 'filter.operator', value: 'Operator' },
+          { key: 'title', value: 'Title' },
+        ],
+        skipped: [{ key: 'list', reason: 'Unsupported JSON value type: array' }],
+        warnings: ['"list": Unsupported JSON value type: array; skipped'],
+      });
+    });
+
+    it('imports a namespace with value and status strings without throwing', () => {
+      const path = join(dir, 'common.json');
+      writeFileSync(path, JSON.stringify({ common: { value: 'Value', status: 'Status', save: 'Save' } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [
+          { key: 'common.value', value: 'Value' },
+          { key: 'common.status', value: 'Status' },
+          { key: 'common.save', value: 'Save' },
+        ],
+        skipped: [],
+        warnings: [],
+      });
+    });
+
+    it('recurses into schema-only objects with invalid status and reports exactly one warning', () => {
+      const path = join(dir, 'ambiguous-status.json');
+      writeFileSync(path, JSON.stringify({ common: { value: 'Value', status: 'Status' } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [
+          { key: 'common.value', value: 'Value' },
+          { key: 'common.status', value: 'Status' },
+        ],
+        skipped: [],
+        warnings: [
+          '"common": object looks like rich-format metadata but "status" is not a valid status; imported as nested keys',
+        ],
+      });
+    });
+
+    it('explains why flat namespaces with non-schema keys are skipped', () => {
+      const path = join(dir, 'flat-namespace.json');
+      writeFileSync(path, JSON.stringify({ 'common.labels': { value: 'Value', status: 'Status', save: 'Save' } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [],
+        skipped: [
+          {
+            key: 'common.labels',
+            reason: 'Object is not a rich resource; nested objects are not supported in flat JSON',
+          },
+        ],
+        warnings: [
+          '"common.labels": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
+        ],
+      });
+    });
+
+    it('recurses into a rich-looking object with an extra non-schema key', () => {
+      const path = join(dir, 'extra-key.json');
+      writeFileSync(path, JSON.stringify({ common: { value: 'Value', comment: 'Comment', help: 'Help' } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [
+          { key: 'common.value', value: 'Value' },
+          { key: 'common.comment', value: 'Comment' },
+          { key: 'common.help', value: 'Help' },
+        ],
+        skipped: [],
+        warnings: [],
+      });
+    });
+
+    it('reports all unsupported hierarchical leaves with their full dot keys', () => {
+      const path = join(dir, 'unsupported-tree.json');
+      writeFileSync(path, JSON.stringify({ common: { count: 42, enabled: true, empty: null, list: ['one'] } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [],
+        skipped: [
+          { key: 'common.count', reason: 'Unsupported JSON value type: number' },
+          { key: 'common.enabled', reason: 'Unsupported JSON value type: boolean' },
+          { key: 'common.empty', reason: 'Unsupported JSON value type: null' },
+          { key: 'common.list', reason: 'Unsupported JSON value type: array' },
+        ],
+        warnings: [
+          '"common.count": Unsupported JSON value type: number; skipped',
+          '"common.enabled": Unsupported JSON value type: boolean; skipped',
+          '"common.empty": Unsupported JSON value type: null; skipped',
+          '"common.list": Unsupported JSON value type: array; skipped',
+        ],
+      });
+    });
+
+    it('reports unsupported flat values including non-rich objects', () => {
+      const path = join(dir, 'unsupported-flat.json');
+      writeFileSync(
+        path,
+        JSON.stringify({
+          'common.count': 42,
+          'common.enabled': false,
+          'common.empty': null,
+          'common.list': ['one'],
+          'common.namespace': { label: 'Label' },
+          'common.extra': { value: 'Value', field: 'Field' },
+        }),
+      );
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [],
+        skipped: [
+          { key: 'common.count', reason: 'Unsupported JSON value type: number' },
+          { key: 'common.enabled', reason: 'Unsupported JSON value type: boolean' },
+          { key: 'common.empty', reason: 'Unsupported JSON value type: null' },
+          { key: 'common.list', reason: 'Unsupported JSON value type: array' },
+          {
+            key: 'common.namespace',
+            reason: 'Object is not a rich resource; nested objects are not supported in flat JSON',
+          },
+          {
+            key: 'common.extra',
+            reason: 'Object is not a rich resource; nested objects are not supported in flat JSON',
+          },
+        ],
+        warnings: [
+          '"common.count": Unsupported JSON value type: number; skipped',
+          '"common.enabled": Unsupported JSON value type: boolean; skipped',
+          '"common.empty": Unsupported JSON value type: null; skipped',
+          '"common.list": Unsupported JSON value type: array; skipped',
+          '"common.namespace": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
+          '"common.extra": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
+        ],
+      });
+    });
+
+    const invalidMetadata = [
+      { field: 'status', value: 'Status', reason: 'is not a valid status' },
+      { field: 'status', value: false, reason: 'is not a valid status' },
+      { field: 'comment', value: 42, reason: 'is not a string' },
+      { field: 'comment', value: null, reason: 'is not a string' },
+      { field: 'baseValue', value: false, reason: 'is not a string' },
+      { field: 'baseValue', value: null, reason: 'is not a string' },
+      { field: 'tags', value: 'Tags', reason: 'is not an array' },
+      { field: 'tags', value: null, reason: 'is not an array' },
+    ];
+
+    it('recurses into invalid rich metadata and warns with the full namespace key', () => {
+      const path = join(dir, 'ambiguous-tree.json');
+      for (const { field, value, reason } of invalidMetadata) {
+        writeFileSync(path, JSON.stringify({ outer: { common: { value: 'Value', [field]: value } } }));
+        const parsed = parseJsonImport(path);
+
+        expect(parsed.resources).toContainEqual({ key: 'outer.common.value', value: 'Value' });
+        expect(parsed.warnings).toContain(
+          `"outer.common": object looks like rich-format metadata but "${field}" ${reason}; imported as nested keys`,
+        );
+        if (typeof value === 'string') {
+          expect(parsed.resources).toContainEqual({ key: `outer.common.${field}`, value });
+          expect(parsed.skipped).toEqual([]);
+        } else {
+          expect(parsed.skipped).toEqual([
+            {
+              key: `outer.common.${field}`,
+              reason: `Unsupported JSON value type: ${value === null ? 'null' : typeof value}`,
+            },
+          ]);
+        }
+      }
+    });
+
+    it('skips invalid rich metadata in flat files with the ambiguity reason', () => {
+      const path = join(dir, 'ambiguous-flat.json');
+      for (const { field, value, reason } of invalidMetadata) {
+        writeFileSync(path, JSON.stringify({ 'common.title': { value: 'Value', [field]: value } }));
+        const issue = `object looks like rich-format metadata but "${field}" ${reason}`;
+
+        expect(parseJsonImport(path)).toEqual({
+          resources: [],
+          skipped: [{ key: 'common.title', reason: issue }],
+          warnings: [`"common.title": ${issue}; skipped`],
+        });
+      }
+    });
+
+    it('requires a string value even when all keys are schema keys', () => {
+      const path = join(dir, 'non-string-value.json');
+      writeFileSync(path, JSON.stringify({ common: { value: 42, comment: 'Comment' } }));
+
+      expect(parseJsonImport(path)).toEqual({
+        resources: [{ key: 'common.comment', value: 'Comment' }],
+        skipped: [{ key: 'common.value', reason: 'Unsupported JSON value type: number' }],
+        warnings: ['"common.value": Unsupported JSON value type: number; skipped'],
+      });
     });
   });
 });

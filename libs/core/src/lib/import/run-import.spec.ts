@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { seedResources, useTempDir } from '../../testing/temp-dir.spec-helpers';
@@ -44,6 +44,134 @@ describe('runImport', () => {
     expect(run.result.resourcesCreated).toBe(1);
     expect(run.summary()).toContain('**Source File**: source.json');
     expect(readdirSync(collection.translationsFolder)).toContain('common');
+  });
+
+  it('migrates value namespaces and reports skipped arrays in changes and the summary', async () => {
+    writeFileSync(
+      join(directory, 'filter.json'),
+      JSON.stringify({
+        filter: { value: 'Value', field: 'Field', operator: 'Operator' },
+        list: ['one', 'two'],
+        title: 'Title',
+      }),
+    );
+    const run = await runImport(collection, {
+      source: 'filter.json',
+      cwd: directory,
+      locale: collection.baseLocale,
+      strategy: 'migration',
+    });
+
+    expect(run.outcome).toBe('succeeded');
+    expect(run.entriesParsed).toBe(5);
+    expect(summarizeImportRuns([run]).totals).toMatchObject({ entries: 5, imported: 4, skipped: 1 });
+    expect(
+      JSON.parse(readFileSync(join(collection.translationsFolder, 'filter', 'resource_entries.json'), 'utf8')),
+    ).toEqual({
+      value: { source: 'Value' },
+      field: { source: 'Field' },
+      operator: { source: 'Operator' },
+    });
+    expect(JSON.parse(readFileSync(join(collection.translationsFolder, 'resource_entries.json'), 'utf8'))).toEqual({
+      title: { source: 'Title' },
+    });
+    expect(run.result.resourcesCreated).toBe(4);
+    expect(run.result.resourcesSkipped).toBe(1);
+    expect(run.result.changes).toContainEqual({
+      key: 'list',
+      type: 'skipped',
+      reason: 'Unsupported JSON value type: array',
+    });
+    expect(run.result.warnings).toEqual(['"list": Unsupported JSON value type: array; skipped']);
+    expect(run.summary()).toContain('**Resources Skipped**: 1');
+    expect(run.summary()).toContain('`list` (Unsupported JSON value type: array)');
+    expect(run.summary()).toContain('"list": Unsupported JSON value type: array; skipped');
+  });
+
+  it('migrates a namespace with a status label successfully without warnings', async () => {
+    writeFileSync(
+      join(directory, 'common.json'),
+      JSON.stringify({ common: { value: 'Value', status: 'Status', save: 'Save' } }),
+    );
+    const run = await runImport(collection, {
+      source: 'common.json',
+      cwd: directory,
+      locale: collection.baseLocale,
+      strategy: 'migration',
+    });
+
+    expect(run.outcome).toBe('succeeded');
+    expect(run.entriesParsed).toBe(3);
+    expect(
+      JSON.parse(readFileSync(join(collection.translationsFolder, 'common', 'resource_entries.json'), 'utf8')),
+    ).toEqual({
+      value: { source: 'Value' },
+      status: { source: 'Status' },
+      save: { source: 'Save' },
+    });
+    expect(run.result.resourcesCreated).toBe(3);
+    expect(run.result.resourcesSkipped).toBe(0);
+    expect(run.result.errors).toEqual([]);
+    expect(run.result.warnings).toEqual([]);
+    expect(run.summary()).not.toContain('## Warnings');
+  });
+
+  it('migrates schema-only objects with an invalid status as nested keys and warns once', async () => {
+    writeFileSync(join(directory, 'common.json'), JSON.stringify({ common: { value: 'Value', status: 'Status' } }));
+    const run = await runImport(collection, {
+      source: 'common.json',
+      cwd: directory,
+      locale: collection.baseLocale,
+      strategy: 'migration',
+    });
+
+    expect(run.outcome).toBe('succeeded');
+    expect(run.entriesParsed).toBe(2);
+    expect(
+      JSON.parse(readFileSync(join(collection.translationsFolder, 'common', 'resource_entries.json'), 'utf8')),
+    ).toEqual({
+      value: { source: 'Value' },
+      status: { source: 'Status' },
+    });
+    expect(run.result.resourcesCreated).toBe(2);
+    expect(run.result.resourcesSkipped).toBe(0);
+    expect(run.result.errors).toEqual([]);
+    expect(run.result.warnings).toEqual([
+      '"common": object looks like rich-format metadata but "status" is not a valid status; imported as nested keys',
+    ]);
+    expect(run.summary()).toContain('"common": object looks like rich-format metadata');
+  });
+
+  it('reports flat parser skips even when there are no resources, including in a dry run', async () => {
+    writeFileSync(
+      join(directory, 'unsupported.json'),
+      JSON.stringify({
+        'common.count': 42,
+        'common.enabled': false,
+        'common.empty': null,
+        'common.list': ['one'],
+        'common.namespace': { label: 'Label' },
+      }),
+    );
+    for (const dryRun of [true, false]) {
+      const run = await runImport(collection, {
+        source: 'unsupported.json',
+        cwd: directory,
+        locale: collection.baseLocale,
+        strategy: 'migration',
+        dryRun,
+      });
+
+      expect(run.outcome).toBe('succeeded');
+      expect(run.entriesParsed).toBe(5);
+      expect(summarizeImportRuns([run]).totals).toMatchObject({ entries: 5, imported: 0, skipped: 5 });
+      expect(run.result.resourcesSkipped).toBe(5);
+      expect(run.result.changes).toHaveLength(5);
+      expect(run.result.changes.every((change) => change.type === 'skipped')).toBe(true);
+      expect(run.result.warnings).toHaveLength(5);
+      expect(run.summary()).toContain('`common.list` (Unsupported JSON value type: array)');
+      noWrites();
+    }
   });
 
   it('defines imported as created plus updated for creates-only, updates-only and mixed runs', async () => {

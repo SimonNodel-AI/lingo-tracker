@@ -8,7 +8,7 @@ import { importResources } from './import-resources';
 import { generateImportSummary } from './import-summary';
 import { parseJsonImport } from './parse-json-import';
 import { parseXliffImport } from './parse-xliff-import';
-import type { ImportedResource, ImportFormat, ImportResult, ImportRunOptions } from './types';
+import type { ImportFormat, ImportResult, ImportRunOptions, ParsedImport } from './types';
 
 const LARGE_FILE_SIZE_THRESHOLD = 5;
 
@@ -31,7 +31,7 @@ export interface ImportRunWarning {
 
 export interface RunImportResult {
   readonly outcome: RunOutcome;
-  /** Number of source entries before validation. runImport always supplies it; optional for existing adapters. */
+  /** Source entries before validation, including entries the parser skipped. Always supplied by runImport. */
   readonly entriesParsed?: number;
   format: ImportFormat;
   result: ImportResult;
@@ -67,19 +67,19 @@ export async function runImport(collection: Collection, options: RunImportOption
   }
 
   options.onStart?.(format);
-  let resources: ImportedResource[];
+  let parsed: ParsedImport;
   try {
     const parseOptions = { onProgress: options.onProgress };
-    resources =
+    parsed =
       format === 'json' ? parseJsonImport(sourcePath, parseOptions) : await parseXliffImport(sourcePath, parseOptions);
   } catch (error) {
     throw new ImportSourceError(error instanceof Error ? error.message : String(error), { cause: error });
   }
 
-  const result = importResources(collection, resources, options);
+  const result = importResources(collection, parsed.resources, options, parsed);
   return {
     format,
-    entriesParsed: resources.length,
+    entriesParsed: parsed.resources.length + parsed.skipped.length,
     result,
     outcome: result.resourcesFailed > 0 || result.errors.length > 0 ? 'failed' : 'succeeded',
     summary: () => generateImportSummary(result, { ...options, format, source: options.source }),

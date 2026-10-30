@@ -13,7 +13,7 @@ import { validateImportResources } from './import-validation';
 import { loadBaseLocaleValues } from './load-base-locale-values';
 import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
 import { processResourceGroup } from './process-resource-group';
-import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
+import type { ImportedResource, ImportResult, ImportRunOptions, ParsedImport } from './types';
 
 /**
  * Imports resources into a collection for one locale, and reports what changed.
@@ -32,6 +32,7 @@ import type { ImportedResource, ImportResult, ImportRunOptions } from './types';
  *    The collection's Project Terms are read when the session opens; a rule-file problem is reported in `warnings`.
  *
  * Nothing is written in a dry run; the result says what would change.
+ * Optional parser findings contribute skipped changes and warnings to the result.
  *
  * @throws {InvalidImportLocaleError} The locale is the collection's base locale and the strategy is not `migration`.
  * @throws {ProtectedTermsFileError} A protected-terms file exists but is not a JSON array of strings.
@@ -40,12 +41,20 @@ export function importResources(
   collection: Collection,
   resources: readonly ImportedResource[],
   options: ImportRunOptions,
+  parseFindings?: Pick<ParsedImport, 'skipped' | 'warnings'>,
 ): ImportResult {
   for (const resource of resources) {
     if (resource.status !== undefined) assertTranslationStatus(resource.status);
   }
   const session = openImportSession(collection, options);
   const { dryRun, onProgress } = session.options;
+  if (parseFindings) {
+    recordImportIssues(
+      session,
+      parseFindings.skipped.map((issue) => ({ ...issue, type: 'skipped' as const })),
+    );
+    session.warnings.push(...parseFindings.warnings);
+  }
 
   const referenced = resolveImportReferences(session, resources);
   const safe = rejectUnsafeStoredValues(session, referenced);

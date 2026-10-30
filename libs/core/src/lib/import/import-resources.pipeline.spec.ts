@@ -60,7 +60,7 @@ describe('importResources pipeline', () => {
       'es.json',
       JSON.stringify({ 'common.buttons.ok': 'Aceptar', 'common.buttons.cancel': 'Cancelar' }),
     );
-    const result = importResources(collection, parseJsonImport(path), { locale: 'es' });
+    const result = importResources(collection, parseJsonImport(path).resources, { locale: 'es' });
     expect(result.resourcesUpdated).toBe(2);
     expect(folder('common.buttons').get('ok')?.meta?.['es']).toMatchObject({
       checksum: calculateChecksum('Aceptar'),
@@ -75,7 +75,7 @@ describe('importResources pipeline', () => {
       'es.json',
       JSON.stringify({ common: { buttons: { ok: 'Aceptar' } }, level: { one: { two: { deep: 'Profundo' } } } }),
     );
-    expect(importResources(collection, parseJsonImport(path), { locale: 'es' }).resourcesUpdated).toBe(2);
+    expect(importResources(collection, parseJsonImport(path).resources, { locale: 'es' }).resourcesUpdated).toBe(2);
     expect(folder('level.one.two').get('deep')?.entry['es']).toBe('Profundo');
   });
 
@@ -173,7 +173,7 @@ describe('importResources pipeline', () => {
     seed('common', { title: { source: 'Title' }, description: { source: 'Description' } });
     const path = source('es.json', JSON.stringify({ 'common.title': 'Título', 'common.description': 'Descripción' }));
     const onProgress = vi.fn();
-    const resources = parseJsonImport(path, { onProgress });
+    const resources = parseJsonImport(path, { onProgress }).resources;
     importResources(collection, resources, { locale: 'es', verbose: true, onProgress });
     const messages = onProgress.mock.calls.map(([message]) => message);
     expect(messages).toContain(`Reading JSON file: ${path}`);
@@ -291,7 +291,7 @@ describe('importResources pipeline', () => {
       'es.xliff',
       xliff('<trans-unit id="common.ok"><source>Okay</source><target>Aceptar</target><note>Button</note></trans-unit>'),
     );
-    const result = importResources(collection, await parseXliffImport(path), {
+    const result = importResources(collection, (await parseXliffImport(path)).resources, {
       locale: 'es',
       validateBase: true,
       updateComments: true,
@@ -307,7 +307,7 @@ describe('importResources pipeline', () => {
       'es.xliff',
       xliff('<trans-unit id="common.ok"><source>Okay</source><target>Aceptar</target><note>Button</note></trans-unit>'),
     );
-    const result = importResources(collection, await parseXliffImport(path), {
+    const result = importResources(collection, (await parseXliffImport(path)).resources, {
       locale: 'es',
       strategy: 'migration',
       validateBase: true,
@@ -324,7 +324,10 @@ describe('importResources pipeline', () => {
         '<trans-unit id="common.greeting"><source>Hello {name}</source><target>Hola {{ name }}</target></trans-unit>',
       ),
     );
-    const result = importResources(collection, await parseXliffImport(path), { locale: 'es', strategy: 'migration' });
+    const result = importResources(collection, (await parseXliffImport(path)).resources, {
+      locale: 'es',
+      strategy: 'migration',
+    });
     expect(result.resourcesCreated).toBe(1);
     expect(folder('common').get('greeting')?.entry['es']).toBe('Hola {name}');
   });
@@ -335,7 +338,7 @@ describe('importResources pipeline', () => {
       'es.xliff',
       xliff('<trans-unit id="common.ok"><source>OK</source><target>Aceptar</target></trans-unit>'),
     );
-    const result = importResources(collection, await parseXliffImport(path), {
+    const result = importResources(collection, (await parseXliffImport(path)).resources, {
       locale: 'es',
       strategy: 'verification',
     });
@@ -347,7 +350,11 @@ describe('importResources pipeline', () => {
     const xlf = await parseXliffImport(
       source('en.xliff', xliff('<trans-unit id="common.ok"><source>OK</source><target>OK</target></trans-unit>')),
     );
-    expect(() => importResources(collection, json, { locale: 'en' })).toThrow('Cannot import into base locale');
-    expect(() => importResources(collection, xlf, { locale: 'en' })).toThrow('Cannot import into base locale');
+    expect(() => importResources(collection, json.resources, { locale: 'en' })).toThrow(
+      'Cannot import into base locale',
+    );
+    expect(() => importResources(collection, xlf.resources, { locale: 'en' })).toThrow(
+      'Cannot import into base locale',
+    );
   });
 });

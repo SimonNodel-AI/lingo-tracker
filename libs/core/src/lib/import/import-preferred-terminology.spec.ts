@@ -91,7 +91,7 @@ describe('preferred terminology on import', () => {
       }),
     );
 
-    const result = importResources(collection, parseJsonImport(source), baseOptions());
+    const result = importResources(collection, parseJsonImport(source).resources, baseOptions());
 
     expect(result.warnings).toEqual(
       expect.arrayContaining([
@@ -110,7 +110,7 @@ describe('preferred terminology on import', () => {
     seedExisting();
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Operating expenditure' }));
 
-    const result = importResources(collection, parseJsonImport(source), baseOptions());
+    const result = importResources(collection, parseJsonImport(source).resources, baseOptions());
 
     expect(result.warnings).toContain(
       'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -122,7 +122,7 @@ describe('preferred terminology on import', () => {
   it('warns during a dry run without writing anything', () => {
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
 
-    const result = importResources(collection, parseJsonImport(source), baseOptions({ dryRun: true }));
+    const result = importResources(collection, parseJsonImport(source).resources, baseOptions({ dryRun: true }));
 
     expect(result.warnings.filter((w) => w.startsWith('Preferred terminology'))).toHaveLength(1);
     expect(result.filesModified).toEqual([]);
@@ -134,7 +134,7 @@ describe('preferred terminology on import', () => {
 
     const result = importResources(
       collection,
-      parseJsonImport(source),
+      parseJsonImport(source).resources,
       baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 
@@ -146,7 +146,7 @@ describe('preferred terminology on import', () => {
     rmSync(join(projectDir, '.lingo-tracker-preferred-terminology.json'));
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
 
-    const result = importResources(collection, parseJsonImport(source), baseOptions());
+    const result = importResources(collection, parseJsonImport(source).resources, baseOptions());
 
     expect(result.warnings.some((w) => w.startsWith('Preferred terminology'))).toBe(false);
   });
@@ -156,7 +156,7 @@ describe('preferred terminology on import', () => {
     writeFileSync(rulesPath, 'not json', 'utf8');
     const source = writeSource('en.json', JSON.stringify({ 'budget.title': 'Expenditure' }));
 
-    const result = importResources(collection, parseJsonImport(source), baseOptions());
+    const result = importResources(collection, parseJsonImport(source).resources, baseOptions());
 
     expect(result.warnings[0]).toContain(
       `Preferred terminology checks skipped: Preferred terminology file is not valid JSON: ${rulesPath}`,
@@ -172,7 +172,7 @@ describe('preferred terminology on import', () => {
 
     const result = importResources(
       collection,
-      parseJsonImport(source),
+      parseJsonImport(source).resources,
       baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 
@@ -185,7 +185,7 @@ describe('preferred terminology on import', () => {
       xliff('en', { 'budget.title': { source: 'Expenditure', target: 'Capital expenditure' } }),
     );
 
-    const result = importResources(collection, await parseXliffImport(source), baseOptions());
+    const result = importResources(collection, (await parseXliffImport(source)).resources, baseOptions());
 
     expect(result.warnings).toContain(
       'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -198,7 +198,7 @@ describe('preferred terminology on import', () => {
       const source = writeSource('fr.json', JSON.stringify({ 'budget.title': 'Expenditure du mois' }));
 
       const french = makeCollection('fr');
-      const result = importResources(french, parseJsonImport(source), baseOptions({ locale: 'fr' }));
+      const result = importResources(french, parseJsonImport(source).resources, baseOptions({ locale: 'fr' }));
 
       expect(result.warnings).toContain(
         'Preferred terminology: key "budget.title" — consider "Investment" instead of "Expenditure". Finance style guide',
@@ -214,7 +214,7 @@ describe('preferred terminology on import', () => {
       const french = makeCollection('fr');
       const result = importResources(
         french,
-        parseJsonImport(source),
+        parseJsonImport(source).resources,
         baseOptions({ locale: 'en', strategy: 'translation-service' }),
       );
 
@@ -233,7 +233,7 @@ describe('preferred terminology on import', () => {
 
     const result = importResources(
       collection,
-      await parseXliffImport(source),
+      (await parseXliffImport(source)).resources,
       baseOptions({ locale: 'es', strategy: 'translation-service' }),
     );
 

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import * as xliff from 'xliff';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import { PROTECTED_TERMS_NOTE_PREFIX } from '../export/export-to-xliff';
-import type { ImportedResource, ImportParseOptions } from './types';
+import type { ImportedResource, ImportParseOptions, ParsedImport } from './types';
 
 /**
  * The comment carried by a trans-unit's `<note>` elements: one note per line. The exporter's
@@ -107,17 +107,14 @@ export async function extractFromXliff(xliffContent: string): Promise<ImportedRe
 }
 
 /**
- * Reads an XLIFF 1.2 import file and returns its resources: the XLIFF format adapter for
+ * Reads an XLIFF 1.2 import file and returns resources with empty findings: the XLIFF format adapter for
  * {@link importResources}. Each trans-unit becomes a resource (`id` → key, `<target>` → value,
  * `<source>` → baseValue, `<note>` → comment); trans-units without a target are skipped.
  *
  * @param filePath - Path of the XLIFF file (relative paths resolve against the working directory)
  * @throws {Error} The file does not exist or cannot be read, or it is not valid XLIFF.
  */
-export async function parseXliffImport(
-  filePath: string,
-  options: ImportParseOptions = {},
-): Promise<ImportedResource[]> {
+export async function parseXliffImport(filePath: string, options: ImportParseOptions = {}): Promise<ParsedImport> {
   const { onProgress } = options;
   if (!existsSync(filePath)) {
     throw new CoreOperationError(`Source file not found: ${filePath}`);
@@ -135,5 +132,5 @@ export async function parseXliffImport(
   onProgress?.('Parsing XLIFF and extracting trans-units');
   const resources = await extractFromXliff(xliffContent);
   onProgress?.(`Extracted ${resources.length} resources from XLIFF`);
-  return resources;
+  return { resources, skipped: [], warnings: [] };
 }

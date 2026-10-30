@@ -22,5 +22,6 @@ export type {
   ImportResult,
   ImportRunOptions,
   ImportSummaryOptions,
+  ParsedImport,
   StatusTransition,
 } from './types';
