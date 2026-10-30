@@ -6,12 +6,6 @@ export const networkGuardFixture: TestFixture<undefined, { context: BrowserConte
     const url = new URL(route.request().url());
     if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
       await route.continue();
-    } else if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-      await route.fulfill({
-        status: 200,
-        contentType: url.hostname === 'fonts.googleapis.com' ? 'text/css' : 'application/octet-stream',
-        body: '',
-      });
     } else {
       blocked.add(url.href);
       await route.abort('blockedbyclient');

@@ -66,7 +66,7 @@ Playwright, Chromium only. Specs are `src/**/*.e2e.ts`; import `test`/`expect` f
 
 - **System under test**: each worker spawns the built `dist/apps/api/main.js` (which serves `dist/apps/tracker/browser`) on a free port, with a temporary project folder as cwd. Never run e2e against the dev server: its cwd is the workspace root.
 - **Data**: the `project` fixture gives each test its own collection and restores `.lingo-tracker.json` afterwards. Seed through the running API, not by importing core. Assert on disk with the read-only `disk` helpers.
-- **Mocking**: real backend by default. Use `page.route` only for error, latency and network-failure states. A network guard stubs Google Fonts and fails the test on any other non-localhost request. Machine translation is not covered.
+- **Mocking**: real backend by default. Use `page.route` only for error, latency and network-failure states. The Tracker bundles its fonts and icons; a network guard fails the test on any non-localhost request. Machine translation is not covered.
 - **Locators**: `getByTestId` for app-specific elements, `getByRole` with English names for standard widgets. No CSS or `.mat-*` selectors, no `waitForTimeout`. Add a `data-testid` only when a test needs it.
 - **Page objects** (`src/pages/`): locators and multi-step actions, no assertions; exposed as fixtures.
 - **CI** (`.github/workflows/tracker-e2e.yml`): runs automatically on PRs to `main`, and on PRs to `develop` only when a maintainer adds the `run-e2e` label. `pr.yml` excludes `tracker-e2e`.
