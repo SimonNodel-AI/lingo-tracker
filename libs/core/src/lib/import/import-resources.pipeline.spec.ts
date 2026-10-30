@@ -248,6 +248,7 @@ describe('importResources pipeline', () => {
     );
 
     expect(result.warnings).toEqual([
+      'Unresolved parameters kept as placeholders (no matching key): "name"',
       "Key 'common.title': value will not survive the ICU round trip and bundles as written below. " +
         'Source: "Use {Native} for the native title" Bundled: "Use {{ Native }} for the native title"',
     ]);

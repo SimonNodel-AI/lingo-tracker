@@ -327,5 +327,44 @@ describe('reference-resolver', () => {
       expect(result[0].tags).toEqual(['common']);
       expect(result[1].baseValue).toBe('Hi World');
     });
+
+    it('emits one grouped warning with unique, sorted, quoted unresolved parameters', () => {
+      const resources: KeyedValue[] = [
+        { key: 'a', value: 'Hi {{name}}, you owe {{amount, currency}}' },
+        { key: 'b', value: '{{ name }} and {{count}}' },
+        { key: 'c', value: 'Bye {{name}}' },
+      ];
+      const warnings: string[] = [];
+
+      resolveAllReferences(resources, true, warnings);
+
+      expect(warnings).toEqual([
+        'Unresolved parameters kept as placeholders (no matching key): "amount, currency", "count", "name"',
+      ]);
+    });
+
+    it('emits no grouped warning when there are no unresolved plain parameters', () => {
+      const resources: KeyedValue[] = [
+        { key: 'greeting', value: 'Hello' },
+        { key: 'message', value: '{{greeting}} World' },
+      ];
+      const warnings: string[] = [];
+
+      resolveAllReferences(resources, true, warnings);
+
+      expect(warnings).toEqual([]);
+    });
+
+    it('keeps the per-key warning for dotted keys out of the grouped warning', () => {
+      const resources: KeyedValue[] = [{ key: 'a', value: '{{missing.key}} {{name}}' }];
+      const warnings: string[] = [];
+
+      resolveAllReferences(resources, true, warnings);
+
+      expect(warnings).toEqual([
+        'Missing reference target: "missing.key" - preserving literal',
+        'Unresolved parameters kept as placeholders (no matching key): "name"',
+      ]);
+    });
   });
 });
