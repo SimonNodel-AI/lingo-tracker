@@ -22,6 +22,61 @@ import { translocoToICU } from './transloco-to-icu';
 /** Work units the readers may spend per input character in the parse cost specs. */
 const WORK_PER_CHARACTER = 60;
 
+describe('simple ICU argument identifier paths', () => {
+  it('requires an explicit option to read dotted names', () => {
+    const value = 'Hello {user.name}';
+    expect(parseIcuMessage(value).ok).toBe(false);
+    expect(parseIcuMessage(value, { simpleArgumentPaths: false }).ok).toBe(false);
+    expect(parseIcuMessage(value, { simpleArgumentPaths: true }).ok).toBe(true);
+  });
+
+  it('preserves the argument name and source ranges for identifier paths', () => {
+    const value = 'Hello { user.name_1 }';
+    const message = parseIcuMessage(value, { simpleArgumentPaths: true });
+    expect(message.ok).toBe(true);
+    const argument = message.nodes[1];
+    expect(argument).toMatchObject({
+      kind: 'argument',
+      name: 'user.name_1',
+      syntax: 'icu',
+      closed: true,
+      innerBrace: false,
+      range: { start: 6, end: value.length },
+      nameRange: { start: 8, end: 19 },
+    });
+  });
+
+  it('respects quoted literals and reads paths inside group branches', () => {
+    const value = "'{'user.name'}' {n, plural, other {{user.name_1}}}";
+    const message = parseIcuMessage(value, { simpleArgumentPaths: true });
+    expect(message.ok).toBe(true);
+    expect(message.nodes[0]?.kind).toBe('literal');
+    const names: string[] = [];
+    visitIcuNodes(message.nodes, (node) => {
+      if (node.kind === 'argument') names.push(node.name);
+    });
+    expect(names).toEqual(['user.name_1']);
+  });
+
+  it('keeps strict validation outside simple identifier paths', () => {
+    for (const value of [
+      '{a..b}',
+      '{.a}',
+      '{a.}',
+      '{a b}',
+      '{user.name',
+      '{user.name} }',
+      '{{user.name}}',
+      '{user.name, number}',
+      '{user.name, plural, other {#}}',
+      '{user.name} {n, unsupported}',
+      '{user.name} {n, plural, one {#}}',
+    ]) {
+      expect(parseIcuMessage(value, { simpleArgumentPaths: true }).ok).toBe(false);
+    }
+  });
+});
+
 interface ConversionFixture {
   /** Sentence fragment used to name the generated test cases. */
   readonly description: string;

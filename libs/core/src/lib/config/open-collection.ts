@@ -1,10 +1,11 @@
 import { resolve } from 'node:path';
-import { findCollectionEntry, inheritCollectionSettings, normalizeTags } from '@simoncodes-ca/domain';
+import { type AppRuntime, findCollectionEntry, inheritCollectionSettings, normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from '../../config/lingo-tracker-collection';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import type { TranslationConfig } from '../../config/translation-config';
 import { CollectionNotFoundError, ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import type { MutationSink } from '../resource/resource-mutation';
+import { appRuntimeOf } from './app-runtime';
 import { resolvePreferredTerminologyFile } from './preferred-terminology-file';
 import { resolveCollectionProtectedTermsFilePath, resolveGlobalProtectedTermsFile } from './protected-terms-file';
 import type { TermFile } from './term-file';
@@ -20,6 +21,8 @@ export interface Collection {
   /** Required consumer of resource writes; openCollection supplies a no-op when omitted. */
   readonly onMutation: MutationSink;
   readonly name: string;
+  /** Global runtime, with the project's default resolved. */
+  readonly runtime: AppRuntime;
   /** Absolute path of the collection's translations folder. */
   readonly translationsFolder: string;
   /** Non-empty collection `baseLocale`, else global `baseLocale`, else `'en'`. */
@@ -106,6 +109,7 @@ export function openCollection(
 
   return {
     name,
+    runtime: appRuntimeOf(config),
     onMutation: onMutation ?? ignoreMutations,
     sourceConfig: config,
     projectRoot: cwd,

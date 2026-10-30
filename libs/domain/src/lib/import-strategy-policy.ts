@@ -17,6 +17,8 @@ export interface ImportStrategyPolicy {
   readonly honoursOptionOverrides: boolean;
   readonly writesBaseLocale: boolean;
   readonly resolvesReferences: boolean;
+  /** Whether the source carries app-runtime syntax or exported ICU. */
+  readonly valueSyntax: 'runtime' | 'stored';
   readonly honoursSourceStatusByDefault: boolean;
   /** Refresh the base checksum when an unchanged translation is re-confirmed. */
   readonly reconfirmsUnchanged: boolean;
@@ -31,6 +33,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
     honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
+    valueSyntax: 'stored',
     honoursSourceStatusByDefault: false,
     reconfirmsUnchanged: true,
     statusOnChanged: 'translated',
@@ -41,6 +44,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
     honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
+    valueSyntax: 'stored',
     honoursSourceStatusByDefault: false,
     reconfirmsUnchanged: true,
     statusOnChanged: 'verified',
@@ -51,6 +55,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
     honoursOptionOverrides: true,
     writesBaseLocale: true,
     resolvesReferences: true,
+    valueSyntax: 'runtime',
     honoursSourceStatusByDefault: true,
     reconfirmsUnchanged: false,
     statusOnChanged: 'translated',
@@ -61,6 +66,7 @@ const IMPORT_STRATEGY_POLICIES = Object.freeze({
     honoursOptionOverrides: false,
     writesBaseLocale: false,
     resolvesReferences: false,
+    valueSyntax: 'stored',
     honoursSourceStatusByDefault: false,
     reconfirmsUnchanged: false,
     statusOnChanged: 'keep',

@@ -14,6 +14,7 @@
 
 import MessageFormat from '@messageformat/core';
 import { icuToTransloco } from './icu-to-transloco';
+import { toRuntimeValue, toStoredIcu } from './runtime-conversion';
 
 /** The parameters a consumer passes alongside a translation key. */
 type RuntimeParams = Record<string, unknown>;
@@ -326,4 +327,10 @@ describe('transloco runtime round trip', () => {
   it('substitutes an empty string for an unresolved name, as the runtime does', () => {
     expect(transpileInterpolations('Hello {{ name }}!', {})).toBe('Hello !');
   });
+});
+
+it('renders Booklore literal braces unchanged through plain Transloco interpolation alone', () => {
+  const value = 'Showing {first} to {last} of {totalRecords} entries';
+  const emitted = toRuntimeValue(toStoredIcu(value, 'transloco'), 'transloco');
+  expect(transpileInterpolations(emitted, {})).toBe(value);
 });

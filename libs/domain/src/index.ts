@@ -3,6 +3,13 @@
 // index.spec.ts scans consumers and pins runtime values. Type-only exports are excluded.
 
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
+export { type AppRuntime, APP_RUNTIMES, DEFAULT_APP_RUNTIME, isAppRuntime } from './lib/app-runtime';
+export {
+  type IcuConstructKind,
+  toStoredIcu,
+  toRuntimeValue,
+  unrenderableIcuConstructs,
+} from './lib/runtime-conversion';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,

@@ -26,6 +26,7 @@ describe('mutations delivered by core writes (real fs)', () => {
   let root: string;
 
   const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name,
     translationsFolder,

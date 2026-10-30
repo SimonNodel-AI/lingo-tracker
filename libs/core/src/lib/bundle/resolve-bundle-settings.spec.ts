@@ -38,10 +38,15 @@ describe('resolveBundleSettings', () => {
     '%s wins in precedence',
     (_label, global, bundle, overrides, tokenCasing, tokenConstantName, transformICUToTransloco) => {
       expect(resolveBundleSettings('main', { ...base, ...global }, { ...definition, ...bundle }, overrides)).toEqual({
+        runtime: 'transloco-messageformat',
         tokenCasing,
         tokenConstantName,
         transformICUToTransloco,
       });
     },
   );
+});
+
+it('resolves the global runtime without a bundle or command override', () => {
+  expect(resolveBundleSettings('main', { runtime: 'transloco' }, definition).runtime).toBe('transloco');
 });

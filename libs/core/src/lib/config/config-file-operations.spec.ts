@@ -6,6 +6,7 @@ import { CONFIG_FILENAME } from '../../constants';
 import { useTempDir } from '../../testing/temp-dir.spec-helpers';
 import { ErrorMessages } from '../errors/error-messages';
 import { ConfigChangedError, CoreOperationError, InvalidConfigError } from '../errors/lingo-tracker-error';
+import { appRuntimeOf } from './app-runtime';
 import { createConfigFileOperations, guardedConfigWrite, loadConfig } from './config-file-operations';
 
 vi.mock('node:fs', async (importOriginal) => {
@@ -22,6 +23,43 @@ describe('ConfigFileOperations version check', () => {
     baseLocale: 'en',
     locales: ['en'],
     collections: { app: { translationsFolder: './i18n' } },
+  });
+
+  it('rejects an invalid present runtime on read and write with the allowed values', () => {
+    const message = 'runtime must be one of: transloco-messageformat, transloco';
+    const handle = createConfigFileOperations({ cwd: tempDir() });
+    for (const runtime of ['Transloco', '', null, 1, {}, []]) {
+      const invalid = { ...config(), runtime } as unknown as LingoTrackerConfig;
+      writeFileSync(configPath(), JSON.stringify(invalid));
+      expect(() => handle.read()).toThrow(new InvalidConfigError(message));
+      const before = readFileSync(configPath(), 'utf8');
+      expect(() => handle.write(invalid)).toThrow(new InvalidConfigError(message));
+      expect(readFileSync(configPath(), 'utf8')).toBe(before);
+    }
+  });
+
+  it('rejects an explicitly undefined runtime on write', () => {
+    expect(() => createConfigFileOperations({ cwd: tempDir() }).write({ ...config(), runtime: undefined })).toThrow(
+      new InvalidConfigError('runtime must be one of: transloco-messageformat, transloco'),
+    );
+  });
+
+  it('resolves a missing runtime to the default without adding a field to the read snapshot', () => {
+    writeFileSync(configPath(), JSON.stringify(config()));
+    const snapshot = createConfigFileOperations({ cwd: tempDir() }).read();
+    expect(snapshot).not.toHaveProperty('runtime');
+    expect(appRuntimeOf(snapshot)).toBe('transloco-messageformat');
+    expect(appRuntimeOf({})).toBe('transloco-messageformat');
+  });
+
+  it('reads, writes and resolves each explicitly configured runtime', () => {
+    const handle = createConfigFileOperations({ cwd: tempDir() });
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      handle.write({ ...config(), runtime });
+      const snapshot = handle.read();
+      expect(snapshot.runtime).toBe(runtime);
+      expect(appRuntimeOf(snapshot)).toBe(runtime);
+    }
   });
 
   it('refuses a change after read and keeps the other writer’s bytes', () => {

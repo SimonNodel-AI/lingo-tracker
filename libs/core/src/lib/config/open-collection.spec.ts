@@ -55,6 +55,7 @@ describe('openCollection', () => {
     expect(collection).toEqual({
       onMutation: expect.any(Function),
       name: 'inherits',
+      runtime: 'transloco-messageformat',
       sourceConfig: config,
       projectRoot: dir,
       translationsFolder: resolve(dir, 'src/i18n'),
@@ -79,6 +80,14 @@ describe('openCollection', () => {
     expect(collection.locales).toEqual(['fr', 'es']);
     expect(collection.translationConfig).toEqual(collectionTranslation);
     expect(collection.tags).toEqual(['shared', 'ui']);
+  });
+
+  it('resolves the runtime from the global config for every collection', () => {
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      for (const name of ['inherits', 'overrides']) {
+        expect(openCollection({ ...config, runtime }, name, { cwd: dir }).runtime).toBe(runtime);
+      }
+    }
   });
 
   it('excludes the base locale from target locales', () => {

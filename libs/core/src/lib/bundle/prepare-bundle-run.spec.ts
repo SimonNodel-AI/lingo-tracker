@@ -46,7 +46,12 @@ describe('prepareBundleRun', () => {
         locales: ['fr'],
         ...overrides,
       });
-      expect(prepared.settings).toEqual({ tokenConstantName, tokenCasing, transformICUToTransloco });
+      expect(prepared.settings).toEqual({
+        runtime: 'transloco-messageformat',
+        tokenConstantName,
+        tokenCasing,
+        transformICUToTransloco,
+      });
       expect(prepared.locales).toEqual(['fr']);
       expect(prepared.collections).toEqual({ collections: [], warnings: [] });
       expect(prepared.warnings).toEqual([]);

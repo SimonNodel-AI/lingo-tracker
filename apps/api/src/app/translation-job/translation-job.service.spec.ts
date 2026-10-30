@@ -20,6 +20,7 @@ const makeSuccessResult = (overrides: Partial<TranslateLocaleResult> = {}): Tran
 
 const sink = jest.fn();
 const collection: Collection = {
+  runtime: 'transloco-messageformat',
   onMutation: sink,
   name: 'my-collection',
   translationsFolder: '/path/to/translations',

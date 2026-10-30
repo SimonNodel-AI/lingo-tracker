@@ -74,16 +74,20 @@ describe('domain public surface', () => {
   it('requires an outside non-test consumer for every runtime export', () => {
     const consumed = new Set(consumerSources('domain').flatMap((source) => [...consumedNames(source, 'domain')]));
     // inferImportLocale is the public import preview contract for the upcoming UI/API consumers.
+    // Runtime bundle conversion and renderability checks are public contracts for #151's next slice.
+    const upcomingRuntimeConsumers = ['toRuntimeValue', 'unrenderableIcuConstructs'];
     const unused = Object.keys(domain)
-      .filter((name) => !consumed.has(name) && name !== 'inferImportLocale')
+      .filter((name) => !consumed.has(name) && name !== 'inferImportLocale' && !upcomingRuntimeConsumers.includes(name))
       .sort();
     expect(unused, `Unused @simoncodes-ca/domain runtime exports: ${unused.join(', ')}`).toEqual([]);
   }, 30_000);
 
   it('exports exactly the listed runtime values', () => {
     expect(Object.keys(domain).sort()).toEqual([
+      'APP_RUNTIMES',
       'CONFIG_FILENAME',
       'CONVERSION_SAFETY_RULES',
+      'DEFAULT_APP_RUNTIME',
       'DEFAULT_BUNDLE_DIST',
       'DEFAULT_BUNDLE_NAME',
       'DEFAULT_CONFIG',
@@ -140,6 +144,7 @@ describe('domain public surface', () => {
       'importableLocales',
       'inferImportLocale',
       'inheritCollectionSettings',
+      'isAppRuntime',
       'isDescendantFolderPath',
       'isEmptyValue',
       'isFolderPathUnder',
@@ -175,7 +180,10 @@ describe('domain public surface', () => {
       'splitResolvedKey',
       'statusCountsOver',
       'summaryTarget',
+      'toRuntimeValue',
+      'toStoredIcu',
       'translocoToICU',
+      'unrenderableIcuConstructs',
       'validateICUSyntax',
       'validateImportKey',
       'validateJavaScriptIdentifier',

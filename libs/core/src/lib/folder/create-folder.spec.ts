@@ -7,6 +7,7 @@ import { createFolder } from './create-folder';
 
 function collection(translationsFolder: string): Collection {
   return {
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name: 'main',
     translationsFolder,

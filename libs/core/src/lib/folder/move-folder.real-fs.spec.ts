@@ -34,6 +34,7 @@ beforeEach(() => {
 
 function collection(translationsFolder: string): OpenedCollection {
   return {
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name: 'main',
     translationsFolder,

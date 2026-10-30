@@ -7,7 +7,7 @@ sidebar_position: 4
 
 All settings live in `.lingo-tracker.json` in the project root. `init` creates it. The CLI reads it from `INIT_CWD` when a package manager sets that variable, otherwise from the current directory. `lingo-tracker-app` reads it from the directory it was started in. Neither searches parent folders.
 
-The file is plain JSON. Reading requires only a JSON object. Writes additionally require a `baseLocale`, an array for `locales` and an object for `collections`. No other field is checked, so a misspelled field is ignored silently. Compare against this page when a setting has no effect.
+The file is plain JSON. Reading requires only a JSON object. Writes additionally require a `baseLocale`, an array for `locales` and an object for `collections`. When present, `runtime` is also checked on read and write; no other field is checked, so a misspelled field is ignored silently. Compare against this page when a setting has no effect.
 
 Writes by the CLI, API or UI are guarded: if the file changed on disk between read and write, the write is refused with a conflict error instead of overwriting someone else's edit.
 

@@ -2,6 +2,7 @@ import type { Collection } from '@simoncodes-ca/core';
 import { describeTreeRead } from './tree-response.mapper';
 
 const collection: Collection = {
+  runtime: 'transloco-messageformat',
   onMutation: () => undefined,
   name: 'test',
   translationsFolder: '/t',
