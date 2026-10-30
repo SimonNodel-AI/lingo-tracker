@@ -71,6 +71,13 @@ export interface ImportedResource {
   tags?: string[];
 }
 
+/** Resources and diagnostics returned by an import format adapter. */
+export interface ParsedImport {
+  resources: ImportedResource[];
+  skipped: { key: string; reason: string }[];
+  warnings: string[];
+}
+
 /**
  * Types of changes that can occur during import
  */

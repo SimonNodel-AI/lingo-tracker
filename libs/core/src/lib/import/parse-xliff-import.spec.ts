@@ -116,9 +116,11 @@ describe('parse XLIFF import', () => {
         document('<trans-unit id="common.ok"><source>OK</source><target>Aceptar</target></trans-unit>'),
       );
       const onProgress = vi.fn();
-      await expect(parseXliffImport(path, { onProgress })).resolves.toEqual([
-        { key: 'common.ok', value: 'Aceptar', baseValue: 'OK' },
-      ]);
+      await expect(parseXliffImport(path, { onProgress })).resolves.toEqual({
+        resources: [{ key: 'common.ok', value: 'Aceptar', baseValue: 'OK' }],
+        skipped: [],
+        warnings: [],
+      });
       expect(onProgress.mock.calls.map(([message]) => message)).toEqual([
         `Reading XLIFF file: ${path}`,
         'Parsing XLIFF and extracting trans-units',

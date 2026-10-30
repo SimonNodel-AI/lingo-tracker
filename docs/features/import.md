@@ -157,6 +157,8 @@ JSON import provides flexible format options for system migrations and integrati
 - **Simple**: String values only
 - **Rich**: Objects with metadata (`value`, `comment`, `baseValue`, `status`, `tags`)
 
+An object is rich only when `value` is a string and all its keys are `value`, `baseValue`, `comment`, `status` or `tags`. Any other object is a namespace in a hierarchical file and is skipped in a flat file. When an object has only these keys but one of them has the wrong type (for example, an unknown `status`), a hierarchical file imports it as nested keys and shows a warning. Arrays, numbers, booleans and `null` are skipped, listed in one warning, and counted as skipped in the summary.
+
 **Flat with Simple Values**:
 ```json
 {
