@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIND_SIMILAR_FLAGS } from './commands/find-similar-flags';
 import { createCli } from './program';
-import { createRecordingManifest } from './testing/recording-manifest';
 import { resolveFlagValues } from './runner/flag-record';
 import { createCommandProject } from './testing/command-project';
+import { createRecordingManifest } from './testing/recording-manifest';
 
 const { recordingManifest, handler } = createRecordingManifest();
 
@@ -59,7 +59,20 @@ describe('main.ts flag wiring', () => {
       allowTranslated: false,
       skipLocales: ['fr', 'de'],
       skipIcu: false,
+      skipRuntime: false,
       skipPlaceholders: true,
+      skipProtectedTerms: false,
+      requirePortablePlurals: false,
+    });
+  });
+
+  it('passes --skip-runtime to validate independently of ICU compilation', async () => {
+    await runCli('validate', '--skip-runtime');
+    expect(handler('validate')).toHaveBeenCalledWith({
+      allowTranslated: false,
+      skipIcu: false,
+      skipRuntime: true,
+      skipPlaceholders: false,
       skipProtectedTerms: false,
       requirePortablePlurals: false,
     });
@@ -70,6 +83,7 @@ describe('main.ts flag wiring', () => {
     expect(handler('validate')).toHaveBeenCalledWith({
       allowTranslated: false,
       skipIcu: false,
+      skipRuntime: false,
       skipPlaceholders: false,
       skipProtectedTerms: true,
       requirePortablePlurals: false,

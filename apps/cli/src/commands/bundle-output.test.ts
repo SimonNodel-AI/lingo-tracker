@@ -12,6 +12,58 @@ describe('bundle type output with a real command project', () => {
   let project: CommandProject | undefined;
   afterEach(() => project?.cleanup());
 
+  it('keeps plural generation successful, counts its warning, and shows detail only when verbose', async () => {
+    project = createCommandProject({
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en'],
+      runtime: 'transloco',
+      collections: { main: { translationsFolder: 'resources' } },
+      bundles: { main: { bundleName: '{locale}', dist: 'out', collections: 'All' } },
+    });
+    const plural = '{n, plural, one {# item} other {# items}}';
+    await project.seed('count', plural);
+    const warning =
+      "Key 'count': uses ICU plural, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.";
+    for (const verbose of [false, true]) {
+      const result = await project.run(bundleCommand, { name: ['main'], verbose });
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr).toBe(`⚠️  Warnings: 1\n${verbose ? `  - ${warning}\n` : ''}`);
+      expect(result.stdout).not.toContain(warning);
+      expect(project.json('out/en.json')).toEqual({ count: plural });
+    }
+  });
+
+  it('prints the runtime config mismatch once per bundle without verbose', async () => {
+    project = createCommandProject({
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr'],
+      runtime: 'transloco',
+      transformICUToTransloco: false,
+      collections: { main: { translationsFolder: 'resources' } },
+      bundles: {
+        main: { bundleName: '{locale}', dist: 'out', collections: 'All' },
+        second: { bundleName: '{locale}', dist: 'second', collections: 'All' },
+      },
+    });
+    const value = "Showing '{'first'}' entries";
+    await project.seed('entries', value);
+    const result = await project.run(bundleCommand, {});
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe(
+      ['main', 'second']
+        .map(
+          (name) =>
+            `Bundle '${name}': transformICUToTransloco is off, so the transloco runtime setting does not apply; the bundle holds ICU-quoted text\n`,
+        )
+        .join(''),
+    );
+    expect(project.json('out/en.json')).toEqual({ entries: value });
+  });
+
   for (const status of ['written', 'skipped', 'failed', 'not-configured'] as const) {
     for (const legacy of [false, true]) {
       for (const mode of modes) {

@@ -72,6 +72,9 @@ Examples:
   # Skip ICU compilation; other checks still apply
   $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipIcu)}
 
+  # Skip the app runtime renderability check
+  $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.skipRuntime)}
+
   # Also warn about base-locale plurals that break when copied to ja/ko
   $ lingo-tracker validate ${flagName(VALIDATE_FLAGS.requirePortablePlurals)}
 
@@ -188,7 +191,7 @@ Validation Rules:
 Exit Codes:
   0  All validations passed (all resources verified); preferred terminology
      warnings do not change the exit code
-  1  Status, ICU, placeholder, or protected-term failures, or the
+  1  Status, ICU, runtime, placeholder, or protected-term failures, or the
      preferred terminology file exists but cannot be loaded
 
 Notes:
@@ -197,6 +200,8 @@ Notes:
   - The base locale is compiled too: its value is copied into every translation slot
   - Use ${flagName(VALIDATE_FLAGS.skipIcu)} to skip compilation; other checks still apply, including
     ${flagName(VALIDATE_FLAGS.requirePortablePlurals)}, which parses rather than compiles
+  - Fails ICU constructs that the configured app runtime cannot render. Use
+    ${flagName(VALIDATE_FLAGS.skipRuntime)} to skip this check independently of ICU compilation
   - Checks that every translation interpolates the same placeholders as its base
     value; a renamed one ('{name}' translated to '{nombre}') renders as empty
     text rather than raising, so no other check sees it. Use ${flagName(VALIDATE_FLAGS.skipPlaceholders)}

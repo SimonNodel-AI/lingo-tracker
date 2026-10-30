@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { BundleDefinition, CollectionBundleDefinition } from '@simoncodes-ca/domain';
+import { type BundleDefinition, type CollectionBundleDefinition, DEFAULT_APP_RUNTIME } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import {
@@ -35,7 +35,8 @@ describe('Bundle Selection (real fs)', () => {
     return { collection, definition: { name: collection.name, entriesSelectionRules: 'All', ...definition } };
   }
 
-  const noTransform = { transformICUToTransloco: false } as const;
+  const noTransform = { runtime: DEFAULT_APP_RUNTIME, transformICUToTransloco: false } as const;
+  const transform = { runtime: DEFAULT_APP_RUNTIME, transformICUToTransloco: true } as const;
 
   describe('resolveBundleCollections', () => {
     const config: LingoTrackerConfig = {
@@ -223,13 +224,76 @@ describe('Bundle Selection (real fs)', () => {
     });
 
     describe('ICU to Transloco', () => {
+      it('restores Booklore literal braces under transloco without warnings', () => {
+        const common = seeded('common', {
+          entries: { source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries" },
+        });
+        const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        expect(selectionValues(selection)).toEqual({ entries: 'Showing {first} to {last} of {totalRecords} entries' });
+        expect(selection.warnings).toEqual([]);
+      });
+
+      it('preserves Booklore ICU quoting under the messageformat runtime', () => {
+        const stored = "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries";
+        const common = seeded('common', { entries: { source: stored } });
+        const selection = selectBundleEntries([bundled(common)], 'en', transform);
+        expect(selectionValues(selection)).toEqual({ entries: stored });
+        expect(selection.warnings).toEqual([]);
+      });
+
+      it('converts dotted arguments under transloco', () => {
+        const common = seeded('common', { greeting: { source: 'Hello {user.name}' } });
+        const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        expect(selectionValues(selection)).toEqual({ greeting: 'Hello {{ user.name }}' });
+      });
+
+      it('keeps a plural in messageformat form and warns only under transloco', () => {
+        const common = seeded('common', { count: { source: '{n, plural, =1 {{item}} other {# items}}' } });
+        const plain = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        const messageformat = selectBundleEntries([bundled(common)], 'en', transform);
+        expect(selectionValues(plain)).toEqual({ count: '{n, plural, =1 {{{item}}} other {# items}}' });
+        expect(selectionValues(messageformat)).toEqual(selectionValues(plain));
+        expect(plain.warnings).toEqual([
+          "Key 'count': uses ICU plural, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.",
+        ]);
+        expect(messageformat.warnings).toEqual([]);
+        const unconverted = selectBundleEntries([bundled(common)], 'en', { ...noTransform, runtime: 'transloco' });
+        expect(selectionValues(unconverted)).toEqual({ count: '{n, plural, =1 {{item}} other {# items}}' });
+        expect(unconverted.warnings).toEqual([]);
+      });
+
+      it('reports deduplicated ICU kinds in source order in one runtime warning per value', () => {
+        const common = seeded('common', {
+          mixed: { source: '{d, date} {n, number} {g, select, other {{n, number} items}}' },
+        });
+        const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        expect(selection.warnings).toEqual([
+          "Key 'mixed': uses ICU date, number, select, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.",
+        ]);
+      });
+
+      it('keeps the three existing conversion warnings under transloco', () => {
+        const common = seeded('common', {
+          malformed: { source: 'Hello {name' },
+          quoted: { source: "'{{ name }}'" },
+          branch: { source: '{n, plural, =1 {{v, number}} other {# items}}' },
+        });
+        const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        expect(selection.warnings).toContain("Key 'malformed': value has malformed ICU syntax and was included as-is");
+        expect(selection.warnings).toContain(
+          "Key 'quoted': quoted literal '{{' or '}}' will be consumed by Transloco interpolation",
+        );
+        expect(selection.warnings).toContainEqual(
+          expect.stringContaining("Key 'branch': a branch body cannot be carried"),
+        );
+      });
+
       it('converts values when asked, and leaves them as stored otherwise', () => {
         const common = seeded('common', { greeting: { source: 'Hello {name}' } });
 
-        expect(
-          selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true }).entries.get('greeting')
-            ?.value,
-        ).toBe('Hello {{ name }}');
+        expect(selectBundleEntries([bundled(common)], 'en', transform).entries.get('greeting')?.value).toBe(
+          'Hello {{ name }}',
+        );
         expect(selectBundleEntries([bundled(common)], 'en', noTransform).entries.get('greeting')?.value).toBe(
           'Hello {name}',
         );
@@ -243,7 +307,7 @@ describe('Bundle Selection (real fs)', () => {
           "{n, plural, other {'{{' x}}",
         ]) {
           const common = seeded('common', { literal: { source: value } });
-          const converted = selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true });
+          const converted = selectBundleEntries([bundled(common)], 'en', transform);
           expect(converted.warnings).toEqual([
             "Key 'literal': quoted literal '{{' or '}}' will be consumed by Transloco interpolation",
           ]);
@@ -252,14 +316,14 @@ describe('Bundle Selection (real fs)', () => {
         }
         for (const value of ["'}}'", "{n, plural, one {'{{' x} other {# y}}"]) {
           const common = seeded('common', { literal: { source: value } });
-          expect(selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true }).warnings).toEqual([]);
+          expect(selectBundleEntries([bundled(common)], 'en', transform).warnings).toEqual([]);
         }
       });
 
       it('warns about a malformed value and includes it as-is, only when converting', () => {
         const common = seeded('common', { broken: { source: 'Hello {name' } });
 
-        const converted = selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true });
+        const converted = selectBundleEntries([bundled(common)], 'en', transform);
 
         expect(converted.warnings).toEqual(["Key 'broken': value has malformed ICU syntax and was included as-is"]);
         expect(converted.entries.has('broken')).toBe(true);
@@ -269,7 +333,7 @@ describe('Bundle Selection (real fs)', () => {
       it('warns about unquoted literal braces in an ICU branch and includes the value as-is', () => {
         const value = '{count, plural, one {x} other {{}}}';
         const common = seeded('common', { broken: { source: value } });
-        const converted = selectBundleEntries([bundled(common)], 'en', { transformICUToTransloco: true });
+        const converted = selectBundleEntries([bundled(common)], 'en', transform);
 
         expect(converted.entries.get('broken')?.value).toBe(value);
         expect(converted.warnings).toContain("Key 'broken': value has malformed ICU syntax and was included as-is");

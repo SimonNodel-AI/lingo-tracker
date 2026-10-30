@@ -25,6 +25,9 @@ export interface ValidationOptions {
    */
   readonly icu?: IcuValidationOptions;
 
+  /** Check ICU constructs against the collection's app runtime. Set false to skip. */
+  readonly runtime?: boolean;
+
   /**
    * When true, every translation is checked against its base value (in the
    * collection's base locale) for the arguments it interpolates.
@@ -188,6 +191,8 @@ export interface IcuValidationOptions {
  * A single value that failed to compile, or that tripped the portability rule.
  */
 export interface IcuValidationDetail {
+  /** Present for constructs the configured app runtime cannot render. */
+  readonly kind?: 'runtime-unrenderable';
   /**
    * The full dot-delimited key of the resource (e.g., 'common.buttons.ok').
    */

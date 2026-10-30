@@ -6,12 +6,14 @@
  */
 
 import {
+  type AppRuntime,
   type BundleDefinition,
   type CollectionBundleDefinition,
   type EntrySelectionRule,
   hasQuotedInterpolationDelimiter,
   hasUnbundlableBranchBody,
-  icuToTransloco,
+  toRuntimeValue,
+  unrenderableIcuConstructs,
   validateICUSyntax,
 } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
@@ -61,6 +63,7 @@ export interface BundleSelection {
 }
 
 export interface SelectBundleEntriesOptions {
+  readonly runtime: AppRuntime;
   /** Convert each value from ICU to Transloco syntax, warning on values that do not carry. */
   readonly transformICUToTransloco: boolean;
   /** The run's read cache, so every locale of a run reads each collection once. */
@@ -120,7 +123,7 @@ export function selectBundleEntries(
       if (!isSelected(resource, definition.entriesSelectionRules)) continue;
 
       const finalKey = definition.bundledKeyPrefix ? `${definition.bundledKeyPrefix}.${resource.key}` : resource.key;
-      const value = options.transformICUToTransloco ? toTransloco(resource, warnings) : resource.value;
+      const value = options.transformICUToTransloco ? toTransloco(resource, options.runtime, warnings) : resource.value;
 
       if (entries.has(finalKey)) {
         conflicts.add(finalKey);
@@ -149,7 +152,7 @@ function matchesRule(resource: FlatResource, rule: EntrySelectionRule): boolean 
   );
 }
 
-function toTransloco(resource: FlatResource, warnings: string[]): string {
+function toTransloco(resource: FlatResource, runtime: AppRuntime, warnings: string[]): string {
   if (resource.value.includes('{') && !validateICUSyntax(resource.value)) {
     warnings.push(`Key '${resource.key}': value has malformed ICU syntax and was included as-is`);
   }
@@ -166,5 +169,13 @@ function toTransloco(resource: FlatResource, warnings: string[]): string {
         `  value: ${resource.value}`,
     );
   }
-  return icuToTransloco(resource.value);
+  const kinds = unrenderableIcuConstructs(resource.value, runtime);
+  if (kinds.length > 0) {
+    warnings.push(
+      `Key '${resource.key}': uses ICU ${kinds.join(', ')}, which the transloco runtime cannot render; ` +
+        'the bundled value is written in messageformat form. Set runtime to transloco-messageformat ' +
+        'or rewrite the value without ICU constructs.',
+    );
+  }
+  return toRuntimeValue(resource.value, runtime);
 }

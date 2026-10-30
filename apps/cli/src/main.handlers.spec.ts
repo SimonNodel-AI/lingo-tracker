@@ -349,6 +349,7 @@ const cases: Case[] = [
       '--skip-locales',
       'fr,de',
       '--skip-icu',
+      '--skip-runtime',
       '--require-portable-plurals',
       '--skip-placeholders',
       '--skip-protected-terms',
@@ -358,6 +359,7 @@ const cases: Case[] = [
         allowTranslated: true,
         skipLocales: ['fr', 'de'],
         skipIcu: true,
+        skipRuntime: true,
         requirePortablePlurals: true,
         skipPlaceholders: true,
         skipProtectedTerms: true,
@@ -367,6 +369,7 @@ const cases: Case[] = [
       {
         allowTranslated: false,
         skipIcu: false,
+        skipRuntime: false,
         requirePortablePlurals: false,
         skipPlaceholders: false,
         skipProtectedTerms: false,

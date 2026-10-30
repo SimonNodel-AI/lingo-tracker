@@ -24,6 +24,11 @@ export const VALIDATE_FLAGS = defineFlags<ValidateCommandOptions>()({
     description: `Do not compile values as ICU for their own locale (${flagName(portablePluralsFlag)} still applies)`,
     defaultValue: false,
   },
+  skipRuntime: {
+    flags: '--skip-runtime',
+    description: 'Do not check whether the configured app runtime can render ICU constructs',
+    defaultValue: false,
+  },
   requirePortablePlurals: portablePluralsFlag,
   skipPlaceholders: {
     flags: '--skip-placeholders',

@@ -580,6 +580,8 @@ Options:
   --skip-icu                  Do not compile values as ICU for their own locale
                               (--require-portable-plurals still applies)
                               (default: false)
+  --skip-runtime              Do not check whether the configured app runtime
+                              can render ICU constructs (default: false)
   --require-portable-plurals  Warn when a base-locale plural selects by category
                               (one, few, ...) instead of an exact '=N' match
                               (default: false)
@@ -600,6 +602,7 @@ Options:
       ],
       "skipPlaceholders": false,
       "skipProtectedTerms": false,
+      "skipRuntime": true,
     },
   },
 }
