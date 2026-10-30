@@ -77,7 +77,7 @@ export {
 } from './lib/import-strategy-policy';
 // Keys: resource keys and generated-token identifiers
 export { isValidJavaScriptIdentifier, validateJavaScriptIdentifier } from './lib/js-identifier';
-export { buildKeyTree, flattenKeyTree, type KeyTree } from './lib/key-tree';
+export { buildKeyTree, type KeyTree } from './lib/key-tree';
 export {
   assertStringArray,
   type ListEdit,

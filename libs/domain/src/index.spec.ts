@@ -125,7 +125,6 @@ describe('domain public surface', () => {
       'findCollectionEntry',
       'findPreferredTermFindings',
       'findProtectedTerms',
-      'flattenKeyTree',
       'folderPathFromSegments',
       'folderPathLeaf',
       'folderPathSegments',
