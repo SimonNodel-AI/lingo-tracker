@@ -103,6 +103,7 @@ describe('domain public surface', () => {
       'buildResourceSummary',
       'bundleKeyToConstantName',
       'bundleOutputFile',
+      'bundledFormIfLost',
       'canImportLocale',
       'checkBundleDefinition',
       'checkStoredValue',

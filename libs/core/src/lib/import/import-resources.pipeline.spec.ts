@@ -234,6 +234,75 @@ describe('importResources pipeline', () => {
     expect(folder('common').get('three')?.entry['es']).toBe('Uno dos tres');
   });
 
+  it('warns about migration round-trip loss after resolving references and still stores the value', () => {
+    const value = 'Use {Native} for the native title';
+    const result = importResources(
+      collection,
+      [
+        { key: 'common.title', value },
+        { key: 'common.username', value: 'World' },
+        { key: 'common.reference', value: 'Hello {{common.username}}' },
+        { key: 'common.greeting', value: 'Hello {{name}}' },
+      ],
+      { locale: 'en', strategy: 'migration' },
+    );
+
+    expect(result.warnings).toEqual([
+      "Key 'common.title': value will not survive the ICU round trip and bundles as written below. " +
+        'Source: "Use {Native} for the native title" Bundled: "Use {{ Native }} for the native title"',
+    ]);
+    expect(result.warnings.some((warning) => warning.includes('common.reference'))).toBe(false);
+    expect(result.resourcesCreated).toBe(4);
+    expect(folder('common').get('title')?.entry.source).toBe(value);
+    expect(folder('common').get('reference')?.entry.source).toBe('Hello World');
+    expect(folder('common').get('greeting')?.entry.source).toBe('Hello {name}');
+  });
+
+  it('warns once per accepted key, excludes rejected keys and keeps warnings on one line', () => {
+    const value = 'Use {Native} for the "native"\ntitle';
+    const result = importResources(
+      collection,
+      [
+        { key: 'bad..key', value },
+        { key: 'common.unsafe', value, baseValue: '{{{name}}}' },
+        { key: 'common.empty', value: '   ' },
+        { key: 'common.kept', value },
+        { key: 'common.kept', value },
+        { key: 'common.survives', value },
+        { key: 'common.survives', value: 'Hello {{name}}' },
+      ],
+      { locale: 'en', strategy: 'migration' },
+    );
+
+    const warnings = result.warnings.filter((warning) => warning.includes('ICU round trip'));
+    expect(warnings).toEqual([
+      "Key 'common.kept': value will not survive the ICU round trip and bundles as written below. " +
+        `Source: ${JSON.stringify(value)} Bundled: ${JSON.stringify('Use {{ Native }} for the "native"\ntitle')}`,
+    ]);
+    expect(warnings[0]).not.toContain('\n');
+    expect(result.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'bad..key', type: 'failed' }),
+        expect.objectContaining({ key: 'common.unsafe', type: 'failed' }),
+        expect.objectContaining({ key: 'common.empty', type: 'skipped' }),
+      ]),
+    );
+    expect(folder('common').get('kept')?.entry.source).toBe(value);
+    expect(folder('common').get('survives')?.entry.source).toBe('Hello {name}');
+  });
+
+  it('does not warn about ICU round trips for a translation-service import', () => {
+    seed('common', { greeting: { source: 'Hello {name}' } });
+
+    const result = importResources(collection, [{ key: 'common.greeting', value: 'Hello {name}' }], {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(folder('common').get('greeting')?.entry['es']).toBe('Hello {name}');
+  });
+
   it('warns for circular and missing references and keeps them as placeholders', () => {
     seed('common', { one: { source: 'One' }, two: { source: 'Two' }, missing: { source: 'Missing' } });
     const result = importResources(
@@ -241,7 +310,7 @@ describe('importResources pipeline', () => {
       [
         { key: 'common.one', value: '{{common.two}}' },
         { key: 'common.two', value: '{{common.one}}' },
-        { key: 'common.missing', value: 'Hello {{unknown}} World' },
+        { key: 'common.missing', value: 'Hello {{unknown.key}} World' },
       ],
       { locale: 'es', strategy: 'migration' },
     );
@@ -249,12 +318,12 @@ describe('importResources pipeline', () => {
     expect(result.warnings).toEqual(
       expect.arrayContaining([
         expect.stringContaining('Circular reference'),
-        'Missing reference target: "unknown" - preserving literal',
+        'Missing reference target: "unknown.key" - preserving literal',
       ]),
     );
     // The unresolved references survive; Transloco-to-ICU normalization then turns them into ICU placeholders.
     expect(folder('common').get('one')?.entry['es']).toBe('{common.two}');
-    expect(folder('common').get('missing')?.entry['es']).toBe('Hello {unknown} World');
+    expect(folder('common').get('missing')?.entry['es']).toBe('Hello {unknown.key} World');
   });
 
   it('does not resolve references outside migration', () => {

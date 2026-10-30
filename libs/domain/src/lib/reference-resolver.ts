@@ -110,6 +110,7 @@ function resolveKey(
   resourceMap: Map<string, string>,
   visited: Set<string>,
   warnings: string[],
+  warnIfMissing: boolean,
 ): string | null {
   // Check for circular reference
   if (visited.has(key)) {
@@ -118,7 +119,7 @@ function resolveKey(
 
   // Check if key exists
   if (!resourceMap.has(key)) {
-    warnings.push(`Missing reference target: "${key}" - preserving literal`);
+    if (warnIfMissing) warnings.push(`Missing reference target: "${key}" - preserving literal`);
     return null;
   }
 
@@ -147,7 +148,9 @@ function resolveKey(
  *
  * Resolution behavior:
  * - If a referenced key exists, the pattern is replaced with its value
- * - If a referenced key doesn't exist, the literal pattern is preserved and a warning is added
+ * - If a referenced key doesn't exist, the literal pattern is preserved. A warning is added
+ *   for `{{t('key')}}` calls and direct references whose trimmed key matches a dotted key path
+ *   (`/^[\w-]+(\.[\w-]+)+$/`); other missing direct parameters stay quiet
  * - If a circular reference is detected, the literal pattern is preserved
  * - Nested references are resolved recursively (e.g., key1 -> key2 -> "final value")
  *
@@ -209,7 +212,9 @@ export function resolveReferences(
   let result = value;
 
   for (const { pattern, key } of references) {
-    const resolvedValue = resolveKey(key, resourceMap, visited, warnings);
+    const warnIfMissing =
+      pattern.startsWith('{{t(') || /^t\(/.test(key.trim()) || /^[\w-]+(\.[\w-]+)+$/.test(key.trim());
+    const resolvedValue = resolveKey(key, resourceMap, visited, warnings, warnIfMissing);
 
     if (resolvedValue !== null) {
       // Replace the pattern with the resolved value

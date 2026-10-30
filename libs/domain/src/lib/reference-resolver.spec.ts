@@ -130,10 +130,41 @@ describe('reference-resolver', () => {
       const resourceMap = new Map([['greeting', 'Hello']]);
       const warnings: string[] = [];
 
-      const result = resolveReferences('{{greeting}} {{missing}}', resourceMap, new Set(), warnings);
-      expect(result).toBe('Hello {{missing}}');
+      const result = resolveReferences('{{greeting}} {{ common.missing }}', resourceMap, new Set(), warnings);
+      expect(result).toBe('Hello {{ common.missing }}');
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('Missing reference target: "missing"');
+      expect(warnings[0]).toContain('Missing reference target: "common.missing"');
+    });
+
+    it('should preserve a missing plain parameter without a warning', () => {
+      const warnings: string[] = [];
+
+      expect(resolveReferences('Hello {{name}}', new Map(), new Set(), warnings)).toBe('Hello {{name}}');
+      expect(warnings).toEqual([]);
+    });
+
+    it('should preserve a missing formatted parameter without a warning', () => {
+      const warnings: string[] = [];
+      const value = 'Fee: {{amount, currency}}';
+
+      expect(resolveReferences(value, new Map(), new Set(), warnings)).toBe(value);
+      expect(warnings).toEqual([]);
+    });
+
+    it('should warn for a missing t() reference without a dotted key', () => {
+      const warnings: string[] = [];
+      const value = "Hello {{t('missing')}}";
+
+      expect(resolveReferences(value, new Map(), new Set(), warnings)).toBe(value);
+      expect(warnings).toEqual(['Missing reference target: "missing" - preserving literal']);
+    });
+
+    it('should warn for a missing t() reference with surrounding whitespace', () => {
+      const warnings: string[] = [];
+      const value = "{{ t('missing') }}";
+
+      expect(resolveReferences(value, new Map(), new Set(), warnings)).toBe(value);
+      expect(warnings).toEqual(['Missing reference target: "t(\'missing\')" - preserving literal']);
     });
 
     it('should detect circular reference', () => {
@@ -243,14 +274,14 @@ describe('reference-resolver', () => {
     });
 
     it('should warn on missing references', () => {
-      const resources: KeyedValue[] = [{ key: 'greeting', value: 'Hello {{missing}}' }];
+      const resources: KeyedValue[] = [{ key: 'greeting', value: 'Hello {{common.missing}}' }];
 
       const warnings: string[] = [];
       const result = resolveAllReferences(resources, true, warnings);
 
-      expect(result[0].value).toBe('Hello {{missing}}');
+      expect(result[0].value).toBe('Hello {{common.missing}}');
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toContain('Missing reference target: "missing"');
+      expect(warnings[0]).toContain('Missing reference target: "common.missing"');
     });
 
     it('should preserve resources without references', () => {
