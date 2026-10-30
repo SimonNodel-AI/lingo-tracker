@@ -4,7 +4,7 @@ Status: Proposed
 
 Date: 2026-10-30
 
-Issue: #151. Related: #149 (JSON import parser), #150 (round-trip warnings).
+Issue: #151. Related: #149 (JSON import parser, merged in #155), #150 (round-trip warnings, merged in #156).
 
 ## Context
 
@@ -67,7 +67,7 @@ Import ignores `transformICUToTransloco`, as it does today.
 ## Converters
 
 Two new domain functions sit beside the existing pair and dispatch on runtime.
-They are the contract that #149's parser output and #150's round-trip check plug into.
+They are the contract that the JSON parser's output (#149) and the round-trip check (#150) plug into.
 
 ```ts
 // libs/domain/src/lib/runtime-conversion.ts
@@ -141,15 +141,15 @@ It converts `baseValue` as well as `value`; today only `value` is converted, whi
 `runtime` comes from `session.collection.runtime`.
 XLIFF with `--strategy migration` follows the same rule, since the policy row, not `detectImportFormat`, decides.
 
-Order within `importResources` is unchanged: `resolveImportReferences`, `rejectUnsafeStoredValues`, normalization, `repairImportPlaceholders`, validation, `applyResourceGroups`.
+Order within `importResources` is unchanged: `resolveImportReferences`, `rejectUnsafeStoredValues`, normalization, `repairImportPlaceholders`, validation, `warnAboutRoundTripLoss`, `applyResourceGroups`.
 Reference resolution (`libs/domain/src/lib/reference-resolver.ts`) runs before normalization and matches `{{t('key')}}` and `{{key}}` by regex; single braces never match, so plain-Transloco literals do not interact with it.
 The ICU auto-fixer (`libs/domain/src/lib/icu-auto-fixer.ts`, `extractICUPlaceholders`) runs after normalization on quote-aware parses, so quoted literals are not placeholders to repair.
 `admitValue` with the `import` policy (`libs/domain/src/lib/value-admission.ts`) compares arguments with `compareIcuArguments`, which is quote-aware, so `'{'first'}'` on both sides agrees.
 `ResourceFolder.setTranslation` (`libs/core/src/lib/resource/resource-folder.ts`) still calls `translocoToICU` on write; on an already-stored ICU value this is a no-op for both runtimes.
 
-#149 is rewriting `parse-json-import.ts`.
-Its contract is unchanged: it produces `ImportedResource[]` with raw file strings in `value` and `baseValue`, and must not convert syntax.
-This spec owns everything after the parser.
+#149 (merged in #155) rewrote `parse-json-import.ts`.
+`parseJsonImport(filePath, options: ImportParseOptions)` returns a `ParsedImport` whose `resources` hold raw file strings in `value` and `baseValue`, with no syntax conversion; `ImportParseOptions` carries only `onProgress`.
+That contract stays: the parsers do not receive `runtime`, and this spec owns everything after the parser.
 
 ## Bundle
 
@@ -212,11 +212,20 @@ Flagged changes: `validateConfig` now rejects one optional field; a hand-typed `
 
 ## Coordination with #150
 
-#150 adds a round-trip warning at import and a warning for unconverted values at bundle.
-Its check must be runtime-aware or it will flag every correct plain-Transloco import.
-The check is `toRuntimeValue(toStoredIcu(v, runtime), runtime)` compared with `v`, ignoring whitespace inside `{{ }}`, with `runtime` from `collection.runtime`.
-Under `transloco-messageformat` this is exactly `icuToTransloco(translocoToICU(v))`, #150's prototype.
-Under `transloco` the pair is lossless by construction, so the check passes every string and the Booklore and Kavita rows in #150's table stop being warnings.
+#150 merged in #156.
+It added `bundledFormIfLost(value)` in `libs/domain/src/lib/icu-round-trip.ts`, which returns `icuToTransloco(translocoToICU(value))` when that differs from `value` outside `{{ }}` whitespace, else `undefined`.
+`warnAboutRoundTripLoss` in `libs/core/src/lib/import/import-resources.ts` calls it for accepted keys, `migration` strategy only, on the resolved source values before normalization, and pushes `Key '<key>': value will not survive the ICU round trip and bundles as written below. …`.
+On the bundle side #156 added only a test; the existing malformed-ICU warning in `bundle-selection.ts` is unchanged.
+
+The check hard-codes the messageformat pair, so under `transloco` it would warn on Booklore and Kavita even after this ADR stores them correctly.
+This ADR's implementation changes it as follows:
+- `bundledFormIfLost(value, runtime)` computes `toRuntimeValue(toStoredIcu(value, runtime), runtime)`; the `runtime` parameter is required, so the domain helper stays pure and no caller silently keeps the old behaviour.
+- `warnAboutRoundTripLoss` passes `session.collection.runtime`.
+- Its `migration`-only gate stays and matches this ADR's `valueSyntax: 'runtime'` row; once `valueSyntax` exists the gate reads it instead of `resolvesReferences`.
+- The warning text drops "ICU" (`value will not survive the round trip to the <runtime> runtime …`) so it names the configured runtime.
+
+Under `transloco-messageformat` the result is byte-identical to today.
+Under `transloco` the pair is lossless by construction, so the check never fires and the Booklore and Kavita values stop being warnings.
 
 What counts as lossy per runtime:
 
@@ -225,9 +234,7 @@ What counts as lossy per runtime:
 | `transloco-messageformat` | Round trip differs (literal braces, i18next formatters and `$t()`, `{{ '{' }}`) | Malformed ICU, quoted `{{`, unbundlable branch body (today's three) |
 | `transloco` | Nothing (lossless pair) | Today's three plus `unrenderableIcuConstructs` |
 
-#150's implementation should import the two runtime functions rather than the raw pair, and should take `runtime` as a parameter so the domain helper stays pure.
-The `Missing reference target` noise #150 mentions is independent of this ADR.
-If #150 lands first with the raw pair, this ADR's implementation replaces the call and adds the runtime cases to its tests.
+#156's grouped `Unresolved parameters kept as placeholders` line comes from reference resolution, which runs before conversion and is runtime-independent; it needs no change.
 
 ## Future: i18next
 
@@ -249,13 +256,14 @@ Domain (`libs/domain`, vitest):
 - Mixed: `{{ count }} of {total}`, `{{ a }}{b}{{ c }}`, `{{ a.b }} {c.d}`.
 - Property test (`runtime-conversion.property.spec.ts`, fast-check as in `icu-message.property.spec.ts`): `toRuntimeValue(toStoredIcu(v, 'transloco'), 'transloco') === v` for arbitrary strings over the alphabet `{ } ' # a-z space`, and `parseIcuMessage(toStoredIcu(v, 'transloco')).ok` is true for all of them.
 - `unrenderableIcuConstructs`: plural, select, selectordinal, `{n, number}`, `{d, date, short}`, nested group inside select, returns `[]` for simple arguments, literals and malformed input, and `[]` under `transloco-messageformat`.
+- `icu-round-trip.spec.ts`: #156's five cases keep their exact bundled form under `transloco-messageformat`; under `transloco`, Booklore, Kavita, `{{ '{' }}SeriesName{{ '}' }}` and `Don't` return `undefined`.
 - Round trip through the Transloco replica in `transloco-runtime-round-trip.spec.ts`: bundling Booklore's value under `transloco` and running pass 1 only yields the source text unchanged.
 
 Core (`libs/core`):
 - `config-file-operations.spec.ts`: read and write reject an invalid `runtime`; missing field reads as default; `appRuntimeOf`.
 - `open-collection.spec.ts`: `Collection.runtime` resolves from the global config.
 - `normalize-transloco-syntax.spec.ts` (renamed with the function): `migration` under `transloco` quotes literals in `value` and `baseValue`; `translation-service` under `transloco` leaves `'{'first'}'` alone; `migration` under `transloco-messageformat` is byte-identical to today's output on the existing corpus.
-- `import-resources.pipeline.spec.ts`: Booklore and Kavita files imported with `--strategy migration` under both runtimes; assert the stored `resource_entries.json` and that no `argument-mismatch` or auto-fix fires under `transloco`.
+- `import-resources.pipeline.spec.ts`: Booklore and Kavita files imported with `--strategy migration` under both runtimes; assert the stored `resource_entries.json` and that no `argument-mismatch` or auto-fix fires under `transloco`; the round-trip warning fires for Kavita under `transloco-messageformat` (#156's regression) and not under `transloco`.
 - `bundle-selection.spec.ts`: Booklore value under `transloco` bundles to the source text with zero warnings; under `transloco-messageformat` bundles to `{{ first }}` form (regression); a plural under `transloco` bundles in messageformat form with the new warning; `transformICUToTransloco: false` plus `transloco` emits the config warning once per bundle.
 - `validate-resources.spec.ts`: plural under `transloco` fails with `runtime-unrenderable`, passes with `--skip-runtime`, passes under the default runtime.
 - `placeholder-protector.spec.ts`: `'{'first'}'` and `'{'a'}' {b}` are protected as markers and restored; a provider that returns `’` inside a marker cannot corrupt the value because the marker is restored from the original.
@@ -288,7 +296,7 @@ The `migration` strategy becomes the only path that reads app-runtime syntax, wh
 `validate` gains a failing check for one runtime, so a `transloco` project that authored plurals in the editor sees CI fail until it rewrites them or passes `--skip-runtime`.
 `validateConfig` now checks an optional field for the first time, a small step away from "only three fields are checked".
 Under `transloco`, exported XLIFF and JSON show translators ICU quoting such as `'{'first'}'`, which is correct but unfamiliar.
-#150's round-trip check depends on this ADR's two functions; whichever lands second does the wiring.
+The merged round-trip check (#150) gains a `runtime` parameter and is otherwise unchanged.
 The `AppRuntime` union and the dispatching pair give `i18next` a place to land without reopening this decision.
 
 ## Open questions
