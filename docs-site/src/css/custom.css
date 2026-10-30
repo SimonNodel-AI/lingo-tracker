@@ -166,3 +166,27 @@ article h3,
 article h4 {
   font-weight: 700;
 }
+
+/* ─── Code blocks ──────────────────────────────────────────────────────────── */
+/* Warm the Prism background in both themes. !important beats the inline styles the theme sets. */
+.theme-code-block {
+  --prism-background-color: #2e2923 !important;
+}
+
+.theme-code-block .prism-code {
+  background-color: var(--prism-background-color) !important;
+}
+
+/* ─── Themed images ───────────────────────────────────────────────────────── */
+/* GitHub-style fragments, so one Markdown file shows one image per theme on GitHub and here. */
+[data-theme='light'] img[src$='#gh-dark-mode-only'],
+[data-theme='dark'] img[src$='#gh-light-mode-only'] {
+  display: none;
+}
+
+/* Frame the Tracker UI screenshot like the landing page does. */
+article img[src*='translation-browser'] {
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: 0.75rem;
+  box-shadow: var(--ifm-global-shadow-md);
+}

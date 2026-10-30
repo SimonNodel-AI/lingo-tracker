@@ -10,6 +10,11 @@ LingoTracker stores a status next to every translation in your Git repo. A chang
 
 **Status:** pre-1.0. The CLI and API are stable. Every pull request to `develop` runs unit tests and CLI end-to-end tests for the affected projects. The web UI has a Playwright end-to-end suite. See the [roadmap](ROADMAP.md) and the [changelog](CHANGELOG.md).
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/simoncodes-ca/lingo-tracker/main/docs/images/translation-browser-dark.png">
+  <img src="https://raw.githubusercontent.com/simoncodes-ca/lingo-tracker/main/docs/images/translation-browser-light.png" width="100%" alt="LingoTracker translation browser: fr-ca translations for the checkout keys of a storefront collection, with stale, new, translated and verified statuses.">
+</picture>
+
 ## Why use it
 
 **Gate the release.**

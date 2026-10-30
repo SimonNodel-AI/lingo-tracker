@@ -15,6 +15,9 @@ It ships as one npm package with three ways in:
 
 There is no hosted service and no account. Everything runs on your machine or in your CI job and writes plain JSON files.
 
+![LingoTracker translation browser: fr-ca translations for the checkout keys of a storefront collection, with stale, new, translated and verified statuses](./images/translation-browser-light.png#gh-light-mode-only)
+![LingoTracker translation browser: fr-ca translations for the checkout keys of a storefront collection, with stale, new, translated and verified statuses](./images/translation-browser-dark.png#gh-dark-mode-only)
+
 ## Who it is for
 
 Teams that keep translations in their repository, review changes in pull requests, and want a release gate for translation completeness. It fits Angular projects using Transloco best, because the generated bundles and ICU-to-Transloco conversion match that library. The storage format, CLI and API do not depend on Angular.
