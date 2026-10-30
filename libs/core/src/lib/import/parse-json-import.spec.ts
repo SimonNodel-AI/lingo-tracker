@@ -143,7 +143,9 @@ describe('parse JSON import', () => {
         skipped: [
           { key: 'common.ok', reason: 'object looks like rich-format metadata but "status" is not a valid status' },
         ],
-        warnings: ['"common.ok": object looks like rich-format metadata but "status" is not a valid status; skipped'],
+        warnings: [
+          'Skipped 1 JSON value that cannot be imported: common.ok. See Skipped Resources in the import summary for the reasons.',
+        ],
       });
     });
 
@@ -203,7 +205,9 @@ describe('parse JSON import', () => {
           { key: 'title', value: 'Title' },
         ],
         skipped: [{ key: 'list', reason: 'Unsupported JSON value type: array' }],
-        warnings: ['"list": Unsupported JSON value type: array; skipped'],
+        warnings: [
+          'Skipped 1 JSON value that cannot be imported: list. See Skipped Resources in the import summary for the reasons.',
+        ],
       });
     });
 
@@ -251,7 +255,7 @@ describe('parse JSON import', () => {
           },
         ],
         warnings: [
-          '"common.labels": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
+          'Skipped 1 JSON value that cannot be imported: common.labels. See Skipped Resources in the import summary for the reasons.',
         ],
       });
     });
@@ -284,10 +288,7 @@ describe('parse JSON import', () => {
           { key: 'common.list', reason: 'Unsupported JSON value type: array' },
         ],
         warnings: [
-          '"common.count": Unsupported JSON value type: number; skipped',
-          '"common.enabled": Unsupported JSON value type: boolean; skipped',
-          '"common.empty": Unsupported JSON value type: null; skipped',
-          '"common.list": Unsupported JSON value type: array; skipped',
+          'Skipped 4 JSON values that cannot be imported: common.count, common.enabled, common.empty, common.list. See Skipped Resources in the import summary for the reasons.',
         ],
       });
     });
@@ -323,12 +324,7 @@ describe('parse JSON import', () => {
           },
         ],
         warnings: [
-          '"common.count": Unsupported JSON value type: number; skipped',
-          '"common.enabled": Unsupported JSON value type: boolean; skipped',
-          '"common.empty": Unsupported JSON value type: null; skipped',
-          '"common.list": Unsupported JSON value type: array; skipped',
-          '"common.namespace": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
-          '"common.extra": Object is not a rich resource; nested objects are not supported in flat JSON; skipped',
+          'Skipped 6 JSON values that cannot be imported: common.count, common.enabled, common.empty, common.list, common.namespace and 1 more. See Skipped Resources in the import summary for the reasons.',
         ],
       });
     });
@@ -377,7 +373,9 @@ describe('parse JSON import', () => {
         expect(parseJsonImport(path)).toEqual({
           resources: [],
           skipped: [{ key: 'common.title', reason: issue }],
-          warnings: [`"common.title": ${issue}; skipped`],
+          warnings: [
+            'Skipped 1 JSON value that cannot be imported: common.title. See Skipped Resources in the import summary for the reasons.',
+          ],
         });
       }
     });
@@ -389,8 +387,38 @@ describe('parse JSON import', () => {
       expect(parseJsonImport(path)).toEqual({
         resources: [{ key: 'common.comment', value: 'Comment' }],
         skipped: [{ key: 'common.value', reason: 'Unsupported JSON value type: number' }],
-        warnings: ['"common.value": Unsupported JSON value type: number; skipped'],
+        warnings: [
+          'Skipped 1 JSON value that cannot be imported: common.value. See Skipped Resources in the import summary for the reasons.',
+        ],
       });
+    });
+
+    it('names every key in one warning when exactly five values are skipped', () => {
+      const path = join(dir, 'five-skipped.json');
+      writeFileSync(path, JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5 }));
+
+      expect(parseJsonImport(path).warnings).toEqual([
+        'Skipped 5 JSON values that cannot be imported: a, b, c, d, e. See Skipped Resources in the import summary for the reasons.',
+      ]);
+    });
+
+    it('names the first five keys and counts the rest when more than five values are skipped', () => {
+      const path = join(dir, 'many-skipped.json');
+      writeFileSync(path, JSON.stringify({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 }));
+
+      expect(parseJsonImport(path).warnings).toEqual([
+        'Skipped 7 JSON values that cannot be imported: a, b, c, d, e and 2 more. See Skipped Resources in the import summary for the reasons.',
+      ]);
+    });
+
+    it('lists metadata fallback warnings first and the single skip warning last', () => {
+      const path = join(dir, 'fallback-then-skip.json');
+      writeFileSync(path, JSON.stringify({ list: ['one'], common: { value: 'Value', status: 'Status' }, count: 1 }));
+
+      expect(parseJsonImport(path).warnings).toEqual([
+        '"common": object looks like rich-format metadata but "status" is not a valid status; imported as nested keys',
+        'Skipped 2 JSON values that cannot be imported: list, count. See Skipped Resources in the import summary for the reasons.',
+      ]);
     });
   });
 });

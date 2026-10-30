@@ -437,7 +437,7 @@ Create a transformation script to convert your format to LingoTracker's expected
 }
 ```
 
-An object is rich only when `value` is a string and all its keys are `value`, `baseValue`, `comment`, `status` or `tags`. Any other object is a namespace in a hierarchical file and is skipped in a flat file. When an object has only these keys but one of them has the wrong type (for example, an unknown `status`), a hierarchical file imports it as nested keys and shows a warning. Arrays, numbers, booleans and `null` are skipped with a warning that names the key, and they are counted as skipped in the summary.
+An object is rich only when `value` is a string and all its keys are `value`, `baseValue`, `comment`, `status` or `tags`. Any other object is a namespace in a hierarchical file and is skipped in a flat file. When an object has only these keys but one of them has the wrong type (for example, an unknown `status`), a hierarchical file imports it as nested keys and shows a warning. Arrays, numbers, booleans and `null` are skipped, listed in one warning, and counted as skipped in the summary.
 
 #### Step 2: Import with Migration Strategy
 

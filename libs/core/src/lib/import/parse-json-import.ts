@@ -99,6 +99,17 @@ function extractRichResource(key: string, obj: Record<string, unknown>): Importe
   return resource;
 }
 
+const MAX_NAMED_SKIPPED_KEYS = 5;
+
+/** One warning for all skipped values; the import summary lists each key with its reason. */
+function skippedValuesWarning(keys: string[]): string {
+  const named = keys.slice(0, MAX_NAMED_SKIPPED_KEYS).join(', ');
+  const rest = keys.length - MAX_NAMED_SKIPPED_KEYS;
+  const list = rest > 0 ? `${named} and ${rest} more` : named;
+  const noun = keys.length === 1 ? 'value' : 'values';
+  return `Skipped ${keys.length} JSON ${noun} that cannot be imported: ${list}. See Skipped Resources in the import summary for the reasons.`;
+}
+
 function extractJsonResources(
   data: Record<string, unknown>,
   structure: 'flat' | 'hierarchical',
@@ -133,11 +144,11 @@ function extractJsonResources(
       const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
       reason ??= `Unsupported JSON value type: ${valueType}`;
       parsed.skipped.push({ key, reason });
-      parsed.warnings.push(`"${key}": ${reason}; skipped`);
     }
   };
 
   visit(data, prefix);
+  if (parsed.skipped.length > 0) parsed.warnings.push(skippedValuesWarning(parsed.skipped.map(({ key }) => key)));
   return parsed;
 }
 
@@ -154,7 +165,7 @@ function extractJsonResources(
  * - `status` - Translation status (new, translated, verified, stale)
  * - `tags` - Array of categorization tags
  *
- * Other values are omitted; `parseJsonImport` reports them as skipped with warnings.
+ * Other values are omitted; `parseJsonImport` reports them as skipped and adds one warning that lists their keys.
  *
  * @param data - The flat JSON object to extract resources from
  * @returns Array of imported resources with keys and values
@@ -251,7 +262,7 @@ export function extractFromHierarchical(data: Record<string, unknown>, prefix?: 
  * detected with {@link detectJsonStructure}. A leaf is a string or a rich object with a string
  * `value` and only the optional schema keys `baseValue`, `comment`, `status`, and `tags`.
  * Invalid rich metadata falls back to nested keys with a warning, or is skipped in flat files.
- * Arrays and other non-string values are skipped with a warning naming the full key.
+ * Arrays and other non-string values are skipped; one warning names the first five full keys.
  *
  * @param filePath - Path of the JSON file (relative paths resolve against the working directory)
  * @throws {Error} The file does not exist, or it is not valid JSON.

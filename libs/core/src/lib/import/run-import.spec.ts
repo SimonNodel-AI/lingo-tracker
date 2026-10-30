@@ -82,10 +82,12 @@ describe('runImport', () => {
       type: 'skipped',
       reason: 'Unsupported JSON value type: array',
     });
-    expect(run.result.warnings).toEqual(['"list": Unsupported JSON value type: array; skipped']);
+    expect(run.result.warnings).toEqual([
+      'Skipped 1 JSON value that cannot be imported: list. See Skipped Resources in the import summary for the reasons.',
+    ]);
     expect(run.summary()).toContain('**Resources Skipped**: 1');
     expect(run.summary()).toContain('`list` (Unsupported JSON value type: array)');
-    expect(run.summary()).toContain('"list": Unsupported JSON value type: array; skipped');
+    expect(run.summary()).toContain('Skipped 1 JSON value that cannot be imported: list.');
   });
 
   it('migrates a namespace with a status label successfully without warnings', async () => {
@@ -168,7 +170,9 @@ describe('runImport', () => {
       expect(run.result.resourcesSkipped).toBe(5);
       expect(run.result.changes).toHaveLength(5);
       expect(run.result.changes.every((change) => change.type === 'skipped')).toBe(true);
-      expect(run.result.warnings).toHaveLength(5);
+      expect(run.result.warnings).toEqual([
+        'Skipped 5 JSON values that cannot be imported: common.count, common.enabled, common.empty, common.list, common.namespace. See Skipped Resources in the import summary for the reasons.',
+      ]);
       expect(run.summary()).toContain('`common.list` (Unsupported JSON value type: array)');
       noWrites();
     }
