@@ -16,12 +16,7 @@ import type {
   ImportPlanFileDto,
   ImportRequestDto,
 } from '@simoncodes-ca/data-transfer';
-import {
-  DEFAULT_IMPORT_STRATEGY,
-  importStrategyPolicy,
-  isImportStrategy,
-  TRANSLATION_STATUSES,
-} from '@simoncodes-ca/domain';
+import { DEFAULT_IMPORT_STRATEGY, importStrategyPolicy, isImportStrategy } from '@simoncodes-ca/domain';
 import { MAX_PLAN_MESSAGES } from './plan-limits';
 
 /** A source failure has no core result, but still occupies its ordered file slot. */
@@ -87,9 +82,7 @@ export function mapImportResultToPlanFile(file: ImportFileRun): ImportPlanFileDt
     skipped: result?.resourcesSkipped ?? 0,
     failed: result?.resourcesFailed ?? 0,
     changed: new Set(result?.filesAffected ?? []).size,
-    // Base-locale changes have no translation status; core represents their target as "undefined".
-    statusTransitions:
-      result?.statusTransitions.filter(({ to }) => TRANSLATION_STATUSES.includes(to)).map((t) => ({ ...t })) ?? [],
+    statusTransitions: result?.statusTransitions.map((t) => ({ ...t })) ?? [],
     warnings: result?.warnings.slice(0, MAX_PLAN_MESSAGES) ?? [],
     errors: (file.sourceProblem === undefined ? (result?.errors ?? []) : [file.sourceProblem]).slice(
       0,

@@ -195,6 +195,8 @@ describe('import-cmd (real project)', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain('Warnings (1)');
     expect(result.stdout).toContain('Import completed with warnings');
+    expect(result.stdout).not.toContain('Status Transitions');
+    expect(result.stdout).not.toContain('undefined');
   });
   it('should exit with code 1 for import with errors', async () => {
     project.write('imports/fr.json', { 'bad key': 'Wrong', 'also bad': 'Wrong', 'buttons.ok': 'Bonjour' });
