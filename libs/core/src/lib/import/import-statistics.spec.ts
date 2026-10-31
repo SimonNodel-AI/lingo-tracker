@@ -276,6 +276,15 @@ describe('import-statistics', () => {
       });
     });
 
+    it('should ignore base-locale changes, which have no status', () => {
+      const changes: ImportChange[] = [
+        { key: 'key1', type: 'created', oldValue: '', newValue: 'New' },
+        { key: 'key2', type: 'value-changed', oldValue: 'Old', newValue: 'New' },
+      ];
+
+      expect(calculateStatusTransitions(changes)).toEqual([]);
+    });
+
     it('should ignore skipped and failed changes', () => {
       const changes: ImportChange[] = [
         {

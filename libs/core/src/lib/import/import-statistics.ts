@@ -102,6 +102,8 @@ export function calculateStatusTransitions(changes: ImportChange[]): StatusTrans
   const transitionMap = new Map<string, number>();
 
   for (const change of changes) {
+    // Base-locale changes have no translation status, so they have no transition.
+    if (change.newStatus === undefined) continue;
     if (change.type === 'created' || change.type === 'updated' || change.type === 'value-changed') {
       const key = `${change.oldStatus || 'none'}→${change.newStatus}`;
       transitionMap.set(key, (transitionMap.get(key) || 0) + 1);
