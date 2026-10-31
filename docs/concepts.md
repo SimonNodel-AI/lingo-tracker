@@ -140,7 +140,7 @@ Transloco uses `{{ name }}` for interpolation. LingoTracker converts between the
 | `{{ name }}` to `{name}` | Whenever a value is written: add, edit, import, machine translation, normalize |
 | `{name}` to `{{ name }}` | During `bundle`, when `transformICUToTransloco` is on (the default) |
 
-So you can type `{{ count }}` or `{count}` when authoring; storage is always ICU, and bundles use the syntax of the configured `runtime`: Transloco with `transloco-messageformat` by default, or plain Transloco with `"runtime": "transloco"`, where a single brace is literal text. See [Configuration](./configuration.md). Plural and select structures pass through conversion unchanged. For a runtime that consumes ICU directly, set `transformICUToTransloco: false` globally or per bundle, or pass `--no-transform-icu-to-transloco` to the CLI `bundle` command.
+So you can type `{{ count }}` or `{count}` when authoring; storage is always ICU. Bundles use the syntax of the configured `runtime`: Transloco with `transloco-messageformat` by default, or plain Transloco with `"runtime": "transloco"`, where a single brace is literal text. See [Configuration](./configuration.md). Plural and select structures pass through conversion unchanged. For a runtime that consumes ICU directly, set `transformICUToTransloco: false` globally or per bundle, or pass `--no-transform-icu-to-transloco` to the CLI `bundle` command.
 
 One shape is rejected on write because conversion would corrupt it: a placeholder wrapped in literal braces, such as `{{{name}}}`. The error message tells you how to quote the braces instead. `normalize` additionally reports a plural or select branch whose body collapsed to a bare placeholder.
 

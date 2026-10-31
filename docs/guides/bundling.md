@@ -786,7 +786,7 @@ Create separate bundles for lazy-loaded routes. Transloco loads a scope's file t
 }
 ```
 
-Each bundle selects its whole collection. A bundle keeps the full path of each key. To put the keys at the root of each scope, give each scope its own collection. For example, collection `Admin` holds `title`, not `apps.admin.title`. A `matchingPattern` such as `apps.admin.*` keeps the keys nested under `apps.admin`, and the scope then addresses them as `admin.apps.admin.title`.
+Each bundle takes a whole collection, because a bundle keeps the full path of every key. Give each scope its own collection and keep its keys short: the `Admin` collection holds `title`, and the scope addresses it as `admin.title`. A `matchingPattern` such as `apps.admin.*` on a shared collection would keep the keys nested, so the scope would have to address them as `admin.apps.admin.title`.
 
 Register each bundle as a Transloco scope and let the loader request `admin/en.json` or `admin.en.json` depending on your `bundleName`:
 

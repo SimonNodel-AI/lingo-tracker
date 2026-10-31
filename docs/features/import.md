@@ -86,7 +86,7 @@ lingo-tracker import --source verified-fr.xliff --locale fr --strategy verificat
 
 ### migration
 
-**Use Case**: Migrating from another translation system (Transloco, i18next, etc.). Plain interpolation only; see the [migration guide's Limitations](../guides/migration.md#limitations).
+**Use Case**: Migrating from another translation system (Transloco, i18next, etc.). Works with plain interpolation; the [migration guide's Limitations](../guides/migration.md#limitations) list what else to check.
 
 **Behavior**:
 - Creates new resources with base values from XLIFF `<source>` or JSON `baseValue`
