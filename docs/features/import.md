@@ -250,7 +250,7 @@ Review the reported repairs before you accept the import.
 
 ## Import Summary
 
-Every completed import writes a timestamped `lingo-tracker-import-summary-<timestamp>.md` file to the **OS temp directory** (e.g. `/tmp` on macOS/Linux, `%TEMP%` on Windows) and prints the full path to the console. The file is written outside your project tree to avoid polluting your repository or breaking build pipelines that scan `.md` files. It contains detailed change tracking:
+Every completed import writes a timestamped `lingo-tracker-import-summary-<timestamp>.md` file to the **OS temp directory** (e.g. `/tmp` on macOS/Linux, `%TEMP%` on Windows) and prints the full path to the console. A run never overwrites an earlier summary: if two runs start in the same millisecond, the later one adds a `-1`, `-2` and so on (see [CLI summary files](../cli.md)). The file is written outside your project tree to avoid polluting your repository or breaking build pipelines that scan `.md` files. It contains detailed change tracking:
 
 - Import statistics (resources imported, created, updated, skipped, failed)
 - Status transitions (e.g., "new → translated", "stale → verified")
