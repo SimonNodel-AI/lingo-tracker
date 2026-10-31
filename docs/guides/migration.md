@@ -49,7 +49,7 @@ Migration is the process of importing existing translation resources from anothe
 - Review workflows
 - Custom metadata (not in standard formats)
 - Arrays, numbers, booleans and `null`. They are counted as skipped and listed in one warning.
-- Empty strings. They are skipped, and every target value for that key then fails.
+- Empty strings. They are skipped. When the base value is empty, every target value for that key then fails.
 - Keys with other characters, such as spaces, `+`, `|` or `:`. They fail, and the import exits 1.
 
 ---
@@ -119,7 +119,7 @@ Read this before you import. These are the limits found when the guide was run a
 
 **Keys.** Each dot-separated segment may contain only letters, digits, `_` and `-`. A dot always starts a new level. Keys with spaces, `+`, `|`, `:` or other characters fail, are listed in the summary, and make the import exit 1. Natural-language keys (`"Save changes": "Save changes"`) cannot be imported. Rename the keys in your files first.
 
-**Values.** Only strings are imported. Arrays, numbers, booleans and `null` are skipped and listed in one warning. Empty strings are skipped, and every target value for that key then fails because the resource has no base value.
+**Values.** Only strings are imported. Arrays, numbers, booleans and `null` are skipped and listed in one warning. Empty strings are skipped. When the base value is empty, every target value for that key then fails because the resource has no base value.
 
 **i18next.** Plain `{{name}}` and suffix plurals (`_one`, `_other`) work and come back out as written. Formatters (`{{amount, currency}}`), nesting (`$t(...)`) and `keySeparator: false` do not. Context keys were not tested. The import summary names every value that will not survive the round trip.
 
@@ -215,7 +215,7 @@ If your Transloco files use references like `{{t('other.key')}}`, LingoTracker a
 
 This happens automatically with the `migration` strategy.
 
-A bare `{{greeting}}` is inlined the same way when `greeting` is a key in the file. This matches what Transloco's transpiler does when no parameter named `greeting` is passed. If your app passes a parameter with the same name as a key, the inlined text replaces it. Kavita, for example, had 642 values inlined this way. Check the resolved values in the summary's detailed changes before you import the target locales.
+A bare `{{greeting}}` is inlined the same way when `greeting` is a key in the file. This matches what Transloco's transpiler does when no parameter named `greeting` is passed. If your app passes a parameter with the same name as a key, the inlined text replaces it. Kavita, for example, had 642 values inlined this way. Check the resolved values before you import the target locales. The summary's detailed changes show only the first 20 created or updated keys. Compare the other values with your source files.
 
 ### Step 4: Verify Migration
 
@@ -271,7 +271,7 @@ These i18next features do not survive the round trip. Import lists each affected
 
 - formatters such as `{{amount, currency}}`. The bundle keeps the formatter but writes the other placeholders in the same value as `{title}`;
 - nesting such as `$t(key, {"count": {{days}} })`. The bundle writes `{days}` inside the options;
-- natural-language keys (`keySeparator: false`). A dot always nests, and spaces are not allowed in a key segment.
+- natural-language keys (`keySeparator: false`). A dot always nests, and spaces are not allowed in a key segment. Import does not list these keys under Warnings. A key with a space fails, and a key with a dot is nested with no warning.
 
 Context keys (`key_male`) were not tested. Keep namespaces that use these features out of LingoTracker for now.
 
