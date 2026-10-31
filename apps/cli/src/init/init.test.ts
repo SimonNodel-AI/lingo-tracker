@@ -249,4 +249,33 @@ describe('initCommand', () => {
     expect(result.exitCode).toBe(0);
     expect(loadConfig({ cwd: project.cwd }).runtime).toBe(DEFAULT_APP_RUNTIME);
   });
+
+  describe('interactive detection line', () => {
+    const answer = async () => ({ ...requiredFlags, setupBundle: false });
+
+    it('prints it once when detection found a value', async () => {
+      project.write('package.json', { dependencies: { '@jsverse/transloco': '^8.4.0' } });
+
+      const result = await project.run(initCommand, {}, { interactive: true, ask: answer });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.match(/Detected runtime: transloco \(from package\.json\)/g)).toHaveLength(1);
+    });
+
+    it('does not print it when --runtime was supplied', async () => {
+      project.write('package.json', { dependencies: { '@jsverse/transloco': '^8.4.0' } });
+
+      const result = await project.run(initCommand, { runtime: 'transloco' }, { interactive: true, ask: answer });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('Detected runtime:');
+    });
+
+    it('does not print it without a package.json', async () => {
+      const result = await project.run(initCommand, {}, { interactive: true, ask: answer });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).not.toContain('Detected runtime:');
+    });
+  });
 });

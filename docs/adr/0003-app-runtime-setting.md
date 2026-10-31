@@ -212,9 +212,11 @@ Detection reads `<cwd>/package.json` once, tolerating absence or invalid JSON.
 If `@jsverse/transloco-messageformat` or `@ngneat/transloco-messageformat` is in `dependencies` or `devDependencies`, the detected value is `transloco-messageformat`.
 Otherwise, if `@jsverse/transloco` or `@ngneat/transloco` is present, the detected value is `transloco`.
 Otherwise there is no detection and the default applies.
+Detection reads `dependencies` and `devDependencies` only, not `peerDependencies`, so a library repo should pass `--runtime`.
 
+Interactive mode prints the same detection line once, before the select prompt, when detection found a value and `--runtime` was not supplied.
 Interactive mode adds a `select` prompt after `locales` and before `setupBundle`, in the `whenUninitialized` style of `tokenCasing` in `init-flags.ts`: message `App runtime`, choices `transloco-messageformat (ICU plural/select in bundles)` and `transloco (plain; single braces are literal text)`, with `initial` set to the detected value when there is one, else to the default.
-Non-interactive mode uses `--runtime <value>` when supplied, else the detected value, else the default, and prints `Detected runtime: transloco (from package.json)` through `ConsoleFormatter.info` when detection decided.
+Non-interactive mode uses `--runtime <value>` when supplied, else the detected value, else the default, and prints `Detected runtime: transloco (from package.json)` through `ConsoleFormatter.info` when detection decided; interactive mode prints the same line through the same call.
 `--runtime` is validated against `APP_RUNTIMES` by the flag record; an invalid value exits 1 with the allowed list.
 `initProject` writes `runtime` only when it differs from the default or was supplied explicitly, so a messageformat project's file does not gain a line it does not need.
 The field is written only when `--runtime` is passed explicitly or the resolved value is `transloco`.

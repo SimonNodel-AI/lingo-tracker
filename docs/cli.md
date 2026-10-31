@@ -69,7 +69,7 @@ lingo-tracker init [options]
 | `--type-dist-file <path>` | none | Enables TypeScript key generation |
 | `--token-casing <upperCase\|camelCase>` | none | |
 | `--token-constant-name <name>` | derived from bundle key | |
-| `--runtime <transloco-messageformat\|transloco>` | detected, else `transloco-messageformat` | App runtime for bundles. Detection reads `package.json`: a `transloco-messageformat` package gives `transloco-messageformat`, otherwise `@jsverse/transloco` or `@ngneat/transloco` gives `transloco`. An explicit value is always written; a default is not. |
+| `--runtime <transloco-messageformat\|transloco>` | detected, else `transloco-messageformat` | App runtime for bundles. Detection reads `package.json`: a `transloco-messageformat` package gives `transloco-messageformat`, otherwise `@jsverse/transloco` or `@ngneat/transloco` gives `transloco`. An explicit value is always written; a default is not. Detection reads `dependencies` and `devDependencies` only, not `peerDependencies`, so a library repo should pass `--runtime`. Interactive and non-interactive runs both print `Detected runtime: <value> (from package.json)` when detection found a value and `--runtime` was not given. |
 | `--enable-auto-translation` | off | Writes a `translation` block |
 | `--translation-provider <name>` | `google-translate` | |
 | `--translation-api-key-env <var>` | `GOOGLE_TRANSLATE_API_KEY` | |
@@ -359,7 +359,7 @@ lingo-tracker validate [options]
 | `--skip-protected-terms` | Do not check protected terms |
 | `--require-portable-plurals` | Warn when a source plural selects by category instead of `=N` |
 
-Failures, each of which exits 1: a locale that is `new`, `stale`, `translated` without `--allow-translated`, or has no metadata; a value that does not compile as ICU for its locale; under `runtime: "transloco"`, a value with ICU `plural`, `select`, `selectordinal`, `number`, `date`, `time` or `duration`; a translation whose ICU argument names differ from the source; a translation missing a protected term; a folder whose files are not valid JSON; a preferred-terminology file that exists but cannot be loaded. Preferred-terminology findings and portable-plural findings are warnings. The command never prompts and has no collection filter.
+Failures, each of which exits 1: a locale that is `new`, `stale`, `translated` without `--allow-translated`, or has no metadata; a value that does not compile as ICU for its locale; under `runtime: "transloco"`, a value with ICU `plural`, `select`, `selectordinal`, `number`, `date`, `time` or `duration`; a translation whose ICU argument names differ from the source; a translation missing a protected term; a folder whose files are not valid JSON; a preferred-terminology file that exists but cannot be loaded. Preferred-terminology findings and portable-plural findings are warnings. `validate` reports a runtime failure for each locale that holds the value, while `bundle` warns once per bundled key and set of constructs. The command never prompts and has no collection filter.
 
 ---
 

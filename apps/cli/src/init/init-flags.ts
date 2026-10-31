@@ -12,6 +12,7 @@ import type prompts from 'prompts';
 import type { PromptContext } from '../runner/command-runner';
 import { collectionSetupFlags, defineFlags, setupBundleFlag, tokenCasingFlag } from '../runner/flag-record';
 import type { InitOptions } from '../types/init-options';
+import { ConsoleFormatter } from '../utils';
 import { collectionSetupQuestions, requiredText } from '../utils/prompt-utils';
 import { detectRuntime } from './detect-runtime';
 import type { InitCommandOptions } from './init';
@@ -91,22 +92,23 @@ export const INIT_FLAGS = defineFlags<InitCommandOptions, PromptContext<'none', 
     flags: '--runtime <value>',
     description: 'App runtime for translation bundles',
     choices: APP_RUNTIMES,
-    prompt: whenUninitialized((options, context) =>
-      options.runtime === undefined && context.interactive
-        ? [
-            {
-              type: 'select',
-              name: 'runtime',
-              message: 'App runtime',
-              choices: [
-                { title: 'transloco-messageformat (ICU plural/select in bundles)', value: 'transloco-messageformat' },
-                { title: 'transloco (plain; single braces are literal text)', value: 'transloco' },
-              ],
-              initial: APP_RUNTIMES.indexOf(detectRuntime(context.cwd) ?? DEFAULT_APP_RUNTIME),
-            },
-          ]
-        : [],
-    ),
+    prompt: whenUninitialized((options, context) => {
+      if (options.runtime !== undefined || !context.interactive) return [];
+      const detected = detectRuntime(context.cwd);
+      if (detected !== undefined) ConsoleFormatter.info(`Detected runtime: ${detected} (from package.json)`);
+      return [
+        {
+          type: 'select',
+          name: 'runtime',
+          message: 'App runtime',
+          choices: [
+            { title: 'transloco-messageformat (ICU plural/select in bundles)', value: 'transloco-messageformat' },
+            { title: 'transloco (plain; single braces are literal text)', value: 'transloco' },
+          ],
+          initial: APP_RUNTIMES.indexOf(detected ?? DEFAULT_APP_RUNTIME),
+        },
+      ];
+    }),
   },
   setupBundle: {
     ...setupBundleFlag,

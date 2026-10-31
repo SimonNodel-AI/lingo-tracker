@@ -115,7 +115,7 @@ Transloco is Angular's internationalization library. LingoTracker provides speci
 
 ### Step 0: Set the app runtime
 
-If your app uses plain `@jsverse/transloco` without `@jsverse/transloco-messageformat`, set `"runtime": "transloco"` in `.lingo-tracker.json` before the first import (`init` detects it from `package.json`). Without it, a literal `{first}` in your files is stored as an ICU argument and bundles as `{{ first }}`, which renders empty. With it, import stores literal `{`, `}` and `'` as quoted ICU text and bundle unquotes them.
+If your app uses plain `@jsverse/transloco` without `@jsverse/transloco-messageformat`, set `"runtime": "transloco"` in `.lingo-tracker.json` before the first import (`init` detects it from `package.json`, reading `dependencies` and `devDependencies` only, not `peerDependencies`, so a library repo should pass `--runtime`). Without it, a literal `{first}` in your files is stored as an ICU argument and bundles as `{{ first }}`, which renders empty. With it, import stores literal `{`, `}` and `'` as quoted ICU text and bundle unquotes them.
 
 Only `--strategy migration` reads app syntax. Other strategies read files LingoTracker exported, which already hold stored ICU. Re-importing an exported file with `--strategy migration` quotes its literals a second time, so the apostrophes in `'{'first'}'` are doubled and the text no longer reads as `{first}`.
 
