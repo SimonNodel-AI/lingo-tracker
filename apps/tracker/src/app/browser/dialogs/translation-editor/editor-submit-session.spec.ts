@@ -14,6 +14,8 @@ const input: EditorSubmitTrigger = {
   readOnly: false,
   validation: { invalid: false },
   collision: false,
+  runtime: 'transloco',
+  baseLocale: 'en',
 };
 
 const original: ResourceSummaryDto = {
@@ -37,12 +39,14 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 function session(overrides: Partial<ConstructorParameters<typeof EditorSubmitSession>[0]> = {}) {
   const create = vi.fn(() => of({ entriesCreated: 1, created: true }));
   const update = vi.fn(() => of({ resolvedKey: 'common.ok', updated: true }));
+  const confirmUnrenderable = vi.fn(async () => true);
   const confirmMissingComment = vi.fn(async () => true);
   const chooseConflict = vi.fn(async () => false);
   const onWriteStart = vi.fn();
   return {
     submit: new EditorSubmitSession({
       writes: { create, update },
+      confirmUnrenderable,
       confirmMissingComment,
       chooseConflict,
       onWriteStart,
@@ -50,6 +54,7 @@ function session(overrides: Partial<ConstructorParameters<typeof EditorSubmitSes
     }),
     create,
     update,
+    confirmUnrenderable,
     confirmMissingComment,
     chooseConflict,
     onWriteStart,
@@ -108,7 +113,7 @@ describe('EditorSubmitSession', () => {
     const withoutComment = { ...input, draft: { ...input.draft, comment: '' } };
 
     expect(await harness.submit.trigger(withoutComment)).toEqual({
-      kind: 'focus-comment',
+      kind: 'reveal',
       reveal: { focus: 'comment', panels: 'keep' },
     });
     expect(await harness.submit.trigger(withoutComment)).toMatchObject({ kind: 'outcome' });
@@ -260,5 +265,145 @@ describe('EditorSubmitSession', () => {
       }),
     ).toEqual({ kind: 'invalid', reveal: { focus: 'base-value', panels: 'close-all' } });
     expect(harness.create).not.toHaveBeenCalled();
+  });
+  describe('unrenderable confirmation', () => {
+    const plural = '{count, plural, one {# item} other {# items}}';
+    const flaggedBase = { ...input, draft: { ...input.draft, baseValue: plural } };
+    const flaggedLocale = {
+      ...input,
+      draft: {
+        ...input.draft,
+        translations: [{ locale: 'fr', value: '{n, select, a {A} other {B}}', status: 'new' as const }],
+      },
+    };
+
+    it('asks under transloco and writes after Save Anyway', async () => {
+      const harness = session();
+      expect(await harness.submit.trigger(flaggedBase)).toMatchObject({ kind: 'outcome' });
+      expect(harness.confirmUnrenderable).toHaveBeenCalledExactlyOnceWith([
+        { locale: 'en', value: plural, kinds: ['plural'] },
+      ]);
+      expect(harness.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not ask for an unflagged value or under transloco-messageformat', async () => {
+      const plain = session();
+      expect(await plain.submit.trigger(input)).toMatchObject({ kind: 'outcome' });
+      expect(plain.confirmUnrenderable).not.toHaveBeenCalled();
+
+      const messageformat = session();
+      expect(await messageformat.submit.trigger({ ...flaggedBase, runtime: 'transloco-messageformat' })).toMatchObject({
+        kind: 'outcome',
+      });
+      expect(messageformat.confirmUnrenderable).not.toHaveBeenCalled();
+      expect(messageformat.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not write and focuses the base value when the base is flagged and the user goes back', async () => {
+      const harness = session({ confirmUnrenderable: vi.fn(async () => false) });
+      expect(await harness.submit.trigger(flaggedBase)).toEqual({
+        kind: 'reveal',
+        reveal: { focus: 'base-value', panels: 'close-all' },
+      });
+      expect(harness.create).not.toHaveBeenCalled();
+      expect(harness.submit.phase()).toBe('idle');
+    });
+
+    it('opens the locales drawer when only a locale is flagged', async () => {
+      const harness = session({ confirmUnrenderable: vi.fn(async () => false) });
+      expect(await harness.submit.trigger(flaggedLocale)).toEqual({
+        kind: 'reveal',
+        reveal: { focus: 'drawer-first-control', panels: 'locales' },
+      });
+      expect(harness.create).not.toHaveBeenCalled();
+    });
+
+    it('does not ask again for the same findings after a failed write', async () => {
+      const create = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => new ApiError({ kind: 'other', status: 503 })))
+        .mockReturnValueOnce(of({ entriesCreated: 1, created: true }));
+      const harness = session({ writes: { create, update: vi.fn() } });
+
+      expect(await harness.submit.trigger(flaggedBase)).toMatchObject(message(tokens.CREATEFAILED));
+      expect(await harness.submit.trigger(flaggedBase)).toMatchObject({ kind: 'outcome' });
+      expect(harness.confirmUnrenderable).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks again when the findings change', async () => {
+      const failure = new ApiError({ kind: 'other', status: 503 });
+      const create = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => failure))
+        .mockReturnValueOnce(of({ entriesCreated: 1, created: true }));
+      const harness = session({ writes: { create, update: vi.fn() } });
+
+      await harness.submit.trigger(flaggedBase);
+      await harness.submit.trigger({
+        ...flaggedBase,
+        draft: { ...flaggedBase.draft, baseValue: '{n, select, a {A} other {B}}' },
+      });
+      expect(harness.confirmUnrenderable).toHaveBeenCalledTimes(2);
+    });
+
+    it('asks again for a different value with the same locale and kind', async () => {
+      const failure = new ApiError({ kind: 'other', status: 503 });
+      const create = vi
+        .fn()
+        .mockReturnValueOnce(throwError(() => failure))
+        .mockReturnValueOnce(of({ entriesCreated: 1, created: true }));
+      const harness = session({ writes: { create, update: vi.fn() } });
+
+      await harness.submit.trigger(flaggedBase);
+      await harness.submit.trigger({
+        ...flaggedBase,
+        draft: { ...flaggedBase.draft, baseValue: '{count, plural, one {# thing} other {# things}}' },
+      });
+      expect(harness.confirmUnrenderable).toHaveBeenCalledTimes(2);
+    });
+
+    it('detects constructs in mixed Transloco and ICU syntax', async () => {
+      const harness = session();
+      const mixed = 'Hello {{name}}: {n, number}';
+      await harness.submit.trigger({ ...input, draft: { ...input.draft, baseValue: mixed } });
+      expect(harness.confirmUnrenderable).toHaveBeenCalledExactlyOnceWith([
+        { locale: 'en', value: mixed, kinds: ['number'] },
+      ]);
+    });
+
+    it('asks before the missing-comment confirmation', async () => {
+      const order: string[] = [];
+      const harness = session({
+        confirmUnrenderable: vi.fn(async () => {
+          order.push('runtime');
+          return true;
+        }),
+        confirmMissingComment: vi.fn(async () => {
+          order.push('comment');
+          return true;
+        }),
+      });
+      await harness.submit.trigger({ ...flaggedBase, draft: { ...flaggedBase.draft, comment: '' } });
+      expect(order).toEqual(['runtime', 'comment']);
+    });
+
+    it('skips the comment prompt when the runtime prompt is declined', async () => {
+      const harness = session({ confirmUnrenderable: vi.fn(async () => false) });
+      await harness.submit.trigger({ ...flaggedBase, draft: { ...flaggedBase.draft, comment: '' } });
+      expect(harness.confirmMissingComment).not.toHaveBeenCalled();
+    });
+
+    it('does not ask for an edit that leaves the flagged base value unchanged', async () => {
+      const harness = session();
+      const edit: EditorSubmitTrigger = {
+        ...input,
+        mode: 'edit',
+        original: { ...original, base: { locale: 'en', value: plural } },
+        draft: { ...input.draft, baseValue: plural },
+      };
+      await harness.submit.trigger(edit);
+      expect(harness.confirmUnrenderable).not.toHaveBeenCalled();
+      expect(harness.update).toHaveBeenCalledTimes(1);
+    });
   });
 });

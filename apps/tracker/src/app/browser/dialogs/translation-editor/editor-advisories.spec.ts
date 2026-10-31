@@ -170,6 +170,7 @@ describe('EditorAdvisories', () => {
       expect(withRuntime('transloco').unrenderableConstructsOf(select)).toEqual(['select']);
       expect(withRuntime('transloco').unrenderableConstructsOf('Hello')).toEqual([]);
       expect(withRuntime().unrenderableConstructsOf(select)).toEqual([]);
+      expect(withRuntime('transloco').unrenderableConstructsOf('Hello {{name}}: {n, number}')).toEqual(['number']);
     });
 
     it('flags nothing for a simple value under plain transloco', () => {

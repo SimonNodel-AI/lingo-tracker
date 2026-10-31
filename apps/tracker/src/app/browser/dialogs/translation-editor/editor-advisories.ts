@@ -7,6 +7,7 @@ import {
   findPreferredTermFindings,
   type IcuConstructKind,
   type PreferredTermRule,
+  translocoToICU,
   unrenderableIcuConstructs,
 } from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
@@ -37,9 +38,9 @@ export class EditorAdvisories {
   /** ICU constructs plain Transloco cannot render; always empty under the default runtime. */
   readonly unrenderableConstructs = computed(() => this.unrenderableConstructsOf(this.#checkedValue()));
 
-  /** The same check for any other value, such as a locale's translation. Reads the config signal. */
+  /** The same check for any other value (as Core stores it, after Transloco-to-ICU conversion), such as a locale's translation. Reads the config signal. */
   unrenderableConstructsOf(value: string): readonly IcuConstructKind[] {
-    return unrenderableIcuConstructs(value, this.config()?.runtime ?? DEFAULT_APP_RUNTIME);
+    return unrenderableIcuConstructs(translocoToICU(value), this.config()?.runtime ?? DEFAULT_APP_RUNTIME);
   }
 
   readonly exactMatch = computed(() => exactSimilarMatch(this.baseValueText(), this.similarResources()));

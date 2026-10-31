@@ -6,16 +6,20 @@ import type {
   UpdateResourceDto,
 } from '@simoncodes-ca/data-transfer';
 import {
+  type AppRuntime,
   DEFAULT_MISSING_METADATA_STATUS,
   folderPathFromSegments,
   folderPathLeaf,
   folderPathSegments,
+  type IcuConstructKind,
   isValidSegment,
   joinFolderPath,
   parentFolderPath,
   resolveResourceKey,
   splitResolvedKey,
   summaryTarget,
+  translocoToICU,
+  unrenderableIcuConstructs,
 } from '@simoncodes-ca/domain';
 import { addTagToList, removeTagFromList } from '../../../shared/tag-list-edit';
 import { findFolderInTree } from '../../store/folder-tree.utils';
@@ -334,6 +338,38 @@ export function editedLocales(draft: ResourceEntryDraft, original: ResourceSumma
     const statusChanged = translation.status !== (previous?.status ?? DEFAULT_MISSING_METADATA_STATUS);
     return valueChanged || statusChanged;
   });
+}
+
+/** One value a save writes that the runtime cannot render, with the ICU constructs responsible. */
+export interface UnrenderableWrite {
+  locale: string;
+  /** The value as written by the editor. */
+  value: string;
+  kinds: readonly IcuConstructKind[];
+}
+
+/**
+ * The values a save writes that the runtime cannot render, base locale first.
+ * Constructs are detected on the ICU form Core stores. Create writes the base value and every non-empty translation. Edit writes the
+ * base value only when it changed, plus the locales `editedLocales` names.
+ */
+export function unrenderableWrites(
+  draft: ResourceEntryDraft,
+  original: ResourceSummaryDto | undefined,
+  baseLocale: string,
+  runtime: AppRuntime,
+): UnrenderableWrite[] {
+  const writes: { locale: string; value: string }[] = [];
+  if (original) {
+    if (draft.baseValue !== original.base.value) writes.push({ locale: baseLocale, value: draft.baseValue });
+    writes.push(...editedLocales(draft, original));
+  } else {
+    writes.push({ locale: baseLocale, value: draft.baseValue });
+    writes.push(...draft.translations.filter((translation) => translation.value.trim().length > 0));
+  }
+  return writes
+    .map(({ locale, value }) => ({ locale, value, kinds: unrenderableIcuConstructs(translocoToICU(value), runtime) }))
+    .filter(({ kinds }) => kinds.length > 0);
 }
 
 /**
