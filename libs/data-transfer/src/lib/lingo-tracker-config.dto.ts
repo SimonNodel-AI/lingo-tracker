@@ -1,3 +1,4 @@
+import type { AppRuntime } from '@simoncodes-ca/domain';
 import type { BundleDefinitionDto, TokenCasingDto } from './bundle-definition.dto';
 import type { LingoTrackerCollectionDto } from './lingo-tracker-collection.dto';
 import type { PreferredTermRuleDto } from './preferred-term-rule.dto';
@@ -13,6 +14,8 @@ export interface LingoTrackerConfigDto {
   bundles?: Record<string, BundleDefinitionDto>;
   /** Project-wide default token casing for generated type files. Bundles may override it. */
   tokenCasing?: TokenCasingDto;
+  /** App runtime used for import and bundle conversion. Read-only. */
+  runtime?: AppRuntime;
   /** Project-wide default for ICU → Transloco conversion at bundle time (core default: true). */
   transformICUToTransloco?: boolean;
   translation?: TranslationConfigDto;

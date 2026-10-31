@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
+import { type AppRuntime, folderPathFromSegments, folderPathSegments } from '@simoncodes-ca/domain';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
 import type { CollectionFolderProblem } from './collection-folders';
 import { checkCollectionFolderPath } from './folder-address';
@@ -8,6 +8,7 @@ import { readCollectionFolders } from './read-collection';
 import type { ResourceTreeNode } from './resource-tree-types';
 
 export interface LoadResourceTreeOptions {
+  runtime: AppRuntime;
   /** Receives unreadable folder problems; core never logs them. */
   onProblem?: (problem: CollectionFolderProblem) => void;
 
@@ -62,7 +63,7 @@ export function loadResourceTree(options: LoadResourceTreeOptions): ResourceTree
   let rootNode: ResourceTreeNode = { folderPathSegments: pathSegments, resources: [], children: [] };
 
   const folders = readCollectionFolders(
-    { translationsFolder, baseLocale, tags: [] },
+    { translationsFolder, baseLocale, tags: [], runtime: options.runtime },
     { startPath: folderPathFromSegments(pathSegments), maxDepth: depth },
   );
 

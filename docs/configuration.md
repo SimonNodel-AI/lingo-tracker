@@ -7,7 +7,7 @@ sidebar_position: 4
 
 All settings live in `.lingo-tracker.json` in the project root. `init` creates it. The CLI reads it from `INIT_CWD` when a package manager sets that variable, otherwise from the current directory. `lingo-tracker-app` reads it from the directory it was started in. Neither searches parent folders.
 
-The file is plain JSON. Reading requires only a JSON object. Writes additionally require a `baseLocale`, an array for `locales` and an object for `collections`. No other field is checked, so a misspelled field is ignored silently. Compare against this page when a setting has no effect.
+The file is plain JSON. Reading requires only a JSON object. Writes additionally require a `baseLocale`, an array for `locales` and an object for `collections`. When present, `runtime` is also checked on read and write; no other field is checked, so a misspelled field is ignored silently. Compare against this page when a setting has no effect.
 
 Writes by the CLI, API or UI are guarded: if the file changed on disk between read and write, the write is refused with a conflict error instead of overwriting someone else's edit.
 
@@ -20,6 +20,7 @@ Writes by the CLI, API or UI are guarded: if the file changed on disk between re
   "exportFolder": "dist/lingo-export",
   "importFolder": "dist/lingo-import",
   "tokenCasing": "upperCase",
+  "runtime": "transloco-messageformat",
   "transformICUToTransloco": true,
   "protectedTermsFile": ".lingo-tracker-protected-terms.json",
   "preferredTerminologyFile": ".lingo-tracker-preferred-terminology.json",
@@ -61,7 +62,8 @@ Writes by the CLI, API or UI are guarded: if the file changed on disk between re
 | `exportFolder` | string | `dist/lingo-export` | Default output folder for `export`. |
 | `importFolder` | string | `dist/lingo-import` | Folder the UI's Import dialog lists. The CLI `import` takes an explicit `--source`. |
 | `tokenCasing` | `"upperCase"` or `"camelCase"` | `upperCase` | Default casing for generated TypeScript keys. Overridable per bundle and by the `--token-casing` flag. |
-| `transformICUToTransloco` | boolean | `true` | Convert `{name}` to `{{ name }}` in bundles. Overridable per bundle. |
+| `runtime` | `"transloco-messageformat"` or `"transloco"` | `transloco-messageformat` | How the app renders bundles. Global only. Import and bundle both read it. Under `transloco`, a single `{` or `'` is literal text: import quotes it in storage and bundle unquotes it. Values with ICU `plural`, `select` or similar are still bundled in messageformat form, with a warning. `init` detects it from `package.json` (`dependencies` and `devDependencies` only, not `peerDependencies`, so a library repo should pass `--runtime`); any other value fails every command. |
+| `transformICUToTransloco` | boolean | `true` | Convert `{name}` to `{{ name }}` in bundles. Overridable per bundle. With `false`, bundles hold stored ICU and `runtime` has no effect on them. |
 | `protectedTermsFile` | string | `.lingo-tracker-protected-terms.json` | Path to the global protected-terms file, resolved against the config directory. |
 | `preferredTerminologyFile` | string | `.lingo-tracker-preferred-terminology.json` | Path to the preferred-terminology rule file. Global only. |
 | `translation` | object | none | Machine translation settings, see below. |

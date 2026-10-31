@@ -37,6 +37,9 @@ export interface ValidateCommandOptions {
    */
   skipIcu?: boolean;
 
+  /** When true, do not check whether the configured app runtime can render ICU constructs. */
+  skipRuntime?: boolean;
+
   /**
    * When true, translations are not checked against their base value for the
    * placeholders they interpolate.

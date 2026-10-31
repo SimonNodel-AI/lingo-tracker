@@ -19,6 +19,7 @@
 
 import {
   countIcuWork,
+  type IcuParseOptions,
   type IcuRange,
   isBareSelectorBefore,
   parseIcuMessage,
@@ -59,8 +60,8 @@ const CONVERTED_NAME = /^\w+(?:\.\w+)*$/;
  * findCollapsedCaseBodies('{p, plural, offset:2 other{x}}'); // → []
  * ```
  */
-export function findCollapsedCaseBodies(value: string): readonly CollapsedCaseBody[] {
-  const message = parseIcuMessage(value);
+export function findCollapsedCaseBodies(value: string, options: IcuParseOptions = {}): readonly CollapsedCaseBody[] {
+  const message = parseIcuMessage(value, options);
   if (!message.ok) return [];
   const found: CollapsedCaseBody[] = [];
   visitIcuNodes(message.nodes, (node) => {

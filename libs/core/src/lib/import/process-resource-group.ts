@@ -1,6 +1,7 @@
 import {
   admitValue,
   honouredImportSourceStatus,
+  icuParseOptionsFor,
   importStrategyPolicy,
   resolveImportStatus,
   type TranslationStatus,
@@ -237,6 +238,7 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
     folder = openUnreportedResourceFolder(group.folderPath, {
       baseLocale,
       translationsFolder: session.collection.translationsFolder,
+      runtime: session.collection.runtime,
     });
   } catch (error) {
     for (const { item: resource } of group.members) {
@@ -250,11 +252,16 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
   function failedValueCheck(source: string | undefined, resource: ImportedResource): boolean {
     // Value Admission remains the backstop after ICU auto-fix. Reference imports
     // retain their exception for unresolved placeholders.
-    const admission = admitValue(source, resource.value, {
-      name: 'import',
-      referencesResolved: resolvesReferences,
-      protectedTerms: terms.protectedTerms,
-    });
+    const admission = admitValue(
+      source,
+      resource.value,
+      {
+        name: 'import',
+        referencesResolved: resolvesReferences,
+        protectedTerms: terms.protectedTerms,
+      },
+      icuParseOptionsFor(session.collection.runtime),
+    );
     if (admission.admitted === true) return false;
 
     const reason = admission.violations.map((violation) => violation.description).join('; ');

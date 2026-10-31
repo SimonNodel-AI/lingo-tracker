@@ -67,6 +67,37 @@ describe('prepared bundle run', () => {
     expect(generated.findings.types).toMatchObject({ status: 'written', keysCount: 2 });
   });
 
+  it('deduplicates only identical runtime warnings across locales within each bundle run', async () => {
+    const folder = join(root(), 'common');
+    const plural = '{n, plural, other {# items}}';
+    seedResources(testCollection(folder, { runtime: 'transloco', locales: ['en', 'fr', 'es'] }), {
+      count: { source: plural, translations: { fr: plural, es: plural } },
+      later: { source: 'Plain', translations: { fr: plural, es: plural } },
+      broken: { source: 'Broken {', translations: { fr: 'Broken {', es: 'Broken {' } },
+    });
+    const definition: BundleDefinition = { bundleName: '{locale}', dist: 'out', collections: 'All' };
+    const config: LingoTrackerConfig = {
+      exportFolder: 'export',
+      importFolder: 'import',
+      baseLocale: 'en',
+      locales: ['en', 'fr', 'es'],
+      runtime: 'transloco',
+      collections: { common: { translationsFolder: folder } },
+      bundles: { first: definition, second: { ...definition, dist: 'second' } },
+    };
+    for (const bundleKey of ['first', 'second']) {
+      const prepared = prepareBundleRun({ source: 'saved', bundleKey, config, cwd: root() });
+      const plan = planPreparedBundle(prepared);
+      expect(plan.warnings.filter((warning) => warning.includes('which the transloco runtime cannot render'))).toEqual([
+        "Key 'count': uses ICU plural, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.",
+        "Key 'later': uses ICU plural, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.",
+      ]);
+      expect(plan.warnings.filter((warning) => warning.includes('malformed ICU syntax'))).toHaveLength(3);
+      const generated = await generatePreparedBundle(prepared);
+      expect(generated.findings.byOrigin.generation).toEqual(plan.warnings);
+    }
+  });
+
   it('returns legacy and type-outcome warnings exactly once', async () => {
     const definition = {
       bundleName: '{locale}',

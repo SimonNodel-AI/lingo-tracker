@@ -1,3 +1,4 @@
+import { icuParseOptionsFor, unrenderableIcuConstructs } from '@simoncodes-ca/domain';
 import {
   type CollectionSetResource,
   collectionResourceStatus,
@@ -7,6 +8,7 @@ import {
 import type { Collection } from '../config/open-collection';
 import type { ProjectTerms } from '../config/project-terms';
 import type {
+  IcuValidationDetail,
   IcuValidationResult,
   PlaceholderValidationResult,
   ProtectedTermValidationResult,
@@ -137,19 +139,26 @@ export function validateResources(
     // ICU compilation is a separate question from translation status: it asks
     // whether the stored value renders at all, not whether anyone approved it.
     // Braced placeholders are checked even when locale-dependent compilation is off.
-    icuResults.push(
-      validateIcuValues(resources, targetLocales, {
-        compileValues: false,
-        requirePortablePlurals: false,
-        ...options.icu,
-        baseLocale: collection.baseLocale,
-      }),
-    );
+    const icuResult = validateIcuValues(resources, targetLocales, {
+      compileValues: false,
+      requirePortablePlurals: false,
+      ...options.icu,
+      baseLocale: collection.baseLocale,
+      ...icuParseOptionsFor(collection.runtime),
+    });
+    icuResults.push({
+      ...icuResult,
+      failures: [
+        ...icuResult.failures,
+        ...(options.runtime !== false ? validateRuntimeRenderability(resources, targetLocales, collection) : []),
+      ],
+    });
 
     const terms = termsByCollection.get(collection);
     if (!terms) throw new Error(`Project Terms were not supplied for collection '${collection.name}'`);
     if (options.placeholders || options.protectedTerms) {
       const checked = validateTranslatedValues(resources, targetLocales, collection.baseLocale, {
+        ...icuParseOptionsFor(collection.runtime),
         protectedTerms: terms.protectedTerms,
         checkArguments: options.placeholders ?? false,
         checkProtectedTerms: options.protectedTerms ?? false,
@@ -209,6 +218,34 @@ export function validateResources(
     successes,
     passed,
   };
+}
+
+/** Runtime compatibility is independent of locale compilation and translation status. */
+function validateRuntimeRenderability(
+  resources: readonly CollectionSetResource[],
+  targetLocales: readonly string[],
+  collection: Collection,
+): IcuValidationDetail[] {
+  if (collection.runtime !== 'transloco') return [];
+  const failures: IcuValidationDetail[] = [];
+  const locales = [collection.baseLocale, ...targetLocales.filter((locale) => locale !== collection.baseLocale)];
+  for (const resource of resources) {
+    for (const locale of locales) {
+      const value = resource.translations[locale] ?? (locale === collection.baseLocale ? resource.source : undefined);
+      if (value === undefined) continue;
+      const kinds = unrenderableIcuConstructs(value, collection.runtime);
+      if (kinds.length > 0) {
+        failures.push({
+          kind: 'runtime-unrenderable',
+          key: resource.fullKey,
+          locale,
+          collection: resource.collection,
+          message: `Uses ICU ${kinds.join(', ')}, which the transloco runtime cannot render. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.`,
+        });
+      }
+    }
+  }
+  return failures;
 }
 
 function mergeIcuResults(results: readonly IcuValidationResult[]): IcuValidationResult {

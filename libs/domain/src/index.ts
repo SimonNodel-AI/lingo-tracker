@@ -3,6 +3,7 @@
 // index.spec.ts scans consumers and pins runtime values. Type-only exports are excluded.
 
 // ICU/Transloco: conversion, classification, placeholder repair and ICU checks
+export { APP_RUNTIMES, type AppRuntime, DEFAULT_APP_RUNTIME, isAppRuntime } from './lib/app-runtime';
 // Bundle definition: the `bundles` entry type, its validation, normalisation and output-file rule
 export {
   type BundleDefinition,
@@ -60,8 +61,9 @@ export {
 export type { ArgumentMismatch } from './lib/icu-arguments';
 export { hasQuotedInterpolationDelimiter, type ICUAutoFixResult, validateICUSyntax } from './lib/icu-auto-fixer';
 export { classifyICUContent, type ICUClassification } from './lib/icu-classifier';
+export { type IcuParseOptions, icuQuotedRuns } from './lib/icu-message';
 export { bundledFormIfLost } from './lib/icu-round-trip';
-export { hasUnbundlableBranchBody, icuToTransloco } from './lib/icu-to-transloco';
+export { hasUnbundlableBranchBody } from './lib/icu-to-transloco';
 // Imports: strategy policy, status resolution, and locale permission
 export { canImportLocale, importableLocales, inferImportLocale } from './lib/import-rules';
 export {
@@ -132,6 +134,13 @@ export {
   type ResourceSummaryTarget,
   summaryTarget,
 } from './lib/resource-summary';
+export {
+  type IcuConstructKind,
+  icuParseOptionsFor,
+  toRuntimeValue,
+  toStoredIcu,
+  unrenderableIcuConstructs,
+} from './lib/runtime-conversion';
 export {
   applyBaseChange,
   type EntryLocaleMetadata,

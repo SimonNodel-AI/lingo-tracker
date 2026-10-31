@@ -26,6 +26,7 @@ describe('mutations delivered by core writes (real fs)', () => {
   let root: string;
 
   const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name,
     translationsFolder,
@@ -81,7 +82,10 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'apps.greeting',
-        entry: openUnreportedResourceFolder(join(root, 'apps'), { baseLocale: 'en' }).treeEntry('greeting'),
+        entry: openUnreportedResourceFolder(join(root, 'apps'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        }).treeEntry('greeting'),
       },
     ]);
     // The entry holds the stored (ICU) form, not the Transloco input.
@@ -103,7 +107,10 @@ describe('mutations delivered by core writes (real fs)', () => {
         kind: 'upsert',
         translationsFolder: root,
         key: 'common.ok',
-        entry: openUnreportedResourceFolder(join(root, 'common'), { baseLocale: 'en' }).treeEntry('ok'),
+        entry: openUnreportedResourceFolder(join(root, 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        }).treeEntry('ok'),
       },
     ]);
     expect(collected[0]).toMatchObject({ entry: { source: 'Okay' } });

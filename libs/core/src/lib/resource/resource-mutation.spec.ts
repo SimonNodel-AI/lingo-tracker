@@ -44,7 +44,10 @@ describe('Resource Folder reporting', () => {
   });
   it('leaves standalone fixture saves unreported', () => {
     // Standalone fixtures have no collection consumer.
-    const folder = openUnreportedResourceFolder(join(root(), 'fixture'), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(join(root(), 'fixture'), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    });
     folder.setBase('ok', 'OK');
     expect(() => folder.save()).not.toThrow();
     expect(folder.treeEntry('ok')?.source).toBe('OK');

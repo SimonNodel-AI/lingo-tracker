@@ -12,6 +12,7 @@ export interface ValidateRunOptions {
   readonly allowTranslated?: boolean;
   readonly skipLocales?: readonly string[];
   readonly skipIcu?: boolean;
+  readonly skipRuntime?: boolean;
   readonly skipPlaceholders?: boolean;
   readonly skipProtectedTerms?: boolean;
   readonly requirePortablePlurals?: boolean;
@@ -96,6 +97,7 @@ export function runValidate(collections: readonly Collection[], options: Validat
     // Portability is a static parse, so an explicit request runs even alongside skipIcu.
     // Base values are checked alongside targets because they are copied into every translation slot.
     icu: compileValues || requirePortablePlurals ? { compileValues, requirePortablePlurals } : undefined,
+    runtime: !options.skipRuntime,
     // A renamed placeholder renders empty; neither ICU compilation nor status catches it.
     placeholders: !options.skipPlaceholders,
     protectedTerms: !options.skipProtectedTerms,

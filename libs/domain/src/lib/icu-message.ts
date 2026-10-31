@@ -11,7 +11,7 @@
  * the result hangs under the `error` node. Every unquoted `{` therefore opens exactly one
  * frame and every `}` closes one, whatever the input.
  *
- * Two options select the grammar:
+ * Three options select the grammar:
  *
  * - `interpolation` reads Transloco `{{ name }}` placeholders as `argument` nodes with
  *   `syntax: 'transloco'`. Off by default, because a stored ICU value holds none.
@@ -19,6 +19,8 @@
  *   a `{` that starts no argument and a `}` outside any argument are text, any argument
  *   type is accepted, `other` is optional and an argument style is not quote-checked.
  *   Off by default, so the parse matches the strict rules the bundle needs.
+ * - `simpleArgumentPaths` accepts identifier paths in simple ICU arguments such as
+ *   `{user.name}`. Off by default; plain Transloco uses it for its stored interpolations.
  *
  * Quoted runs are the same in every context: `'{…'`, `'}…'` or `'#…'` up to a closing
  * apostrophe not followed by another, with `''` as a literal apostrophe.
@@ -162,6 +164,8 @@ export interface IcuParseOptions {
   readonly interpolation?: boolean;
   /** Accept what the MessageFormat runtime parser accepts. */
   readonly lenient?: boolean;
+  /** Accept Transloco identifier paths in simple ICU arguments; all other grammar rules stay in force. */
+  readonly simpleArgumentPaths?: boolean;
 }
 
 const NAME = String.raw`[^\p{Pat_Syn}\p{Pat_WS}]+`;
@@ -180,6 +184,7 @@ const LENIENT_GROUP_END = /\s*\}/uy;
 const QUOTE_OPENER = "'[{}#]";
 const QUOTE_OPENER_PATTERN = new RegExp(QUOTE_OPENER, 'u');
 const INTERPOLATION = /\{\{\s*(\w+(?:\.\w+)*)\s*\}\}/y;
+const SIMPLE_ARGUMENT_PATH = /\{\s*(\w+(?:\.\w+)*)\s*\}/y;
 const QUOTED_RUN = new RegExp(`${QUOTE_OPENER}(?:[^']|'')*'(?!')`, 'uy');
 const PLURAL_CATEGORIES: readonly string[] = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
@@ -459,6 +464,7 @@ class Parser {
   private readonly nextBrace: ReadonlyMap<number, number>;
   private readonly interpolation: boolean;
   private readonly lenient: boolean;
+  private readonly simpleArgumentPaths: boolean;
   private depth = 0;
   private outermostStart = 0;
   private unclosedReported = false;
@@ -473,6 +479,7 @@ class Parser {
     this.quotes = new Map(this.runs.map((run) => [run.start, run.end]));
     this.interpolation = options.interpolation === true;
     this.lenient = options.lenient === true;
+    this.simpleArgumentPaths = options.simpleArgumentPaths === true;
   }
 
   parse(): IcuMessage {
@@ -632,6 +639,17 @@ class Parser {
     if (this.depth === 0) this.outermostStart = this.position;
     this.depth++;
     try {
+      const start = this.position;
+      const path = this.simpleArgumentPaths ? this.header(SIMPLE_ARGUMENT_PATH) : undefined;
+      if (path) {
+        return {
+          kind: 'argument',
+          range: { start, end: this.position },
+          ...path,
+          syntax: 'icu',
+          ...this.braceFacts(start, true),
+        };
+      }
       return this.lenient ? this.lenientConstruct(inPlural) : this.strictConstruct(inPlural);
     } finally {
       this.depth--;

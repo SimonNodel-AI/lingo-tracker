@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FIND_SIMILAR_FLAGS } from './commands/find-similar-flags';
 import { createCli } from './program';
-import { createRecordingManifest } from './testing/recording-manifest';
 import { resolveFlagValues } from './runner/flag-record';
 import { createCommandProject } from './testing/command-project';
+import { createRecordingManifest } from './testing/recording-manifest';
 
 const { recordingManifest, handler } = createRecordingManifest();
 
@@ -35,6 +35,31 @@ describe('main.ts flag wiring', () => {
     expect(handler('add-resource')).toHaveBeenCalledWith(expect.objectContaining({ tags: ['a', 'b'] }));
   });
 
+  it('passes --runtime to init', async () => {
+    await runCli('init', '--runtime', 'transloco');
+
+    expect(handler('init')).toHaveBeenCalledWith(expect.objectContaining({ runtime: 'transloco' }));
+  });
+
+  it('rejects an invalid --runtime through the flag record', async () => {
+    let stderr = '';
+    const program = createCli(recordingManifest);
+    program.commands
+      .find((command) => command.name() === 'init')
+      ?.exitOverride()
+      .configureOutput({
+        writeErr: (text) => {
+          stderr += text;
+        },
+      });
+
+    await expect(program.parseAsync(['init', '--runtime', 'bogus'], { from: 'user' })).rejects.toMatchObject({
+      exitCode: 1,
+    });
+    expect(stderr).toContain('Allowed choices are transloco-messageformat, transloco');
+    expect(handler('init')).not.toHaveBeenCalled();
+  });
+
   it('parses edit-collection --set-tags before invoking the command', async () => {
     await runCli('edit-collection', 'app', '--set-tags', 'a, b');
     expect(handler('edit-collection')).toHaveBeenCalledWith(
@@ -59,7 +84,20 @@ describe('main.ts flag wiring', () => {
       allowTranslated: false,
       skipLocales: ['fr', 'de'],
       skipIcu: false,
+      skipRuntime: false,
       skipPlaceholders: true,
+      skipProtectedTerms: false,
+      requirePortablePlurals: false,
+    });
+  });
+
+  it('passes --skip-runtime to validate independently of ICU compilation', async () => {
+    await runCli('validate', '--skip-runtime');
+    expect(handler('validate')).toHaveBeenCalledWith({
+      allowTranslated: false,
+      skipIcu: false,
+      skipRuntime: true,
+      skipPlaceholders: false,
       skipProtectedTerms: false,
       requirePortablePlurals: false,
     });
@@ -70,6 +108,7 @@ describe('main.ts flag wiring', () => {
     expect(handler('validate')).toHaveBeenCalledWith({
       allowTranslated: false,
       skipIcu: false,
+      skipRuntime: false,
       skipPlaceholders: false,
       skipProtectedTerms: true,
       requirePortablePlurals: false,

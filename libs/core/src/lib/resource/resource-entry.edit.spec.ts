@@ -66,7 +66,10 @@ describe('editResource (real fs)', () => {
    * copy (new), es missing.
    */
   function seedEntry(): void {
-    const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    });
     folder.setBase('save', 'Save');
     folder.setTranslation('save', 'fr', 'Enregistrer', 'verified');
     folder.setTranslation('save', 'de', 'Save', 'new');
@@ -154,7 +157,10 @@ describe('editResource (real fs)', () => {
     'applies a comment edit while holding unchanged braced values (source=%s)',
     async (source) => {
       const value = '{{{a}}}';
-      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      });
       folder.setEntry(
         'save',
         { source, fr: value },
@@ -180,7 +186,10 @@ describe('editResource (real fs)', () => {
     'rejects changed braced values in a legacy entry without writes: %j',
     async (changes) => {
       const value = '{{{a}}}';
-      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      });
       folder.setEntry(
         'save',
         { source: value, fr: value },
@@ -677,7 +686,10 @@ describe('editResource (real fs)', () => {
     });
 
     it('refuses to overwrite an entry at the destination and changes nothing', async () => {
-      const other = openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), { baseLocale: 'en' });
+      const other = openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      });
       other.setBase('save', 'Other');
       other.save();
 
@@ -726,7 +738,10 @@ describe('editResource (real fs)', () => {
       }
 
       function writeDestinationEntry(key: string, value: string): void {
-        const other = openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), { baseLocale: 'en' });
+        const other = openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         other.setBase(key, value);
         other.save();
       }
@@ -740,7 +755,10 @@ describe('editResource (real fs)', () => {
           { provider: provider.provider },
         );
         await provider.called;
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         folder.setBase('cancel', 'Cancel');
         folder.setTranslation('cancel', 'fr', 'Annuler', 'verified');
         folder.save();
@@ -768,7 +786,10 @@ describe('editResource (real fs)', () => {
           { provider: provider.provider },
         );
         await provider.called;
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         folder.setTranslation('save', 'fr', 'Humain', 'translated');
         folder.save();
         provider.release();
@@ -790,7 +811,10 @@ describe('editResource (real fs)', () => {
           { provider: provider.provider },
         );
         await provider.called;
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         expect(folder.get('save')?.entry.source).toBe('Save all');
         folder.remove('save');
         folder.save();
@@ -798,7 +822,10 @@ describe('editResource (real fs)', () => {
 
         await expect(editing).rejects.toThrow(ResourceNotFoundError);
         expect(
-          openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' }).has('save'),
+          openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+            runtime: 'transloco-messageformat',
+            baseLocale: 'en',
+          }).has('save'),
         ).toBe(false);
         expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
       });
@@ -806,7 +833,10 @@ describe('editResource (real fs)', () => {
       it('throws ResourceNotFoundError for the source deleted during translation before a move', async () => {
         const target = collection(AUTO);
         const provider = new InMemoryTranslationProvider(({ text, targetLocale }) => {
-          const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+          const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+            runtime: 'transloco-messageformat',
+            baseLocale: 'en',
+          });
           if (folder.has('save')) {
             expect(folder.get('save')?.entry.source).toBe('Save all');
             folder.remove('save');
@@ -825,17 +855,26 @@ describe('editResource (real fs)', () => {
         await expect(editing).rejects.toThrow(ResourceNotFoundError);
         await expect(editing).rejects.toThrow('common.save');
         expect(
-          openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' }).has('save'),
+          openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+            runtime: 'transloco-messageformat',
+            baseLocale: 'en',
+          }).has('save'),
         ).toBe(false);
         expect(
-          openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), { baseLocale: 'en' }).has('save'),
+          openUnreportedResourceFolder(join(root, 'translations', 'dialogs'), {
+            runtime: 'transloco-messageformat',
+            baseLocale: 'en',
+          }).has('save'),
         ).toBe(false);
         expect(collected).toEqual([expect.objectContaining({ kind: 'upsert', key: 'common.save' })]);
       });
 
       it('deduplicates translator and write-back skips in first-seen order', async () => {
         const provider = new InMemoryTranslationProvider(({ text, targetLocale }) => {
-          const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+          const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+            runtime: 'transloco-messageformat',
+            baseLocale: 'en',
+          });
           folder.setTranslation('save', 'fr', 'Humain', 'translated');
           folder.setTranslation('save', 'de', 'Manuell', 'translated');
           folder.save();
@@ -866,7 +905,10 @@ describe('editResource (real fs)', () => {
           { provider: provider.provider },
         );
         await provider.called;
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         folder.setBase('save', 'Save some');
         folder.save();
         provider.release();

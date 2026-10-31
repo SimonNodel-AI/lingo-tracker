@@ -348,6 +348,14 @@ code {
     }
   }
 
+  &--warning {
+    color: var(--color-warning-text);
+
+    mat-icon {
+      color: var(--color-warning-text);
+    }
+  }
+
   // Hints that belong to the location/key row sit under the whole row, not in
   // one of its two columns, so they get the row's negative gap back.
   &--row {

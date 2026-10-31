@@ -90,11 +90,12 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
   validateBundleLocales(params.locales, params.config);
   let collections: ResolvedBundleCollections | undefined;
   let content: PreparedBundleContent | undefined;
+  const settings = resolveBundleSettings(bundleKey, params.config, definition, params);
   const prepared: PreparedBundleRun = {
     bundleKey,
     cwd,
     definition,
-    settings: resolveBundleSettings(bundleKey, params.config, definition, params),
+    settings,
     locales: [...(params.locales ?? params.config.locales)],
     get collections() {
       collections ??= resolveBundleCollections(definition, params.config, { cwd });
@@ -111,15 +112,24 @@ export function prepareBundleRun(params: PrepareBundleRunParams): PreparedBundle
       }
       return content;
     },
-    warnings: configWarnings(bundleKey, definition),
+    warnings: configWarnings(bundleKey, definition, settings),
     tokenConstantNameOverride: params.tokenConstantName,
   };
   return prepared;
 }
 
-function configWarnings(bundleKey: string, definition: BundleDefinition): BundleWarning[] {
+function configWarnings(bundleKey: string, definition: BundleDefinition, settings: BundleSettings): BundleWarning[] {
   const message = legacyTypeDistWarning(bundleKey, definition);
-  return message ? [{ origin: 'config', message }] : [];
+  const warnings: BundleWarning[] = message ? [{ origin: 'config', message }] : [];
+  if (!settings.transformICUToTransloco && settings.runtime === 'transloco') {
+    warnings.push({
+      origin: 'config',
+      message:
+        `Bundle '${bundleKey}': transformICUToTransloco is off, so the transloco runtime setting does not apply; ` +
+        'the bundle holds ICU-quoted text',
+    });
+  }
+  return warnings;
 }
 
 /** Validates an optional project locale subset, including malformed API bodies. */
@@ -144,11 +154,14 @@ function selectPreparedContent(
 ): PreparedBundleContent {
   const cache: CollectionReadCache = new Map();
   const warnings: string[] = [];
+  const reportedRuntimeWarnings = new Set<string>();
   const conflicts = new Set<string>();
   const select = (locale: string | typeof COLLECTION_BASE_LOCALE): BundleSelection =>
     selectBundleEntries(prepared.collections.collections, locale, {
+      runtime: prepared.settings.runtime,
       transformICUToTransloco: prepared.settings.transformICUToTransloco,
       cache,
+      reportedRuntimeWarnings,
     });
   const locales = prepared.locales.map((locale, index) => {
     progress?.onLocale?.(locale, index + 1);

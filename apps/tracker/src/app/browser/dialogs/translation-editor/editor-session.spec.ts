@@ -3,6 +3,7 @@ import { signal } from '@angular/core';
 import type {
   CreateResourceDto,
   FolderNodeDto,
+  LingoTrackerConfigDto,
   ResourceSummaryDto,
   TranslationStatus,
 } from '@simoncodes-ca/data-transfer';
@@ -29,6 +30,7 @@ describe('EditorSession', () => {
   const rootFolders = signal<FolderNodeDto[]>([]);
   const browserFolderPath = signal('common.buttons');
   const entries = signal<ResourceSummaryDto[]>([]);
+  const config = signal<LingoTrackerConfigDto | null>(null);
   const closedWith = () => dialogRef.close.mock.calls.at(-1)?.[0];
   const sentCreate = (): CreateResourceDto | undefined => apiSpies.createResource.mock.calls.at(-1)?.[1];
   const summary = (
@@ -75,7 +77,7 @@ describe('EditorSession', () => {
         createResource: apiSpies.createResource,
         updateResource: apiSpies.updateResource,
       },
-      config: signal(null),
+      config,
       peek: {
         folderEntries: signal(new Map<string, readonly string[]>()),
         loadingFolders: signal(new Set<string>()),
@@ -98,6 +100,7 @@ describe('EditorSession', () => {
     apiSpies.createResource.mockReturnValue(of({}));
     apiSpies.updateResource.mockReturnValue(of({}));
     confirm.mockReset().mockResolvedValue(true);
+    config.set(null);
     rootFolders.set([]);
     entries.set([]);
     browserFolderPath.set('common.buttons');
@@ -110,6 +113,24 @@ describe('EditorSession', () => {
     vi.restoreAllMocks();
   });
   describe('Form Validation - Key Field', () => {
+    it('accepts dotted simple arguments with the configured Transloco runtime', () => {
+      config.set({
+        runtime: 'transloco',
+        baseLocale: 'en',
+        locales: ['en', 'fr'],
+        collections: {},
+        exportFolder: 'export',
+        importFolder: 'import',
+      });
+      openSession(createMockData('create'));
+      session.entry.form.controls.key.setValue('greeting');
+      session.entry.form.controls.baseValue.setValue('Hello {user.name}');
+      session.entry.getLocaleFormGroup(0).controls.value.setValue('Bonjour {user.name}');
+      expect(session.entry.form.valid).toBe(true);
+      session.entry.form.controls.baseValue.setValue('{{{user.name}}}');
+      expect(session.entry.form.controls.baseValue.hasError('bracedPlaceholder')).toBe(true);
+    });
+
     it('should require key field', () => {
       session.entry.form.controls.key.setValue('');
       expect(session.entry.form.controls.key.hasError('required')).toBe(true);

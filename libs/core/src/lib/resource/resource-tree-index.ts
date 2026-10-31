@@ -39,6 +39,7 @@ export class ResourceTreeIndex {
     this.#tree = loadResourceTree({
       translationsFolder: this.collection.translationsFolder,
       baseLocale: this.collection.baseLocale,
+      runtime: this.collection.runtime,
       path: '',
       depth: Number.POSITIVE_INFINITY,
       onProblem: (problem) => onWarning?.(describeFolderProblem(problem, { collectionName: this.collection.name })),

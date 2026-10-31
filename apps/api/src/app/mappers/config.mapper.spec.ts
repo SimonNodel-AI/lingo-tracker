@@ -97,6 +97,13 @@ describe('config.mapper', () => {
       expect(dto.protectedTermsFilePath).toBe('/project/.lingo-tracker-protected-terms.json');
     });
 
+    it('maps a present runtime and omits it when absent', () => {
+      for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+        expect(mapConfigToDto(snapshot({ config: { ...config, runtime } })).runtime).toBe(runtime);
+      }
+      expect(mapConfigToDto(snapshot())).not.toHaveProperty('runtime');
+    });
+
     it('maps bundle definitions by name', () => {
       const dto = mapConfigToDto(
         snapshot({

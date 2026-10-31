@@ -42,7 +42,7 @@ describe('importResources merge behavior', () => {
     writeFileSync(metaPath, JSON.stringify(meta));
   };
   const seed = (entries: Record<string, { source: string; es?: string; status?: TranslationStatus }>): void => {
-    const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(folderPath, { runtime: 'transloco-messageformat', baseLocale: 'en' });
     for (const [key, value] of Object.entries(entries)) {
       folder.setBase(key, value.source);
       if (value.es !== undefined) folder.setTranslation(key, 'es', value.es, value.status ?? 'translated');
@@ -51,7 +51,8 @@ describe('importResources merge behavior', () => {
   };
   const run = (resources: readonly ImportedResource[], options: ImportRunOptions = { locale: 'es' }) =>
     importResources(collection, resources, options);
-  const stored = (key: string) => openUnreportedResourceFolder(folderPath, { baseLocale: 'en' }).get(key);
+  const stored = (key: string) =>
+    openUnreportedResourceFolder(folderPath, { runtime: 'transloco-messageformat', baseLocale: 'en' }).get(key);
 
   describe('creating new resources', () => {
     it('keeps an explicit translated status when an imported value copies the base', () => {
@@ -188,7 +189,7 @@ describe('importResources merge behavior', () => {
   describe('comment and tag updates', () => {
     beforeEach(() => {
       seed({ ok: { source: 'OK', es: 'Bien' } });
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(folderPath, { runtime: 'transloco-messageformat', baseLocale: 'en' });
       folder.setDetails('ok', { comment: 'Old comment', tags: ['old-tag'] });
       folder.save();
     });
@@ -359,7 +360,7 @@ describe('importResources merge behavior', () => {
       expect(stored('ok')?.entry.source).toBe('Okay');
     });
     it('marks translations stale and points them at the new base checksum', () => {
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(folderPath, { runtime: 'transloco-messageformat', baseLocale: 'en' });
       folder.setBase('ok', 'OK');
       folder.setTranslation('ok', 'es', 'Bien', 'verified');
       folder.setTranslation('ok', 'fr', 'Okay', 'translated');
@@ -383,7 +384,7 @@ describe('importResources merge behavior', () => {
     });
     it('should not write files when base locale comment and tags are unchanged', () => {
       seed({ greeting: { source: 'Hello' } });
-      const folder = openUnreportedResourceFolder(folderPath, { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(folderPath, { runtime: 'transloco-messageformat', baseLocale: 'en' });
       folder.setDetails('greeting', { comment: 'greeting', tags: ['ui'] });
       folder.save();
       expect(

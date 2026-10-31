@@ -37,6 +37,7 @@ describe('moving resources keeps metadata (real fs)', () => {
   let root: string;
 
   const collection = (translationsFolder = root, name = 'main'): OpenedCollection => ({
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name,
     translationsFolder,

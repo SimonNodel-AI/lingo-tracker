@@ -79,6 +79,7 @@ The [Getting Started guide](https://simoncodes-ca.github.io/lingo-tracker/docs/g
 - It has no user accounts or history beyond what Git gives you.
 - Machine translation supports Google Cloud Translation v2 only and skips plural, select and formatted ICU messages.
 - The web UI runs locally without authentication. It is for one developer's machine, not a shared server.
+- Bundles assume `@jsverse/transloco-messageformat` unless `runtime` is `"transloco"` in `.lingo-tracker.json`, for apps on plain Transloco where `{` and `'` are literal text. `init` detects it from `package.json`.
 - Other libraries can consume the nested JSON bundles when their placeholder syntax matches, with ICU-to-Transloco conversion turned off.
 
 ## Documentation

@@ -46,7 +46,12 @@ describe('prepareBundleRun', () => {
         locales: ['fr'],
         ...overrides,
       });
-      expect(prepared.settings).toEqual({ tokenConstantName, tokenCasing, transformICUToTransloco });
+      expect(prepared.settings).toEqual({
+        runtime: 'transloco-messageformat',
+        tokenConstantName,
+        tokenCasing,
+        transformICUToTransloco,
+      });
       expect(prepared.locales).toEqual(['fr']);
       expect(prepared.collections).toEqual({ collections: [], warnings: [] });
       expect(prepared.warnings).toEqual([]);
@@ -63,6 +68,45 @@ describe('prepareBundleRun', () => {
     expect(() =>
       prepareBundleRun({ source: 'supplied', bundleKey: 'main', bundleDefinition: definition, config, ...change }),
     ).toThrow(message);
+  });
+
+  it('warns once per bundle when transloco conversion is off, regardless of locale count', () => {
+    for (const bundleKey of ['main', 'second']) {
+      const prepared = prepareBundleRun({
+        source: 'supplied',
+        bundleKey,
+        bundleDefinition: definition,
+        config: { ...config, runtime: 'transloco' },
+      });
+      expect(prepared.warnings).toEqual([
+        {
+          origin: 'config',
+          message: `Bundle '${bundleKey}': transformICUToTransloco is off, so the transloco runtime setting does not apply; the bundle holds ICU-quoted text`,
+        },
+      ]);
+      prepared.content();
+      prepared.content();
+      expect(prepared.warnings).toHaveLength(1);
+    }
+  });
+
+  it('omits the runtime config warning for messageformat or enabled conversion', () => {
+    for (const overrides of [
+      { config },
+      { config: { ...config, runtime: 'transloco' as const }, transformICUToTransloco: true },
+      {
+        config: { ...config, runtime: 'transloco' as const },
+        bundleDefinition: { ...definition, transformICUToTransloco: true },
+      },
+    ]) {
+      const prepared = prepareBundleRun({
+        source: 'supplied',
+        bundleKey: 'main',
+        bundleDefinition: definition,
+        ...overrides,
+      });
+      expect(prepared.warnings).toEqual([]);
+    }
   });
 
   it('trims supplied keys before validation and settings resolution', () => {

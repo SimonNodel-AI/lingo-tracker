@@ -1,7 +1,14 @@
 import { computed, type Signal, signal } from '@angular/core';
 import type { FormControl } from '@angular/forms';
 import type { LingoTrackerConfigDto, ResourceSummaryDto, SearchResultDto } from '@simoncodes-ca/data-transfer';
-import { applyPreferredTerm, findPreferredTermFindings, type PreferredTermRule } from '@simoncodes-ca/domain';
+import {
+  applyPreferredTerm,
+  DEFAULT_APP_RUNTIME,
+  findPreferredTermFindings,
+  type IcuConstructKind,
+  type PreferredTermRule,
+  unrenderableIcuConstructs,
+} from '@simoncodes-ca/domain';
 import { type Observable, Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 import type { SimilarSuggestion } from '../../services/similar-values';
@@ -26,6 +33,14 @@ export class EditorAdvisories {
     const value = this.#checkedValue();
     return rules.length > 0 && value ? findPreferredTermFindings(value, rules) : [];
   });
+
+  /** ICU constructs plain Transloco cannot render; always empty under the default runtime. */
+  readonly unrenderableConstructs = computed(() => this.unrenderableConstructsOf(this.#checkedValue()));
+
+  /** The same check for any other value, such as a locale's translation. Reads the config signal. */
+  unrenderableConstructsOf(value: string): readonly IcuConstructKind[] {
+    return unrenderableIcuConstructs(value, this.config()?.runtime ?? DEFAULT_APP_RUNTIME);
+  }
 
   readonly exactMatch = computed(() => exactSimilarMatch(this.baseValueText(), this.similarResources()));
 

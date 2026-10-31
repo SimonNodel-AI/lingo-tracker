@@ -32,6 +32,29 @@ describe('runValidate', () => {
     },
   });
 
+  it('runs runtime validation independently of ICU compilation and honours skipRuntime', () => {
+    const main = collection('main', { runtime: 'transloco', locales: ['en', 'fr'] });
+    const plural = '{n, plural, one {# item} other {# items}}';
+    seedResources(main, {
+      count: {
+        source: plural,
+        translations: { fr: { value: plural, status: 'verified' } },
+      },
+    });
+    const checked = complete([main], { skipIcu: true });
+    expect(checked.outcome).toBe('failed');
+    expect(checked.validation.icu?.failures.map(({ kind }) => kind)).toEqual([
+      'runtime-unrenderable',
+      'runtime-unrenderable',
+    ]);
+    expect(checked.summary).toContain('ICU Failures (2)');
+    expect(checked.summary).toContain('Uses ICU plural, which the transloco runtime cannot render');
+    const skipped = complete([main], { skipRuntime: true });
+    expect(skipped.outcome).toBe('succeeded');
+    expect(skipped.validation.icu?.valuesChecked).toBe(2);
+    expect(skipped.validation.icu?.failures).toEqual([]);
+  });
+
   it('fails verified translations that drop project protected terms even when placeholders are skipped', () => {
     const first = collection('first', { locales: ['en', 'fr'], targetLocales: ['fr'] });
     const second = collection('second', { locales: ['en', 'fr'], targetLocales: ['fr'] });

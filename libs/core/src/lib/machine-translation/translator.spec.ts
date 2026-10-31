@@ -76,6 +76,24 @@ describe('openTranslator', () => {
 });
 
 describe('Translator.translate', () => {
+  it('protects and restores dotted simple arguments for a Transloco collection', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace('Hello', 'Bonjour'));
+    const outcome = await openTranslator(collection({ runtime: 'transloco' }), { provider }).translate(
+      [
+        { key: 'greeting', source: 'Hello {user.name}' },
+        { key: 'count', source: '{user.name} has {n, plural, other {# items}}' },
+      ],
+      ['fr'],
+    );
+    expect(provider.calls).toEqual([
+      [{ text: 'Hello <span class="notranslate">__PH0__</span>', sourceLocale: 'en', targetLocale: 'fr' }],
+    ]);
+    expect(outcome).toEqual({
+      values: [{ key: 'greeting', locale: 'fr', value: 'Bonjour {user.name}' }],
+      skipped: [{ key: 'count', locale: 'fr', reason: 'complex-icu' }],
+    });
+  });
+
   it('makes one provider call per locale, with every sendable entry, and ignores the base locale', async () => {
     const provider = new InMemoryTranslationProvider();
     const translator = openTranslator(collection(), { provider });
@@ -165,6 +183,52 @@ describe('Translator.translate', () => {
     expect(sent).toContain('<span class="notranslate">__PH0__</span>');
     expect(sent).not.toContain('{fileA}');
     expect(outcome.values).toEqual([{ key: 'f', locale: 'fr', value: 'Fichier {fileA} est plus récent que {fileB}' }]);
+  });
+
+  it('keeps quoted runs intact when the provider mangles apostrophes', async () => {
+    const source = "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries";
+    const provider = new InMemoryTranslationProvider(({ text }) =>
+      text.replace('Showing', 'Affichage').replace(/'/g, '’'),
+    );
+
+    const outcome = await openTranslator(collection(), { provider }).translate([{ key: 'showing', source }], ['fr']);
+
+    expect(provider.calls[0]?.[0]?.text).toBe(
+      'Showing <span class="notranslate">__PH0__</span>first<span class="notranslate">__PH1__</span> to ' +
+        '<span class="notranslate">__PH2__</span>last<span class="notranslate">__PH3__</span> of ' +
+        '<span class="notranslate">__PH4__</span>totalRecords<span class="notranslate">__PH5__</span> entries',
+    );
+    expect(outcome).toEqual({
+      values: [{ key: 'showing', locale: 'fr', value: source.replace('Showing', 'Affichage') }],
+      skipped: [],
+    });
+  });
+
+  it('sends plain text without quoted runs unchanged', async () => {
+    const source = "Don't change plain text";
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace(/'/g, '’'));
+
+    const outcome = await openTranslator(collection(), { provider }).translate([{ key: 'plain', source }], ['fr']);
+
+    expect(provider.calls).toEqual([[{ text: source, sourceLocale: 'en', targetLocale: 'fr' }]]);
+    expect(outcome).toEqual({
+      values: [{ key: 'plain', locale: 'fr', value: 'Don’t change plain text' }],
+      skipped: [],
+    });
+  });
+
+  it('skips a translation that lost a quoted-run marker', async () => {
+    const provider = new InMemoryTranslationProvider(({ text }) => text.replace('__PH0__', ''));
+
+    const outcome = await openTranslator(collection(), { provider }).translate(
+      [{ key: 'literal', source: "'{'first'}'" }],
+      ['fr'],
+    );
+
+    expect(outcome).toEqual({
+      values: [],
+      skipped: [{ key: 'literal', locale: 'fr', reason: 'placeholder-mismatch' }],
+    });
   });
 
   it('skips provider output that restores to a braced placeholder before conversion', async () => {

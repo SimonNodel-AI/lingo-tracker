@@ -4,6 +4,24 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EditorEntryForm } from './editor-entry-form';
 
 describe('EditorEntryForm', () => {
+  it('accepts dotted arguments in base and target fields with a Transloco runtime getter', () => {
+    const entry = new EditorEntryForm(
+      () => false,
+      () => 'transloco',
+    );
+    try {
+      entry.seed(['en', 'fr'], 'en', undefined, '');
+      entry.form.controls.key.setValue('greeting');
+      entry.form.controls.baseValue.setValue('Hello {user.name}');
+      entry.getLocaleFormGroup(0).controls.value.setValue('Bonjour {user.name}');
+      expect(entry.form.valid).toBe(true);
+      entry.getLocaleFormGroup(0).controls.value.setValue('{{{user.name}}}');
+      expect(entry.getLocaleFormGroup(0).controls.value.hasError('bracedPlaceholder')).toBe(true);
+    } finally {
+      entry.destroy();
+    }
+  });
+
   let form: EditorEntryForm;
   const resource = (overrides: Partial<ResourceSummaryDto> = {}): ResourceSummaryDto => ({
     fullKey: 'common.buttons.existing_key',

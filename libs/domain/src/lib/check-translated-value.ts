@@ -1,4 +1,5 @@
 import { type ArgumentMismatch, compareIcuArguments } from './icu-arguments';
+import type { IcuParseOptions } from './icu-message';
 import { findProtectedTermViolations } from './protected-terms';
 
 /** Facts about a translated value that violates its source's contract. */
@@ -9,7 +10,7 @@ export type TranslatedValueViolation =
       readonly terms: readonly string[];
     };
 
-export interface ValueCheckOptions {
+export interface ValueCheckOptions extends IcuParseOptions {
   readonly protectedTerms: readonly string[];
 }
 
@@ -21,10 +22,10 @@ export interface ValueCheckOptions {
 export function checkTranslatedValue(
   source: string,
   value: string,
-  { protectedTerms }: ValueCheckOptions,
+  { protectedTerms, ...options }: ValueCheckOptions,
 ): readonly TranslatedValueViolation[] {
   const violations: TranslatedValueViolation[] = [];
-  const mismatch = compareIcuArguments(source, value);
+  const mismatch = compareIcuArguments(source, value, options);
   if (mismatch) violations.push({ kind: 'argument-mismatch', ...mismatch });
   const terms = findProtectedTermViolations(source, value, protectedTerms);
   if (terms.length > 0) violations.push({ kind: 'protected-term-dropped', terms });

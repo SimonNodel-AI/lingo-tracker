@@ -370,14 +370,14 @@
     "de": "ein Segment, keine Punkte"
   },
   "icuHintX": {
-    "source": "ICU placeholders like {placeholder} are preserved through translation.",
+    "source": "ICU placeholders like {placeholder} are preserved through translation. Wrap literal braces in apostrophes, for example {example}.",
     "comment": "Hint under the English value field; placeholder is a literal example such as {count}",
     "tags": ["browser"],
-    "es": "Los marcadores ICU como {placeholder} se conservan durante la traducción.",
-    "fr-ca": "Les espaces réservés ICU comme {placeholder} sont conservés lors de la traduction.",
-    "ru": "Плейсхолдеры ICU, такие как {placeholder}, сохраняются при переводе.",
-    "ja": "{placeholder} のような ICU プレースホルダーは翻訳後も保持されます。",
-    "de": "ICU-Platzhalter wie {placeholder} bleiben bei der Übersetzung erhalten."
+    "es": "Los marcadores ICU como {placeholder} se conservan durante la traducción. Pon las llaves literales entre apóstrofos, por ejemplo {example}.",
+    "fr-ca": "Les espaces réservés ICU comme {placeholder} sont conservés lors de la traduction. Mettez les accolades littérales entre apostrophes, par exemple {example}.",
+    "ru": "Плейсхолдеры ICU, такие как {placeholder}, сохраняются при переводе. Буквальные фигурные скобки заключайте в апострофы, например {example}.",
+    "ja": "{placeholder} のような ICU プレースホルダーは翻訳後も保持されます。リテラルの波括弧はアポストロフィで囲んでください。例: {example}",
+    "de": "ICU-Platzhalter wie {placeholder} bleiben bei der Übersetzung erhalten. Setzen Sie literale geschweifte Klammern in Apostrophe, zum Beispiel {example}."
   },
   "commentOptionalHint": {
     "source": "for translators · asked to confirm if left empty",
@@ -448,5 +448,15 @@
     "ru": "{placeholder} находится внутри буквальных фигурных скобок, и при сохранении одна скобка будет потеряна. Вместо этого заключите скобки в кавычки: {example}.",
     "ja": "{placeholder} はリテラルの波括弧の内側にあり、保存時に波括弧が 1 つ失われます。代わりに波括弧を引用符で囲んでください: {example}。",
     "de": "{placeholder} steht in literalen geschweiften Klammern und würde beim Speichern eine Klammer verlieren. Setzen Sie die Klammern stattdessen in Anführungszeichen: {example}."
+  },
+  "runtimeUnrenderableX": {
+    "source": "This value uses ICU {kinds}, which plain Transloco cannot render. It is bundled in messageformat form.",
+    "comment": "Warning under the English value field when the app runtime is plain Transloco; kinds is a comma-separated list such as plural, select",
+    "tags": ["browser"],
+    "es": "Este valor usa {kinds} de ICU, que Transloco simple no puede renderizar. Se incluye en el paquete en formato messageformat.",
+    "fr-ca": "Cette valeur utilise {kinds} ICU, que Transloco simple ne peut pas rendre. Elle est incluse dans le paquet en format messageformat.",
+    "ru": "Это значение использует ICU {kinds}, которые обычный Transloco не может отобразить. Оно попадает в пакет в формате messageformat.",
+    "ja": "この値は ICU の {kinds} を使用しており、標準の Transloco では表示できません。バンドルには messageformat 形式で出力されます。",
+    "de": "Dieser Wert verwendet ICU-{kinds}, die einfaches Transloco nicht darstellen kann. Er wird im messageformat-Format gebündelt."
   }
 }

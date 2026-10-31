@@ -158,7 +158,12 @@
               TOKENS.BROWSER.TRANSLATIONEDITOR.ENTERTRANSLATIONX | transloco: { locale: presentation.baseLocaleName() }
             "
             [attr.aria-invalid]="session.entry.showBaseValueError()"
-            [attr.aria-describedby]="presentation.baseValueDescribedBy()"
+            [attr.aria-describedby]="
+              presentation.describedBy(
+                presentation.baseValueDescribedBy(),
+                session.advisories.unrenderableConstructs().length > 0 && presentation.runtimeAdvisoryId
+              )
+            "
           ></textarea>
         </div>
         @if (session.entry.showBaseValueError()) {
@@ -181,9 +186,26 @@
             <!-- The <code> run is ours, never translator input. -->
             <span
               [innerHTML]="
-                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX | transloco: { placeholder: presentation.icuPlaceholderMarkup }
+                TOKENS.BROWSER.TRANSLATIONEDITOR.ICUHINTX
+                  | transloco: { placeholder: presentation.icuPlaceholderMarkup, example: presentation.icuQuotedBracesMarkup }
               "
             ></span>
+          </p>
+        }
+        @if (session.advisories.unrenderableConstructs().length > 0) {
+          <p
+            [id]="presentation.runtimeAdvisoryId"
+            class="field-hint field-hint--icon field-hint--warning"
+            role="status"
+            data-testid="runtime-advisory"
+          >
+            <mat-icon aria-hidden="true">warning</mat-icon>
+            <span>
+              {{
+                TOKENS.BROWSER.TRANSLATIONEDITOR.RUNTIMEUNRENDERABLEX
+                  | transloco: { kinds: session.advisories.unrenderableConstructs().join(', ') }
+              }}
+            </span>
           </p>
         }
         @if (session.advisories.preferredTermFindings().length > 0) {
@@ -390,6 +412,7 @@
               @let localeGroup = session.entry.getLocaleFormGroup(i);
               @let localeCode = localeGroup.controls.locale.value;
               @let localeStatus = localeGroup.controls.status.value;
+              @let localeKinds = session.advisories.unrenderableConstructsOf(session.entry.localeSummaries()[i]?.value ?? '');
               <div class="lrow-who">
                 <b>{{ presentation.getLocaleDisplayName(localeCode) }}</b>
                 <span class="lc">{{ localeCode }}</span>
@@ -441,9 +464,27 @@
                     ) | transloco
                   "
                   [attr.aria-invalid]="session.entry.showLocaleValueError(i)"
-                  [attr.aria-describedby]="session.entry.showLocaleValueError(i) ? 'translation-editor-locale-error-' + i : null"
+                  [attr.aria-describedby]="
+                    presentation.describedBy(
+                      session.entry.showLocaleValueError(i) && 'translation-editor-locale-error-' + i,
+                      localeKinds.length > 0 && presentation.localeRuntimeAdvisoryId(i)
+                    )
+                  "
                 ></textarea>
               </div>
+              @if (localeKinds.length > 0) {
+                <p
+                  [id]="presentation.localeRuntimeAdvisoryId(i)"
+                  class="field-hint field-hint--icon field-hint--warning"
+                  role="status"
+                  data-testid="locale-runtime-advisory"
+                >
+                  <mat-icon aria-hidden="true">warning</mat-icon>
+                  <span>
+                    {{ TOKENS.BROWSER.TRANSLATIONEDITOR.RUNTIMEUNRENDERABLEX | transloco: { kinds: localeKinds.join(', ') } }}
+                  </span>
+                </p>
+              }
               @if (session.entry.showLocaleValueError(i)) {
                 <p [id]="'translation-editor-locale-error-' + i" class="field-error lrow-error" role="alert">
                   <span

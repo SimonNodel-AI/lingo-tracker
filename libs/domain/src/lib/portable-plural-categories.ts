@@ -1,4 +1,4 @@
-import { type IcuNode, parseIcuMessage } from './icu-message';
+import { type IcuNode, type IcuParseOptions, parseIcuMessage } from './icu-message';
 
 /**
  * Base-locale plural portability.
@@ -58,8 +58,11 @@ export interface UnportablePluralCase {
  * // → []
  * ```
  */
-export function findUnportablePluralCases(value: string): readonly UnportablePluralCase[] {
-  const message = parseIcuMessage(value, { interpolation: true, lenient: true });
+export function findUnportablePluralCases(
+  value: string,
+  options: IcuParseOptions = {},
+): readonly UnportablePluralCase[] {
+  const message = parseIcuMessage(value, { ...options, interpolation: true, lenient: true });
   if (!message.ok) {
     return [];
   }

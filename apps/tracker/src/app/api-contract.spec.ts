@@ -3,10 +3,16 @@ import { dirname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { createServiceFactory } from '@ngneat/spectator/vitest';
-import { type ApiRoute, matchApiRoute } from '@simoncodes-ca/data-transfer';
+import {
+  type ApiRoute,
+  type LingoTrackerConfigDto,
+  matchApiRoute,
+  type UpdateConfigDto,
+} from '@simoncodes-ca/data-transfer';
+import type { AppRuntime } from '@simoncodes-ca/domain';
 import { firstValueFrom } from 'rxjs';
 import * as ts from 'typescript';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it } from 'vitest';
 import { BrowserApiService } from './browser/services/browser-api.service';
 import { provideTrackerHttpClient } from './shared/api-error/api-error';
 
@@ -137,6 +143,13 @@ function inlineRouteFailures(source: string, requireDirectCall = true): string[]
   const program = ts.createProgram([path], options, host);
   return checkHttpRoutes(file, program.getTypeChecker(), requireDirectCall).failures;
 }
+
+describe('config runtime DTO contract', () => {
+  it('exposes an optional domain runtime without allowing config updates to set it', () => {
+    expectTypeOf<LingoTrackerConfigDto['runtime']>().toEqualTypeOf<AppRuntime | undefined>();
+    expectTypeOf<Extract<'runtime', keyof UpdateConfigDto>>().toEqualTypeOf<never>();
+  });
+});
 
 describe('HTTP route AST checker', () => {
   it('accepts matching calls on injected fields and typed variables, ignoring other get methods', () => {

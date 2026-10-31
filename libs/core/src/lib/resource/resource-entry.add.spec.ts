@@ -609,7 +609,10 @@ describe('addResource (real fs)', () => {
       let entriesAfterProvider: Buffer | undefined;
       let metaAfterProvider: Buffer | undefined;
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         folder.setEntry('ok', { source: 'Concurrent' }, {});
         folder.setBase('ok', 'Concurrent');
         folder.save();
@@ -637,7 +640,10 @@ describe('addResource (real fs)', () => {
     it('reports created false when replace finds a key created during translation', async () => {
       const target = collection({ translation: AUTO });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+          runtime: 'transloco-messageformat',
+          baseLocale: 'en',
+        });
         folder.setEntry('ok', { source: 'Concurrent' }, {});
         folder.setBase('ok', 'Concurrent');
         folder.save();

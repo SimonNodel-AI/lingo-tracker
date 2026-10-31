@@ -144,6 +144,42 @@ describe('EditorAdvisories', () => {
     advisories.destroy();
   });
 
+  describe('runtime advisory', () => {
+    const plural = '{count, plural, one {# item} other {# items}}';
+    const withRuntime = (runtime?: LingoTrackerConfigDto['runtime']): EditorAdvisories =>
+      new EditorAdvisories(signal({ ...config(), runtime }));
+
+    it('flags ICU plural under plain transloco', () => {
+      const advisories = withRuntime('transloco');
+      advisories.observe(plural, EMPTY, EMPTY);
+      expect(advisories.unrenderableConstructs()).toEqual(['plural']);
+      advisories.destroy();
+    });
+
+    it('flags nothing under the default or absent runtime', () => {
+      for (const runtime of [undefined, 'transloco-messageformat'] as const) {
+        const advisories = withRuntime(runtime);
+        advisories.observe(plural, EMPTY, EMPTY);
+        expect(advisories.unrenderableConstructs()).toEqual([]);
+        advisories.destroy();
+      }
+    });
+
+    it('checks another value, such as a locale translation, against the same runtime', () => {
+      const select = '{name, select, other {Hello}}';
+      expect(withRuntime('transloco').unrenderableConstructsOf(select)).toEqual(['select']);
+      expect(withRuntime('transloco').unrenderableConstructsOf('Hello')).toEqual([]);
+      expect(withRuntime().unrenderableConstructsOf(select)).toEqual([]);
+    });
+
+    it('flags nothing for a simple value under plain transloco', () => {
+      const advisories = withRuntime('transloco');
+      advisories.observe('Hello {name}', EMPTY, EMPTY);
+      expect(advisories.unrenderableConstructs()).toEqual([]);
+      advisories.destroy();
+    });
+  });
+
   it('tears down typed-value, debounce and similar-search subscriptions', () => {
     vi.useFakeTimers();
     const advisories = new EditorAdvisories(signal(config()));

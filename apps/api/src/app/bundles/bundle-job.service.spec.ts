@@ -191,6 +191,30 @@ describe('BundleJobService', () => {
     expect(mockGenerateBundle.mock.calls[0][0]).toMatchObject({ locales: ['en', 'fr'] });
   });
 
+  it('returns a runtime generation warning in a successful real bundle job', async () => {
+    mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
+    const runtimeConfig: LingoTrackerConfig = { ...config, runtime: 'transloco' };
+    await actualCore.addResource(
+      actualCore.openCollection(runtimeConfig, 'app', { cwd: projectRoot, writable: true }),
+      {
+        key: 'count',
+        baseValue: '{n, plural, one {# item} other {# items}}',
+      },
+    );
+    const { jobId } = service.startJob({
+      bundleName: 'main',
+      project: project(runtimeConfig),
+      locales: ['en'],
+    });
+    await flush();
+    const job = service.getJob(jobId);
+    expect(job.status).toBe('completed');
+    expect(job.error).toBeUndefined();
+    expect(job.result?.warnings).toEqual([
+      "Key 'count': uses ICU plural, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.",
+    ]);
+  });
+
   it('includes the config deprecation warning in a successful bundle job result', async () => {
     mockGenerateBundle.mockImplementation(actualCore.generatePreparedBundle);
     const legacy = { ...bundleDefinition, typeDistFile: undefined, typeDist: 'types/legacy.ts' };

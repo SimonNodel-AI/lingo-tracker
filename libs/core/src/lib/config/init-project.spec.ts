@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { APP_RUNTIMES } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG_FILENAME } from '../../constants';
 import { InvalidConfigError } from '../errors/lingo-tracker-error';
@@ -292,5 +293,11 @@ describe('initProject', () => {
     expect(() => initProject(cwd, { collectionName: 'Main', translationsFolder: '  ' })).toThrow(
       'translationsFolder is required',
     );
+  });
+
+  it.each(APP_RUNTIMES)('writes an explicitly supplied runtime: %s', (runtime) => {
+    initProject(cwd, { collectionName: 'Main', translationsFolder: 'src/i18n', runtime });
+
+    expect(loadConfig({ cwd }).runtime).toBe(runtime);
   });
 });

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { normalizeTags } from '@simoncodes-ca/domain';
+import { APP_RUNTIMES, isAppRuntime, normalizeTags } from '@simoncodes-ca/domain';
 import type { LingoTrackerConfig } from '../../config/lingo-tracker-config';
 import { CONFIG_FILENAME } from '../../constants';
 import { ErrorMessages } from '../errors/error-messages';
@@ -253,6 +253,10 @@ function validateConfig(config: LingoTrackerConfig): void {
 
   if (!config.collections || typeof config.collections !== 'object') {
     throw new InvalidConfigError(`"collections" in ${CONFIG_FILENAME} must be an object`);
+  }
+
+  if ('runtime' in config && !isAppRuntime(config.runtime)) {
+    throw new InvalidConfigError(`runtime must be one of: ${APP_RUNTIMES.join(', ')}`);
   }
 }
 

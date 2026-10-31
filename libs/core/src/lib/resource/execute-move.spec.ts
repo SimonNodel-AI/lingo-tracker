@@ -16,6 +16,7 @@ import type { ResourceMutation } from './resource-mutation';
 
 function collection(translationsFolder: string, name = 'main'): OpenedCollection {
   return {
+    runtime: 'transloco-messageformat',
     onMutation: () => undefined,
     name,
     translationsFolder,

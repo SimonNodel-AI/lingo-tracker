@@ -14,7 +14,7 @@
  * @module braced-placeholders
  */
 
-import { type IcuRange, parseIcuMessage, visitIcuNodes } from './icu-message';
+import { type IcuParseOptions, type IcuRange, parseIcuMessage, visitIcuNodes } from './icu-message';
 
 /** A Transloco interpolation wrapped in literal braces. */
 export interface BracedPlaceholder {
@@ -35,10 +35,10 @@ export interface BracedPlaceholder {
  * findBracedPlaceholders("'{'{{a}}'}'"); // → [] — the braces are quoted
  * ```
  */
-export function findBracedPlaceholders(value: string): readonly BracedPlaceholder[] {
+export function findBracedPlaceholders(value: string, options: IcuParseOptions = {}): readonly BracedPlaceholder[] {
   if (!value.includes('{{')) return [];
   const found: BracedPlaceholder[] = [];
-  visitIcuNodes(parseIcuMessage(value, { interpolation: true }).nodes, (node) => {
+  visitIcuNodes(parseIcuMessage(value, { ...options, interpolation: true }).nodes, (node) => {
     if (node.kind !== 'error' || !node.frame?.wrapsInterpolation) return;
     const [only] = node.nodes;
     if (only?.kind === 'argument') found.push({ name: only.name, range: node.range });

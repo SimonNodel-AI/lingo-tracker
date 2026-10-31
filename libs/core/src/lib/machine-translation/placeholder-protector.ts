@@ -2,9 +2,9 @@
  * Placeholder Protection for Machine Translation
  *
  * Before sending a string containing simple ICU placeholders (e.g. `{name}`,
- * `{{ count }}`) to a machine translation provider, the placeholders are
+ * `{{ count }}`) or ICU quoted runs to a machine translation provider, these spans are
  * replaced with numbered HTML markers that most MT engines preserve verbatim.
- * After translation the markers are swapped back to the original placeholder
+ * After translation the markers are swapped back to the original source
  * text.
  *
  * If the provider drops or duplicates a marker the restore step detects a
@@ -13,9 +13,11 @@
  * @module placeholder-protector
  */
 
-/** A single placeholder extracted from the source string. */
+import { icuQuotedRuns } from '@simoncodes-ca/domain';
+
+/** A single placeholder or quoted run extracted from the source string. */
 export interface ExtractedPlaceholder {
-  /** The original placeholder text, e.g. `{name}` or `{{ count }}`. */
+  /** The original source text, e.g. `{name}`, `{{ count }}` or `'{'`. */
   readonly original: string;
   /** The marker that replaces it in the protected string. */
   readonly marker: string;
@@ -24,7 +26,7 @@ export interface ExtractedPlaceholder {
 /** Result of protecting a string's placeholders before translation. */
 export interface ProtectedText {
   /**
-   * The text with all simple placeholders replaced by HTML span markers.
+   * The text with all simple placeholders and quoted runs replaced by HTML span markers.
    * This is the string to send to the translation provider.
    */
   readonly protectedText: string;
@@ -67,16 +69,16 @@ function wrapMarker(marker: string): string {
 }
 
 /**
- * Replaces all simple ICU placeholders in `text` with numbered HTML markers.
+ * Replaces simple ICU placeholders and quoted runs in `text` with numbered HTML markers.
  *
  * Both the ICU single-brace format (`{name}`) and the Transloco double-brace
  * format (`{{ name }}`) are detected and protected. Occurrences of the same
  * placeholder name in different positions each receive their own marker so
  * positional restoration is unambiguous.
  *
- * This function should only be called on strings classified as
- * `'simple-placeholders'` by {@link classifyICUContent}. Strings containing
- * complex ICU syntax should be skipped entirely without calling this function.
+ * Quoted runs are opaque: their original text, including apostrophes, is restored
+ * verbatim. Strings containing complex ICU syntax should be skipped entirely
+ * without calling this function.
  *
  * @param text - Source text containing only simple placeholders.
  * @returns Protected text and the placeholder map needed for {@link restorePlaceholders}.
@@ -97,14 +99,23 @@ export function protectPlaceholders(text: string): ProtectedText {
   // normalisation regex which uses [\w\s.]+? for the same token.
   const placeholderPattern = /\{\{\s*([\w\s.]+?)\s*\}\}|\{([\w.]+)\}/g;
 
-  const protectedText = text.replace(placeholderPattern, (match: string) => {
+  const protect = (original: string): string => {
     const index = placeholders.length;
     const marker = buildMarker(index);
 
-    placeholders.push({ original: match, marker });
+    placeholders.push({ original, marker });
 
     return wrapMarker(marker);
-  });
+  };
+
+  let protectedText = '';
+  let start = 0;
+  for (const run of icuQuotedRuns(text)) {
+    protectedText += text.slice(start, run.start).replace(placeholderPattern, protect);
+    protectedText += protect(text.slice(run.start, run.end));
+    start = run.end;
+  }
+  protectedText += text.slice(start).replace(placeholderPattern, protect);
 
   return { protectedText, placeholders };
 }

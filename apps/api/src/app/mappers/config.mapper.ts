@@ -59,6 +59,7 @@ export function mapConfigToDto(snapshot: ProjectTermsConfigView): LingoTrackerCo
     // The DTO is the domain Bundle Definition type, so bundles pass through unmapped.
     ...(config.bundles && { bundles: { ...config.bundles } }),
     ...(config.tokenCasing && { tokenCasing: config.tokenCasing }),
+    ...(config.runtime && { runtime: config.runtime }),
     ...(config.transformICUToTransloco !== undefined && { transformICUToTransloco: config.transformICUToTransloco }),
     translation: config.translation,
     protectedTerms: resolved.globalTerms.length ? [...resolved.globalTerms] : undefined,

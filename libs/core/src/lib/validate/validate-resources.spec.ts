@@ -265,6 +265,137 @@ describe('validateResources (real fs)', () => {
     });
   });
 
+  describe('dotted simple arguments', () => {
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      it(`validates dotted simple arguments according to ${runtime}`, () => {
+        const main = collection('main', { runtime, locales: ['en', 'es'] });
+        seedResources(main, {
+          greeting: {
+            source: 'Hello {user.name}',
+            translations: { es: { value: 'Hola {user.name}', status: 'verified' } },
+          },
+        });
+        const result = validateResources(
+          [main],
+          {
+            allowTranslated: false,
+            icu: { compileValues: true, requirePortablePlurals: false },
+            placeholders: true,
+          },
+          termsByCollection,
+        );
+        expect(result.passed).toBe(runtime === 'transloco');
+        expect(result.icu?.failures).toHaveLength(runtime === 'transloco' ? 0 : 2);
+        expect(result.placeholders?.failures).toEqual([]);
+      });
+    }
+
+    it('reports dotted argument renames and retains the runtime warning for a plural', () => {
+      const main = collection('main', { runtime: 'transloco', locales: ['en', 'es'] });
+      seedResources(main, {
+        count: {
+          source: '{user.name} has {n, plural, other {# items}}',
+          translations: { es: { value: '{user.nam} tiene {n, plural, other {# cosas}}', status: 'verified' } },
+        },
+      });
+      const result = validateResources(
+        [main],
+        {
+          allowTranslated: false,
+          icu: { compileValues: true, requirePortablePlurals: false },
+          placeholders: true,
+        },
+        termsByCollection,
+      );
+      expect(result.icu?.failures).toHaveLength(2);
+      expect(result.icu?.failures.every((failure) => failure.kind === 'runtime-unrenderable')).toBe(true);
+      expect(result.placeholders?.failures).toMatchObject([{ missing: ['user.name'], unexpected: ['user.nam'] }]);
+    });
+  });
+
+  describe('runtime renderability', () => {
+    const plural = '{n, plural, one {# item} other {# items}}';
+
+    it('fails each stored locale under transloco and lists runtime failures with ICU failures', () => {
+      const main = collection('main', { runtime: 'transloco' });
+      seedResources(main, {
+        count: {
+          source: plural,
+          translations: {
+            es: { value: plural, status: 'verified' },
+            fr: { value: plural, status: 'verified' },
+          },
+        },
+      });
+      const result = validateResources(
+        [main],
+        {
+          allowTranslated: false,
+          icu: { compileValues: true, requirePortablePlurals: false },
+        },
+        termsByCollection,
+      );
+      expect(result.passed).toBe(false);
+      expect(result.failures).toEqual([]);
+      expect(result.icu?.failures).toEqual(
+        ['en', 'es', 'fr'].map((locale) => ({
+          kind: 'runtime-unrenderable',
+          key: 'count',
+          locale,
+          collection: 'main',
+          message:
+            'Uses ICU plural, which the transloco runtime cannot render. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.',
+        })),
+      );
+      expect(result.icu?.valuesChecked).toBe(3);
+    });
+
+    it('passes plurals when the runtime check is skipped or the default runtime is used', () => {
+      for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+        const main = collection(runtime, { runtime });
+        seedResources(main, { count: withStatus(plural, { es: 'verified', fr: 'verified' }) });
+        const result = validateResources(
+          [main],
+          {
+            allowTranslated: false,
+            runtime: runtime !== 'transloco',
+            icu: { compileValues: true, requirePortablePlurals: false },
+          },
+          termsByCollection,
+        );
+        expect(result.passed).toBe(true);
+        expect(result.icu?.failures).toEqual([]);
+      }
+    });
+
+    it('checks the base locale and explicit translations, leaving skipped and missing values out', () => {
+      const main = collection('main', { runtime: 'transloco' });
+      seedResources(main, {
+        count: { source: plural, translations: { es: { value: 'Items', status: 'verified' }, fr: plural } },
+        missing: { source: 'Plain' },
+      });
+      const result = validateResources(
+        [main],
+        { allowTranslated: false },
+        termsByCollection,
+        readCollectionSet([main], { scope: 'validation', skippedLocales: ['fr'] }),
+      );
+      expect(result.icu?.failures).toMatchObject([{ kind: 'runtime-unrenderable', key: 'count', locale: 'en' }]);
+      expect(result.icu?.failures).toHaveLength(1);
+    });
+
+    it('uses explicit base-locale values and accepts renderable ICU-quoted literals', () => {
+      const main = collection('main', { runtime: 'transloco', locales: ['en', 'es'] });
+      writeFolderFiles(main.translationsFolder, '', {
+        entries: {
+          count: { source: plural, en: "Showing '{'first'}' entries", es: 'Hello {name}' },
+        },
+      });
+      const result = validateResources([main], { allowTranslated: false }, termsByCollection);
+      expect(result.icu).toBeUndefined();
+    });
+  });
+
   describe('preferred terminology', () => {
     const rules = [{ discouraged: 'Expenditure', preferred: 'Investment' }];
     const budget: SeedResource = withStatus('Capital expenditure', { es: 'verified', fr: 'verified' });

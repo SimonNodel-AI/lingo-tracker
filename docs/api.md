@@ -133,6 +133,7 @@ Returns the parsed config plus resolved terminology. There is no separate collec
   "exportFolder": "dist/lingo-export",
   "importFolder": "dist/lingo-import",
   "tokenCasing": "upperCase",
+  "runtime": "transloco-messageformat",
   "transformICUToTransloco": true,
   "translation": { "enabled": false, "provider": "google-translate", "apiKeyEnv": "GOOGLE_TRANSLATE_API_KEY" },
   "collections": {
@@ -156,7 +157,7 @@ Returns the parsed config plus resolved terminology. There is no separate collec
 }
 ```
 
-Optional fields are omitted when empty. Collection entries also carry `exportFolder`, `importFolder`, `baseLocale`, `locales` and a `translation` block when set, with the meanings in [Configuration](./configuration.md#collection-entry). A missing config file returns `404`; an unparseable one returns `500`.
+`runtime` is read-only here and appears only when the config file sets it; see [Configuration](./configuration.md#global-fields). Optional fields are omitted when empty. Collection entries also carry `exportFolder`, `importFolder`, `baseLocale`, `locales` and a `translation` block when set, with the meanings in [Configuration](./configuration.md#collection-entry). A missing config file returns `404`; an unparseable one returns `500`.
 
 ### PUT /api/config
 

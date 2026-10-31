@@ -48,6 +48,24 @@ describe('generateBundles', () => {
     expect(JSON.parse(readFileSync(join(cwd(), 'out/first-en.json'), 'utf8'))).toEqual({ booking: { fee: value } });
   });
 
+  it('writes Booklore literal braces for a real transloco project without warnings', async () => {
+    seedResources(testCollection(join(cwd(), 'resources'), { name: 'common', locales: ['en'] }), {
+      'table.entries': { source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries" },
+    });
+    const result = await generateBundles(
+      { ...config, runtime: 'transloco', collections: { common: { translationsFolder: 'resources' } } },
+      { names: ['first'], cwd: cwd(), overrides: { debugKeysLocale: '99' } },
+    );
+    expect(result.outcome).toBe('succeeded');
+    expect(result.outcomes[0]?.result?.findings.messages).toEqual([]);
+    expect(JSON.parse(readFileSync(join(cwd(), 'out/first-en.json'), 'utf8'))).toEqual({
+      table: { entries: 'Showing {first} to {last} of {totalRecords} entries' },
+    });
+    expect(JSON.parse(readFileSync(join(cwd(), 'out/first-99.json'), 'utf8'))).toEqual({
+      table: { entries: 'table.entries' },
+    });
+  });
+
   it('runs all bundles and totals their outcomes', async () => {
     const result = await generateBundles(config, { cwd: cwd() });
     expect(result.outcomes.map(({ name }) => name)).toEqual(['first', 'second']);

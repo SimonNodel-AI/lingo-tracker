@@ -2,6 +2,7 @@ import {
   CONVERSION_SAFETY_RULES,
   checkStoredValue,
   describeStoredValueFinding,
+  type IcuParseOptions,
   isIcuLocaleSupported,
   type StoredValueRule,
 } from '@simoncodes-ca/domain';
@@ -9,7 +10,7 @@ import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { IcuValidationDetail, IcuValidationOptions, IcuValidationResult } from './types';
 
 /** {@link IcuValidationOptions} for one collection. */
-export interface IcuPassOptions extends IcuValidationOptions {
+export interface IcuPassOptions extends IcuValidationOptions, IcuParseOptions {
   /** The collection's base locale, whose `source` values are compiled alongside the targets. Omit to check targets only. */
   readonly baseLocale?: string;
 }
@@ -32,14 +33,14 @@ export function validateIcuValues(
   targetLocales: readonly string[],
   options: IcuPassOptions,
 ): IcuValidationResult {
-  const { baseLocale } = options;
+  const { baseLocale, compileValues, requirePortablePlurals, ...parseOptions } = options;
 
   // The base locale carries the source value that is copied into every
   // translation slot, so it is checked first and never checked twice.
   const localesToCheck = baseLocale
     ? [baseLocale, ...targetLocales.filter((locale) => locale !== baseLocale)]
     : [...targetLocales];
-  const localesToCompile = options.compileValues ? localesToCheck : [];
+  const localesToCompile = compileValues ? localesToCheck : [];
 
   const checkableLocales: string[] = [];
   const unsupportedLocales: string[] = [];
@@ -61,8 +62,8 @@ export function validateIcuValues(
 
       const rules: StoredValueRule[] = [...CONVERSION_SAFETY_RULES];
       if (compileValue) rules.push('icu-compile');
-      if (options.requirePortablePlurals && locale === baseLocale) rules.push('portable-plurals');
-      const findings = checkStoredValue(value, { rules, locale });
+      if (requirePortablePlurals && locale === baseLocale) rules.push('portable-plurals');
+      const findings = checkStoredValue(value, { ...parseOptions, rules, locale });
       const first = findings.find((finding) => finding.severity === 'error');
       if (first) {
         failures.push({

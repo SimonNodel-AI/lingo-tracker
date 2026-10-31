@@ -1,8 +1,8 @@
-import { checkTranslatedValue, describeValueViolation } from '@simoncodes-ca/domain';
+import { checkTranslatedValue, describeValueViolation, type IcuParseOptions } from '@simoncodes-ca/domain';
 import type { CollectionSetResource } from '../collection-set/collection-set';
 import type { ExplainedValidationDetail, PlaceholderValidationDetail, PlaceholderValidationResult } from './types';
 
-interface TranslatedValueValidationOptions {
+interface TranslatedValueValidationOptions extends IcuParseOptions {
   readonly protectedTerms: readonly string[];
   readonly checkArguments: boolean;
   readonly checkProtectedTerms: boolean;
@@ -17,7 +17,7 @@ export function validateTranslatedValues(
   resources: readonly CollectionSetResource[],
   targetLocales: readonly string[],
   baseLocale: string,
-  { protectedTerms, checkArguments, checkProtectedTerms }: TranslatedValueValidationOptions,
+  { protectedTerms, checkArguments, checkProtectedTerms, ...options }: TranslatedValueValidationOptions,
 ): PlaceholderValidationResult & {
   readonly protectedTermFailures: readonly ExplainedValidationDetail[];
 } {
@@ -42,6 +42,7 @@ export function validateTranslatedValues(
       valuesChecked++;
 
       for (const violation of checkTranslatedValue(baseValue, translatedValue, {
+        ...options,
         protectedTerms,
       })) {
         const detail = {

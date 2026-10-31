@@ -8,7 +8,7 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  *   from it (`createTranslationProvider`, API key read from `process.env[apiKeyEnv]`) unless one
  *   is injected.
  * - **ICU skip**: complex ICU (plural, select, number, date, time) is never sent to the provider.
- * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) are sent as notranslate
+ * - **Placeholder guard**: simple placeholders (`{name}`, `{{ name }}`) and quoted runs are sent as notranslate
  *   markers and restored afterwards; a translation that loses or duplicates a marker is skipped.
  * - **Protected-term guard**: a translation that drops a protected term present in the source
  *   (the collection's Project Terms, read once when the Translator is opened) is skipped, as
@@ -21,7 +21,13 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { admitValue, classifyICUContent } from '@simoncodes-ca/domain';
+import {
+  type AppRuntime,
+  admitValue,
+  classifyICUContent,
+  icuParseOptionsFor,
+  icuQuotedRuns,
+} from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -129,10 +135,12 @@ export function openPreparedTranslator(
   return {
     problems: terms?.warnings ?? [],
     async translate(entries, locales) {
-      const prepared = entries.map(prepare);
+      const prepared = entries.map((entry) => prepare(entry, collection.runtime));
       const targets = [...new Set(locales)].filter((locale) => locale !== baseLocale);
       const perLocale = await Promise.all(
-        targets.map((locale) => translateForLocale(provider, prepared, baseLocale, locale, protectedTerms)),
+        targets.map((locale) =>
+          translateForLocale(provider, prepared, baseLocale, locale, protectedTerms, collection.runtime),
+        ),
       );
       return {
         values: perLocale.flatMap(({ values }) => values),
@@ -164,12 +172,12 @@ type PreparedEntry =
       readonly placeholders: ReadonlyArray<ExtractedPlaceholder>;
     };
 
-function prepare(entry: TranslatorEntry): PreparedEntry {
-  const classification = classifyICUContent(entry.source);
+function prepare(entry: TranslatorEntry, runtime: AppRuntime): PreparedEntry {
+  const classification = classifyICUContent(entry.source, icuParseOptionsFor(runtime));
   if (classification === 'complex-icu') {
     return { entry, kind: 'complex-icu' };
   }
-  if (classification === 'plain') {
+  if (classification === 'plain' && icuQuotedRuns(entry.source).length === 0) {
     return { entry, kind: 'sendable', text: entry.source, placeholders: [] };
   }
   const { protectedText, placeholders } = protectPlaceholders(entry.source);
@@ -182,6 +190,7 @@ async function translateForLocale(
   sourceLocale: string,
   targetLocale: string,
   protectedTerms: readonly string[],
+  runtime: AppRuntime,
 ): Promise<TranslationOutcome> {
   const sendable = prepared.filter((item) => item.kind === 'sendable');
   const results =
@@ -212,10 +221,15 @@ async function translateForLocale(
       skipped.push({ key, locale: targetLocale, reason: 'placeholder-mismatch' });
       continue;
     }
-    const admission = admitValue(source, restored.value, {
-      name: 'machine-translation',
-      protectedTerms,
-    });
+    const admission = admitValue(
+      source,
+      restored.value,
+      {
+        name: 'machine-translation',
+        protectedTerms,
+      },
+      icuParseOptionsFor(runtime),
+    );
     if (admission.admitted === false) {
       skipped.push(
         admission.reason.kind === 'protected-term-dropped'

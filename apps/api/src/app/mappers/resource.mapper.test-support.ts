@@ -2,6 +2,7 @@ import type { Collection, ResourceTreeEntry } from '@simoncodes-ca/core';
 
 /** In-memory mapper inputs; no config or resource files are read. */
 export const collection: Collection = {
+  runtime: 'transloco-messageformat',
   onMutation: () => undefined,
   name: 'test',
   translationsFolder: '/t',

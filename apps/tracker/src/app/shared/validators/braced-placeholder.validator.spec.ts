@@ -3,6 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { bracedPlaceholderValidator } from './braced-placeholder.validator';
 
 describe('bracedPlaceholderValidator', () => {
+  it('accepts dotted simple arguments and still rejects brace frames under either runtime', () => {
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      expect(bracedPlaceholderValidator(new FormControl('{user.name}'), runtime)).toBeNull();
+      expect(
+        bracedPlaceholderValidator(new FormControl('{user.name} has {n, plural, other {# items}}'), runtime),
+      ).toBeNull();
+      expect(bracedPlaceholderValidator(new FormControl('{{{user.name}}}'), runtime)).toEqual({
+        bracedPlaceholder: { name: 'user.name', position: 0 },
+      });
+    }
+  });
+
   it.each([
     'Hello {{name}}',
     '{n, plural, other {{{a}}}}',

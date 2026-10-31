@@ -25,6 +25,36 @@ describe('entry writes (real fs)', () => {
       'buttons.keep': { source: 'Keep' },
     });
 
+  it('admits dotted ICU values on add and edit for a Transloco collection', async () => {
+    const plain = { ...collection(), runtime: 'transloco' as const };
+    await addResource(
+      plain,
+      {
+        key: 'buttons.greeting',
+        baseValue: 'Hello {user.name}',
+        translations: [{ locale: 'fr', value: 'Bonjour {user.name}' }],
+      },
+      {},
+    );
+    expect(folder().get('greeting')?.entry).toMatchObject({
+      source: 'Hello {user.name}',
+      fr: 'Bonjour {user.name}',
+    });
+    await editResource(
+      plain,
+      'buttons.greeting',
+      {
+        baseValue: 'Welcome {user.name}',
+        translations: { fr: { value: 'Bienvenue {user.name}' } },
+      },
+      {},
+    );
+    expect(folder().get('greeting')?.entry).toMatchObject({
+      source: 'Welcome {user.name}',
+      fr: 'Bienvenue {user.name}',
+    });
+  });
+
   it('adds ICU values, inferred and explicit statuses, details, and the exact saved upsert', async () => {
     const mutations: ResourceMutation[] = [];
     const result = await addResource(

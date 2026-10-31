@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import type { TranslationStatus } from '@simoncodes-ca/domain';
 import { afterEach, beforeEach } from 'vitest';
 import { RESOURCE_ENTRIES_FILENAME, TRACKER_META_FILENAME } from '../constants';
+import { appRuntimeOf } from '../lib/config/app-runtime';
 import type { Collection, OpenedCollection } from '../lib/config/open-collection';
 import { DEFAULT_PREFERRED_TERMINOLOGY_FILENAME } from '../lib/config/preferred-terminology-file';
 import { DEFAULT_PROTECTED_TERMS_FILENAME } from '../lib/config/protected-terms-file';
@@ -48,6 +49,7 @@ export function testCollection(translationsFolder: string, overrides: Partial<Co
   return {
     onMutation: ignoreMutations,
     name: 'main',
+    runtime: appRuntimeOf({}),
     translationsFolder,
     translationConfig: undefined,
     tags: [],
@@ -84,6 +86,7 @@ export function seedResources(collection: Collection, resources: Readonly<Record
     const entryKey = segments.pop() ?? fullKey;
     // Standalone seed fixtures must not notify collection consumers.
     const folder = openUnreportedResourceFolder(join(collection.translationsFolder, ...segments), {
+      runtime: collection.runtime,
       baseLocale: collection.baseLocale,
     });
 

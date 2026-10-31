@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectBundleEntries, selectionValues } from '../bundle/bundle-selection';
 import { type Collection, openCollection } from '../config/open-collection';
 import { calculateChecksum } from '../resource/checksum';
 // Standalone fixtures and readback retain unreported saves.
@@ -41,7 +42,10 @@ describe('importResources pipeline', () => {
     return path;
   };
   const folder = (key: string) =>
-    openUnreportedResourceFolder(join(collection.translationsFolder, ...key.split('.')), { baseLocale: 'en' });
+    openUnreportedResourceFolder(join(collection.translationsFolder, ...key.split('.')), {
+      runtime: collection.runtime,
+      baseLocale: 'en',
+    });
   const seed = (
     folderKey: string,
     entries: Record<string, { source: string; es?: string; status?: 'translated' | 'verified' }>,
@@ -53,6 +57,198 @@ describe('importResources pipeline', () => {
     }
     resourceFolder.save();
   };
+
+  for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+    it(`imports Booklore and Kavita JSON under ${runtime} with the migration strategy`, () => {
+      collection = openCollection(
+        {
+          baseLocale: 'en',
+          locales: ['en', 'es'],
+          exportFolder: 'export',
+          importFolder: 'import',
+          runtime,
+          collections: { main: { translationsFolder: 'translations' } },
+        },
+        'main',
+        { cwd: dir },
+      );
+      const values = {
+        'common.booklore': 'Showing {first} to {last} of {totalRecords} entries',
+        'common.kavita': "Use {Native} for the provider's native title",
+      };
+      const path = source('en.json', JSON.stringify(values));
+      const result = importResources(collection, parseJsonImport(path).resources, {
+        locale: 'en',
+        strategy: 'migration',
+      });
+      const entries = JSON.parse(
+        readFileSync(join(collection.translationsFolder, 'common', 'resource_entries.json'), 'utf8'),
+      );
+      const expected =
+        runtime === 'transloco'
+          ? {
+              booklore: { source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries" },
+              kavita: { source: "Use '{'Native'}' for the provider's native title" },
+            }
+          : {
+              booklore: { source: values['common.booklore'] },
+              kavita: { source: values['common.kavita'] },
+            };
+      expect(entries).toEqual(expected);
+      expect(result.resourcesCreated).toBe(2);
+      expect(result.resourcesFailed).toBe(0);
+      expect(result.errors).toEqual([]);
+      expect(result.icuAutoFixes).toEqual([]);
+      expect(result.icuAutoFixErrors).toEqual([]);
+      if (runtime === 'transloco') {
+        expect(result.warnings).toEqual([]);
+      } else {
+        expect(result.warnings).toContain(
+          "Key 'common.kavita': value will not survive the round trip to the transloco-messageformat runtime and bundles as written below. " +
+            `Source: ${JSON.stringify(values['common.kavita'])} Bundled: ${JSON.stringify("Use {{ Native }} for the provider's native title")}`,
+        );
+      }
+    });
+  }
+
+  for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+    it(`checks literal-braced migration input in the correct syntax for ${runtime}`, () => {
+      collection = { ...collection, runtime };
+      const value = 'Use {{{ name }}}';
+      const result = importResources(collection, [{ key: 'common.braced', value, baseValue: value }], {
+        locale: 'en',
+        strategy: 'migration',
+      });
+      if (runtime === 'transloco-messageformat') {
+        expect(result.resourcesFailed).toBe(1);
+        expect(result.resourcesCreated).toBe(0);
+        expect(result.errors).toContainEqual(expect.stringContaining('Braced placeholder'));
+        return;
+      }
+      expect(result.resourcesCreated).toBe(1);
+      expect(result.resourcesFailed).toBe(0);
+      expect(result.errors).toEqual([]);
+      expect(result.icuAutoFixErrors).toEqual([]);
+      expect(folder('common').get('braced')?.entry.source).toBe("Use '{'{name}'}'");
+      const selection = selectBundleEntries(
+        [{ collection, definition: { name: collection.name, entriesSelectionRules: 'All' } }],
+        'en',
+        { runtime, transformICUToTransloco: true },
+      );
+      expect(selectionValues(selection)).toEqual({ 'common.braced': value });
+      expect(selection.warnings).toEqual([]);
+      expect(result.warnings.some((warning) => warning.includes('round trip'))).toBe(false);
+    });
+  }
+
+  it('still rejects braced stored-syntax input under plain Transloco', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { braced: { source: 'Use {name}' } });
+    const result = importResources(collection, [{ key: 'common.braced', value: 'Use {{{ name }}}' }], {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+    expect(result.resourcesFailed).toBe(1);
+    expect(result.errors).toContainEqual(expect.stringContaining('Braced placeholder'));
+  });
+
+  it('imports dotted Transloco arguments without repair, mismatch or round-trip warnings', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { greeting: { source: 'Hello {user.name}' } });
+    const path = source(
+      'es.json',
+      JSON.stringify({
+        'common.greeting': { value: 'Hello {{ user.name }}', baseValue: 'Hello {{ user.name }}' },
+      }),
+    );
+    const result = importResources(collection, parseJsonImport(path).resources, {
+      locale: 'es',
+      strategy: 'migration',
+      validateBase: true,
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.resourcesFailed).toBe(0);
+    expect(result.errors).toEqual([]);
+    // Migration still reports unresolved dotted references; this is not an ICU warning.
+    expect(result.warnings).toEqual(['Missing reference target: "user.name" - preserving literal']);
+    expect(result.icuAutoFixes).toEqual([]);
+    expect(result.icuAutoFixErrors).toEqual([]);
+    expect(folder('common').get('greeting')?.entry).toEqual({
+      source: 'Hello {user.name}',
+      es: 'Hello {user.name}',
+    });
+  });
+
+  it('repairs dotted stored arguments in a translation-service import under Transloco', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { greeting: { source: 'Hello {user.name}' } });
+    const result = importResources(collection, [{ key: 'common.greeting', value: 'Hola {user.nam}' }], {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.errors).toEqual([]);
+    expect(result.icuAutoFixErrors).toEqual([]);
+    expect(result.icuAutoFixes).toMatchObject([{ fixedValue: 'Hola {user.name}' }]);
+    expect(folder('common').get('greeting')?.entry['es']).toBe('Hola {user.name}');
+  });
+
+  it('normalizes XLIFF migration values and base values before argument checks under plain Transloco', async () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { booklore: { source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries" } });
+    const path = source(
+      'es.xliff',
+      xliff(
+        '<trans-unit id="common.booklore"><source>Showing {first} to {last} of {totalRecords} entries</source>' +
+          '<target>Mostrando {primero} a {ultimo} de {total} entradas</target></trans-unit>' +
+          `<trans-unit id="common.kavita"><source>Use {Native} for the provider's native title</source>` +
+          '<target>Use {Nativo} para el título nativo del proveedor</target></trans-unit>',
+      ),
+    );
+    const result = importResources(collection, (await parseXliffImport(path)).resources, {
+      locale: 'es',
+      strategy: 'migration',
+      validateBase: true,
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.resourcesCreated).toBe(1);
+    expect(result.resourcesFailed).toBe(0);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.icuAutoFixes).toEqual([]);
+    expect(result.icuAutoFixErrors).toEqual([]);
+    expect(
+      JSON.parse(readFileSync(join(collection.translationsFolder, 'common', 'resource_entries.json'), 'utf8')),
+    ).toEqual({
+      booklore: {
+        source: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries",
+        es: "Mostrando '{'primero'}' a '{'ultimo'}' de '{'total'}' entradas",
+      },
+      kavita: {
+        source: "Use '{'Native'}' for the provider's native title",
+        es: "Use '{'Nativo'}' para el título nativo del proveedor",
+      },
+    });
+  });
+
+  it('leaves exported quoted ICU untouched during a translation-service import under plain Transloco', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { first: { source: "'{'first'}'" } });
+    const path = source('es.json', JSON.stringify({ 'common.first': "'{'first'}'" }));
+    const result = importResources(collection, parseJsonImport(path).resources, {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+    expect(result.resourcesUpdated).toBe(1);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.icuAutoFixes).toEqual([]);
+    expect(
+      JSON.parse(readFileSync(join(collection.translationsFolder, 'common', 'resource_entries.json'), 'utf8')),
+    ).toEqual({
+      first: { source: "'{'first'}'", es: "'{'first'}'" },
+    });
+  });
 
   it('imports a flat JSON file and recalculates real checksums', () => {
     seed('common.buttons', { ok: { source: 'OK', es: 'Bien' }, cancel: { source: 'Cancel' } });
@@ -249,7 +445,7 @@ describe('importResources pipeline', () => {
 
     expect(result.warnings).toEqual([
       'Unresolved parameters kept as placeholders (no matching key): "name"',
-      "Key 'common.title': value will not survive the ICU round trip and bundles as written below. " +
+      "Key 'common.title': value will not survive the round trip to the transloco-messageformat runtime and bundles as written below. " +
         'Source: "Use {Native} for the native title" Bundled: "Use {{ Native }} for the native title"',
     ]);
     expect(result.warnings.some((warning) => warning.includes('common.reference'))).toBe(false);
@@ -275,9 +471,9 @@ describe('importResources pipeline', () => {
       { locale: 'en', strategy: 'migration' },
     );
 
-    const warnings = result.warnings.filter((warning) => warning.includes('ICU round trip'));
+    const warnings = result.warnings.filter((warning) => warning.includes('round trip to the'));
     expect(warnings).toEqual([
-      "Key 'common.kept': value will not survive the ICU round trip and bundles as written below. " +
+      "Key 'common.kept': value will not survive the round trip to the transloco-messageformat runtime and bundles as written below. " +
         `Source: ${JSON.stringify(value)} Bundled: ${JSON.stringify('Use {{ Native }} for the "native"\ntitle')}`,
     ]);
     expect(warnings[0]).not.toContain('\n');

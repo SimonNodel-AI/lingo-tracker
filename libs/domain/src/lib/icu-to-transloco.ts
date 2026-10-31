@@ -37,6 +37,7 @@ import {
   type IcuArgument,
   type IcuGroup,
   type IcuNode,
+  type IcuParseOptions,
   type IcuRange,
   icuQuotedRuns,
   parseIcuMessage,
@@ -117,14 +118,16 @@ function prepareTextSegment(text: string, beforeComplex = false, preserveDoubled
  * icuToTransloco("Hello {name}: {count, plural, one {# item} other {# items}}");
  * // → "Hello {{ name }}: {count, plural, one {# item} other {# items}}"
  * ```
+ *
+ * @param options - Parse options; plain Transloco passes `simpleArgumentPaths` so dotted arguments convert.
  */
-export function icuToTransloco(value: string): string {
+export function icuToTransloco(value: string, options: IcuParseOptions = {}): string {
   // Values with no `'` and no `{` need no processing at all.
   if (!value.includes('{') && !value.includes("'")) {
     return value;
   }
 
-  const message = parseIcuMessage(value);
+  const message = parseIcuMessage(value, options);
   if (!message.ok) {
     return value;
   }
@@ -228,13 +231,13 @@ function expandPlaceholderOnlyBodies(value: string, construct: IcuArgument | Icu
  * // → false — the bundler encodes it as the triple
  * ```
  */
-export function hasUnbundlableBranchBody(value: string): boolean {
+export function hasUnbundlableBranchBody(value: string, options: IcuParseOptions = {}): boolean {
   if (!value.includes('{{')) {
     return false;
   }
 
   let found = false;
-  visitIcuNodes(parseIcuMessage(value, { interpolation: true }).nodes, (node) => {
+  visitIcuNodes(parseIcuMessage(value, { ...options, interpolation: true }).nodes, (node) => {
     if (found || node.kind !== 'group') return !found;
     found = node.cases.some((branch) => {
       const [only, ...rest] = branch.nodes;

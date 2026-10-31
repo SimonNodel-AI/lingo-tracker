@@ -69,6 +69,64 @@ describe('protectPlaceholders', () => {
 
     expect(placeholders.map((p) => p.marker)).toEqual(['__PH0__', '__PH1__', '__PH2__']);
   });
+
+  it('protects and restores quoted literal braces', () => {
+    const source = "'{'first'}'";
+    const { protectedText, placeholders } = protectPlaceholders(source);
+
+    expect(protectedText).toBe(`${wrappedMarker(0)}first${wrappedMarker(1)}`);
+    expect(placeholders).toEqual([
+      { original: "'{'", marker: '__PH0__' },
+      { original: "'}'", marker: '__PH1__' },
+    ]);
+    expect(restorePlaceholders(protectedText, placeholders)).toEqual({ success: true, value: source });
+  });
+
+  it('protects quoted runs and placeholders in source order', () => {
+    const source = "'{'a'}' {b}";
+    const { protectedText, placeholders } = protectPlaceholders(source);
+
+    expect(protectedText).toBe(`${wrappedMarker(0)}a${wrappedMarker(1)} ${wrappedMarker(2)}`);
+    expect(placeholders.map(({ original }) => original)).toEqual(["'{'", "'}'", '{b}']);
+    expect(restorePlaceholders(protectedText, placeholders)).toEqual({ success: true, value: source });
+  });
+
+  it('protects a whole quoted run without extracting apparent placeholders inside it', () => {
+    const source = "'{a} and {b}' {c}";
+    const { protectedText, placeholders } = protectPlaceholders(source);
+
+    expect(protectedText).toBe(`${wrappedMarker(0)} ${wrappedMarker(1)}`);
+    expect(placeholders.map(({ original }) => original)).toEqual(["'{a} and {b}'", '{c}']);
+    expect(restorePlaceholders(protectedText, placeholders)).toEqual({ success: true, value: source });
+  });
+
+  it('restores quoted apostrophes verbatim when the provider mangles apostrophes', () => {
+    const { protectedText, placeholders } = protectPlaceholders("It's '{a''b}'");
+    for (const translated of [protectedText, protectedText.replace(/<\/?span[^>]*>/g, '')]) {
+      expect(restorePlaceholders(translated.replace(/'/g, '’'), placeholders)).toEqual({
+        success: true,
+        value: "It’s '{a''b}'",
+      });
+    }
+  });
+
+  it('keeps the existing protected text when there are no quoted runs', () => {
+    const { protectedText, placeholders } = protectPlaceholders("Don't change {a.b} or {{ count }}; '' stays");
+
+    expect(protectedText).toBe(`Don't change ${wrappedMarker(0)} or ${wrappedMarker(1)}; '' stays`);
+    expect(placeholders.map(({ original }) => original)).toEqual(['{a.b}', '{{ count }}']);
+  });
+
+  it('rejects a quoted-run marker that the provider dropped or duplicated', () => {
+    const { protectedText, placeholders } = protectPlaceholders("'{'first'}'");
+
+    for (const translated of [protectedText.replace(wrappedMarker(0), ''), `${protectedText}${wrappedMarker(0)}`]) {
+      expect(restorePlaceholders(translated, placeholders)).toEqual({
+        success: false,
+        reason: 'marker-count-mismatch',
+      });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -155,5 +213,18 @@ describe('restorePlaceholders', () => {
     const result = restorePlaceholders('Datei __PH0__ und __PH0__ ist neuer', placeholders);
 
     expect(result).toEqual({ success: false, reason: 'marker-count-mismatch' });
+  });
+});
+
+// Dotted names already use the protector's existing pattern under both runtimes.
+describe('dotted simple arguments', () => {
+  it('protects an entire dotted argument and restores its exact name', () => {
+    const { protectedText, placeholders } = protectPlaceholders('Hello {user.name}');
+    expect(protectedText).toBe('Hello <span class="notranslate">__PH0__</span>');
+    expect(placeholders).toEqual([{ original: '{user.name}', marker: '__PH0__' }]);
+    expect(restorePlaceholders('Bonjour __PH0__', placeholders)).toEqual({
+      success: true,
+      value: 'Bonjour {user.name}',
+    });
   });
 });

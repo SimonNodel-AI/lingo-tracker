@@ -1,7 +1,9 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  APP_RUNTIMES,
   CONFIG_FILENAME,
+  DEFAULT_APP_RUNTIME,
   DEFAULT_BUNDLE_DIST,
   DEFAULT_BUNDLE_NAME,
   DEFAULT_TYPE_DIST_FILE,
@@ -10,20 +12,24 @@ import type prompts from 'prompts';
 import type { PromptContext } from '../runner/command-runner';
 import { collectionSetupFlags, defineFlags, setupBundleFlag, tokenCasingFlag } from '../runner/flag-record';
 import type { InitOptions } from '../types/init-options';
+import { ConsoleFormatter } from '../utils';
 import { collectionSetupQuestions, requiredText } from '../utils/prompt-utils';
+import { detectRuntime } from './detect-runtime';
 import type { InitCommandOptions } from './init';
 
 const initializedContexts = new WeakMap<PromptContext<'none', false>, boolean>();
 
 /** Read initialization state once per execution, before constructing any record questions. */
-function whenUninitialized(prompt: (options: InitCommandOptions) => prompts.PromptObject[]) {
+function whenUninitialized(
+  prompt: (options: InitCommandOptions, context: PromptContext<'none', false>) => prompts.PromptObject[],
+) {
   return (options: InitCommandOptions, context: PromptContext<'none', false>): prompts.PromptObject[] => {
     let initialized = initializedContexts.get(context);
     if (initialized === undefined) {
       initialized = existsSync(resolve(context.cwd, CONFIG_FILENAME));
       initializedContexts.set(context, initialized);
     }
-    return initialized ? [] : prompt(options);
+    return initialized ? [] : prompt(options, context);
   };
 }
 
@@ -81,6 +87,28 @@ export const INIT_FLAGS = defineFlags<InitCommandOptions, PromptContext<'none', 
     prompt: whenUninitialized((options) =>
       collectionSetupQuestions(options, { collectionName: 'Main' }).filter((question) => question.name === 'locales'),
     ),
+  },
+  runtime: {
+    flags: '--runtime <value>',
+    description: 'App runtime for translation bundles',
+    choices: APP_RUNTIMES,
+    prompt: whenUninitialized((options, context) => {
+      if (options.runtime !== undefined || !context.interactive) return [];
+      const detected = detectRuntime(context.cwd);
+      if (detected !== undefined) ConsoleFormatter.info(`Detected runtime: ${detected} (from package.json)`);
+      return [
+        {
+          type: 'select',
+          name: 'runtime',
+          message: 'App runtime',
+          choices: [
+            { title: 'transloco-messageformat (ICU plural/select in bundles)', value: 'transloco-messageformat' },
+            { title: 'transloco (plain; single braces are literal text)', value: 'transloco' },
+          ],
+          initial: APP_RUNTIMES.indexOf(detected ?? DEFAULT_APP_RUNTIME),
+        },
+      ];
+    }),
   },
   setupBundle: {
     ...setupBundleFlag,

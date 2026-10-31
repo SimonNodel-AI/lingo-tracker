@@ -47,6 +47,7 @@ describe('runExport', () => {
     status: 'translated' | 'verified' = 'translated',
   ): void => {
     const resourceFolder = openUnreportedResourceFolder(join(collection.translationsFolder, folder), {
+      runtime: 'transloco-messageformat',
       baseLocale: collection.baseLocale,
     });
     for (const [key, { source, translations = {}, tags }] of Object.entries(entries)) {

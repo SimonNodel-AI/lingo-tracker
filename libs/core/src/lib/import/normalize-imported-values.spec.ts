@@ -1,6 +1,6 @@
 import { translocoToICU } from '@simoncodes-ca/domain';
 import { describe, expect, it } from 'vitest';
-import { normalizeTranslocoSyntaxInResources } from './normalize-transloco-syntax';
+import { normalizeImportedValues } from './normalize-imported-values';
 import type { ImportedResource } from './types';
 
 describe('translocoToICU', () => {
@@ -73,14 +73,15 @@ describe('translocoToICU', () => {
   });
 });
 
-describe('normalizeTranslocoSyntaxInResources', () => {
+describe('normalizeImportedValues', () => {
+  const options = { runtime: 'transloco-messageformat', valueSyntax: 'runtime' } as const;
   it('normalizes double-brace syntax in resource values', () => {
     const resources: ImportedResource[] = [
       { key: 'greet', value: 'Hello {{ name }}' },
       { key: 'farewell', value: 'Goodbye {{ name }}' },
     ];
 
-    const result = normalizeTranslocoSyntaxInResources(resources);
+    const result = normalizeImportedValues(resources, options);
 
     expect(result[0].value).toBe('Hello {name}');
     expect(result[1].value).toBe('Goodbye {name}');
@@ -90,7 +91,7 @@ describe('normalizeTranslocoSyntaxInResources', () => {
     const unchanged: ImportedResource = { key: 'plain', value: 'Hello world' };
     const resources = [unchanged];
 
-    const result = normalizeTranslocoSyntaxInResources(resources);
+    const result = normalizeImportedValues(resources, options);
 
     expect(result[0]).toBe(unchanged);
   });
@@ -105,7 +106,7 @@ describe('normalizeTranslocoSyntaxInResources', () => {
       },
     ];
 
-    const result = normalizeTranslocoSyntaxInResources(resources);
+    const result = normalizeImportedValues(resources, options);
 
     expect(result[0]).toMatchObject({
       key: 'greeting',
@@ -119,12 +120,63 @@ describe('normalizeTranslocoSyntaxInResources', () => {
     const resources: ImportedResource[] = [{ key: 'resource', value: '{{ count }} items' }];
     const originalValue = resources[0].value;
 
-    normalizeTranslocoSyntaxInResources(resources);
+    normalizeImportedValues(resources, options);
 
     expect(resources[0].value).toBe(originalValue);
   });
 
   it('returns an empty array when given an empty array', () => {
-    expect(normalizeTranslocoSyntaxInResources([])).toEqual([]);
+    expect(normalizeImportedValues([], options)).toEqual([]);
+  });
+});
+
+describe('normalizeImportedValues runtime and source syntax', () => {
+  it('quotes literals in both migration values and base values for plain Transloco', () => {
+    const resources: ImportedResource[] = [
+      {
+        key: 'title',
+        value: "Use {Native} for the provider's native title",
+        baseValue: 'Showing {first} to {last} of {totalRecords} entries',
+      },
+    ];
+    expect(normalizeImportedValues(resources, { runtime: 'transloco', valueSyntax: 'runtime' })).toEqual([
+      {
+        key: 'title',
+        value: "Use '{'Native'}' for the provider's native title",
+        baseValue: "Showing '{'first'}' to '{'last'}' of '{'totalRecords'}' entries",
+      },
+    ]);
+    expect(resources[0].value).toBe("Use {Native} for the provider's native title");
+  });
+
+  it('keeps exported quoted ICU untouched for every stored-syntax strategy and runtime', () => {
+    const resources: ImportedResource[] = [{ key: 'first', value: "'{'first'}'", baseValue: "'{'first'}'" }];
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      const normalized = normalizeImportedValues(resources, { runtime, valueSyntax: 'stored' });
+      expect(normalized).toEqual(resources);
+      expect(normalized[0]).toBe(resources[0]);
+    }
+  });
+
+  it('normalizes both fields leniently for stored syntax under either runtime', () => {
+    for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+      expect(
+        normalizeImportedValues([{ key: 'first', value: 'Hola {{ name }}', baseValue: 'Hello {{name}}' }], {
+          runtime,
+          valueSyntax: 'stored',
+        }),
+      ).toEqual([{ key: 'first', value: 'Hola {name}', baseValue: 'Hello {name}' }]);
+    }
+  });
+
+  it('copies a resource when only its base value needs conversion', () => {
+    const resource: ImportedResource = { key: 'first', value: 'Hola {name}', baseValue: 'Hello {{ name }}' };
+    const [normalized] = normalizeImportedValues([resource], {
+      runtime: 'transloco-messageformat',
+      valueSyntax: 'runtime',
+    });
+    expect(normalized).not.toBe(resource);
+    expect(normalized).toEqual({ key: 'first', value: 'Hola {name}', baseValue: 'Hello {name}' });
+    expect(resource.baseValue).toBe('Hello {{ name }}');
   });
 });

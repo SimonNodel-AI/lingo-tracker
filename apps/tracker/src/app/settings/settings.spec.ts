@@ -4,7 +4,7 @@ import type { ComponentFixture } from '@angular/core/testing';
 import { provideTranslocoMessageformat } from '@jsverse/transloco-messageformat';
 import { createComponentFactory, type Spectator } from '@ngneat/spectator/vitest';
 import type { LingoTrackerConfigDto, PreferredTermRuleErrorDto } from '@simoncodes-ca/data-transfer';
-import { icuToTransloco, validateICUSyntax } from '@simoncodes-ca/domain';
+import { toRuntimeValue, validateICUSyntax } from '@simoncodes-ca/domain';
 import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ruleErrorEntries from '../../i18n/settings/preferredTerminology/error/resource_entries.json';
@@ -772,8 +772,9 @@ describe('Settings', () => {
             langs: {
               en: {
                 // The bundled form, as `lingo-tracker bundle` writes it.
-                [TRACKER_TOKENS.SETTINGS.PREFERREDTERMINOLOGY.ERROR.INVALIDCHARACTER]: icuToTransloco(
+                [TRACKER_TOKENS.SETTINGS.PREFERREDTERMINOLOGY.ERROR.INVALIDCHARACTER]: toRuntimeValue(
                   ruleErrorEntries.invalidCharacter.source,
+                  'transloco-messageformat',
                 ),
               },
             },

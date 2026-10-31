@@ -1,7 +1,13 @@
 import { computed, signal } from '@angular/core';
-import { FormArray, FormControl, FormGroup, Validators } from '@angular/forms';
+import { FormArray, FormControl, FormGroup, type ValidatorFn, Validators } from '@angular/forms';
 import type { ResourceSummaryDto, TranslationStatus } from '@simoncodes-ca/data-transfer';
-import { DEFAULT_MISSING_METADATA_STATUS, isNeedsWorkStatus, summaryTarget } from '@simoncodes-ca/domain';
+import {
+  type AppRuntime,
+  DEFAULT_APP_RUNTIME,
+  DEFAULT_MISSING_METADATA_STATUS,
+  isNeedsWorkStatus,
+  summaryTarget,
+} from '@simoncodes-ca/domain';
 import { merge, type Subscription } from 'rxjs';
 import { bracedPlaceholderValidator } from '../../../shared/validators/braced-placeholder.validator';
 import { nonBlankValidator } from '../../../shared/validators/non-blank.validator';
@@ -16,6 +22,7 @@ import {
 
 /** The editable fields and their plain draft snapshot, independent of the dialog DOM. */
 export class EditorEntryForm {
+  private readonly bracedValidator: ValidatorFn;
   readonly form = new FormGroup({
     key: new FormControl<string>('', {
       validators: [Validators.required, segmentValidator],
@@ -94,7 +101,13 @@ export class EditorEntryForm {
   readonly #changes: Subscription;
   #initialDraft: ResourceEntryDraft | undefined;
 
-  constructor(private readonly keyCollision: () => boolean = () => false) {
+  constructor(
+    private readonly keyCollision: () => boolean = () => false,
+    runtime: () => AppRuntime = () => DEFAULT_APP_RUNTIME,
+  ) {
+    this.bracedValidator = (control) => bracedPlaceholderValidator(control, runtime());
+    this.form.controls.baseValue.setValidators([nonBlankValidator, this.bracedValidator]);
+    this.form.controls.baseValue.updateValueAndValidity();
     this.#changes = merge(this.form.valueChanges, this.form.statusChanges).subscribe(() => this.publishSnapshot());
   }
 
@@ -111,7 +124,7 @@ export class EditorEntryForm {
       translations.push(
         new FormGroup({
           locale: new FormControl(locale, { nonNullable: true }),
-          value: new FormControl(target?.value ?? '', { validators: [bracedPlaceholderValidator], nonNullable: true }),
+          value: new FormControl(target?.value ?? '', { validators: [this.bracedValidator], nonNullable: true }),
           status: new FormControl<TranslationStatus>(target?.status ?? DEFAULT_MISSING_METADATA_STATUS, {
             nonNullable: true,
           }),

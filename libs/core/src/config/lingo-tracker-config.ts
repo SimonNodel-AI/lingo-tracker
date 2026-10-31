@@ -1,4 +1,4 @@
-import type { BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
+import type { AppRuntime, BundleDefinition, TokenCasing } from '@simoncodes-ca/domain';
 import type { LingoTrackerCollection } from './lingo-tracker-collection';
 import type { TranslationConfig } from './translation-config';
 
@@ -13,6 +13,9 @@ export interface LingoTrackerConfig {
   collections: Record<string, LingoTrackerCollection>;
   bundles?: Record<string, BundleDefinition>;
   translation?: TranslationConfig;
+
+  /** Global app runtime for import and bundle conversion. Defaults to transloco-messageformat. */
+  runtime?: AppRuntime;
 
   /**
    * Global default casing for generated token property keys.

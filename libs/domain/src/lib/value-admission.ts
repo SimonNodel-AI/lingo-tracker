@@ -1,4 +1,5 @@
 import { checkTranslatedValue, describeValueViolation, type TranslatedValueViolation } from './check-translated-value';
+import type { IcuParseOptions } from './icu-message';
 import { checkStoredValue, describeStoredValueFinding, type StoredValueFinding } from './stored-value-check';
 import { translocoToICU } from './transloco-to-icu';
 
@@ -28,9 +29,14 @@ type Admission =
  * Conversion failure stops the check. Contract violations keep argument-before-term diagnostic
  * order. Descriptions use the existing shared wording so callers only add outcome context.
  */
-export function admitValue(source: string | undefined, value: string, policy: Policy): Admission {
+export function admitValue(
+  source: string | undefined,
+  value: string,
+  policy: Policy,
+  options: IcuParseOptions = {},
+): Admission {
   if (policy.name !== 'import') {
-    const findings = checkStoredValue(value).filter((finding) => finding.blocksConversion);
+    const findings = checkStoredValue(value, options).filter((finding) => finding.blocksConversion);
     const reason = findings[0];
     if (reason) return reject(reason, findings);
     if (policy.name === 'stored-entry') return { admitted: true, value };
@@ -40,7 +46,7 @@ export function admitValue(source: string | undefined, value: string, policy: Po
   const violations =
     source === undefined || (policy.name === 'import' && !source)
       ? []
-      : checkTranslatedValue(source, value, { protectedTerms: policy.protectedTerms }).filter(
+      : checkTranslatedValue(source, value, { ...options, protectedTerms: policy.protectedTerms }).filter(
           (violation) =>
             policy.name !== 'import' || !policy.referencesResolved || violation.kind !== 'argument-mismatch',
         );
