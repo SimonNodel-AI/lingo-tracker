@@ -17,6 +17,8 @@ export interface Project {
   translationsFolder: string;
   artifactsFolder: string;
   updateCollection(collection: UpdateCollectionDto['collection']): Promise<void>;
+  /** The API cannot set the read-only runtime, so this edits the config file the fixture restores afterwards. */
+  setRuntime(runtime: 'transloco' | 'transloco-messageformat'): Promise<void>;
   setPreferredTerminology(rules: NonNullable<UpdateConfigDto['preferredTerminology']>): Promise<void>;
   addBundle(bundle: CreateBundleDto): Promise<void>;
   addResource(resource: CreateResourceDto): Promise<void>;
@@ -58,6 +60,10 @@ export const projectFixture: TestFixture<Project, { server: Server; request: API
         await requireSeedSuccess(
           await request.put(`/api/collections/${encodeURIComponent(collectionName)}`, { data: { collection } }),
         );
+      },
+      async setRuntime(runtime) {
+        const config: Record<string, unknown> = JSON.parse(await readFile(configPath, 'utf8'));
+        await writeFile(configPath, `${JSON.stringify({ ...config, runtime }, null, 2)}\n`);
       },
       async setPreferredTerminology(rules) {
         await requireSeedSuccess(await request.put('/api/config', { data: { preferredTerminology: rules } }));
