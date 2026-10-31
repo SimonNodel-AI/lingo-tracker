@@ -342,17 +342,14 @@ describe('exportCommand (real project)', () => {
     expect(summaries()).toHaveLength(0);
   });
   it('should only warn when the summary cannot be written, keeping the run outcome exit code', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-    try {
-      mkdirSync(join(project.cwd, 'lingo-tracker-export-summary-2026-01-01T00-00-00.md'));
-      const result = await run();
-      expect(result.exitCode).toBe(0);
-      expect(result.stderr).toContain('⚠️  Failed to write export summary file:');
-      expect(payload()).toMatchObject({ buttons: { ok: 'OK' } });
-    } finally {
-      vi.useRealTimers();
-    }
+    const result = await project.run(
+      exportCommand,
+      { format: 'json' },
+      { summaryDirectory: join(project.cwd, 'missing') },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain('⚠️  Failed to write export summary file:');
+    expect(payload()).toMatchObject({ buttons: { ok: 'OK' } });
   });
   it('should set exit code when errors occur', async () => {
     failedFiles();

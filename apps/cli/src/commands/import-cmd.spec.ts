@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type prompts from 'prompts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -115,6 +115,19 @@ describe('import-cmd (real project)', () => {
     expect(clock).toHaveBeenCalledTimes(1);
     expect(summaries()).toHaveLength(0);
     expect(stored()).toMatchObject({ ok: { fr: 'Original' } });
+  });
+  it('keeps both summaries when two imports start in the same millisecond', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.123Z'));
+    project.write('imports/es.json', { 'buttons.ok': 'Hola' });
+    const first = await run();
+    const second = await run({ ...flags, source: 'imports/es.json', locale: 'es' });
+    const base = 'lingo-tracker-import-summary-2026-01-01T00-00-00-123';
+    expect(summaries().sort()).toEqual([`${base}-1.md`, `${base}.md`]);
+    expect(first.stdout).toContain(join(project.cwd, `${base}.md`));
+    expect(second.stdout).toContain(join(project.cwd, `${base}-1.md`));
+    expect(project.read(`${base}.md`)).toContain('**Source File**: imports/fr.json');
+    expect(project.read(`${base}-1.md`)).toContain('**Source File**: imports/es.json');
   });
   it('should resolve a relative --source against the project root', async () => {
     const result = await run();
@@ -406,11 +419,8 @@ describe('import-cmd (real project)', () => {
     });
   });
 
-  it('keeps a completed import successful when the summary path is a directory', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
-    mkdirSync(join(project.cwd, 'lingo-tracker-import-summary-2026-01-01T00-00-00.md'));
-    const result = await run();
+  it('keeps a completed import successful when the summary cannot be written', async () => {
+    const result = await project.run(importCommand, flags, { summaryDirectory: join(project.cwd, 'missing') });
     expect(result.exitCode).toBe(0);
     expect(result.stderr).toContain('Failed to write import summary file:');
     expect(stored()).toMatchObject({ ok: { fr: 'Bonjour' } });
