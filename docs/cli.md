@@ -29,7 +29,7 @@ lingo-tracker --version            # -V
 
 **Lists.** Comma-separated flags trim each item and drop blanks. For optional list flags such as `--tags`, an exactly empty value counts as not given and `--tags ,` means an empty list. `--set-tags ""` and `--set ""` deliberately clear, and `export --status ""` is an error.
 
-**Summary files.** Outside dry runs, `export` and `import` write a Markdown summary to the operating system's temp directory as `lingo-tracker-export-summary-<timestamp>.md` or `lingo-tracker-import-summary-<timestamp>.md` and print the path. They are not written into your project.
+**Summary files.** Outside dry runs, `export` and `import` write a Markdown summary to the operating system's temp directory as `lingo-tracker-export-summary-<timestamp>.md` or `lingo-tracker-import-summary-<timestamp>.md` and print the path. The timestamp has millisecond precision, and a run never overwrites an existing summary: if the name is taken, it adds `-1`, `-2` and so on. They are not written into your project.
 
 ## Command index
 

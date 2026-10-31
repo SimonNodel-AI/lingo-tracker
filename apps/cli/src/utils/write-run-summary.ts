@@ -3,11 +3,21 @@ import { CommandOutput } from '../runner/command-output';
 import { ConsoleFormatter } from './console-formatter';
 import { buildSummaryPath } from './summary-path';
 
-/** Writes a run's Markdown report to a CLI-owned temporary summary path. */
+/**
+ * Writes a run's Markdown report to a new CLI-owned temporary summary path. Never overwrites:
+ * runs that share a millisecond get `-1`, `-2`, ... suffixes.
+ */
 export function writeRunSummary(kind: 'import' | 'export', text: string, directory?: string): string {
-  const summaryPath = buildSummaryPath(kind, directory);
-  fs.writeFileSync(summaryPath, text, 'utf8');
-  return summaryPath;
+  const basePath = buildSummaryPath(kind, directory);
+  for (let attempt = 0; ; attempt++) {
+    const summaryPath = attempt ? basePath.replace(/\.md$/, `-${attempt}.md`) : basePath;
+    try {
+      fs.writeFileSync(summaryPath, text, { encoding: 'utf8', flag: 'wx' });
+      return summaryPath;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+  }
 }
 
 /** A saved (or previewed) run summary; `announce` prints where it went, after the command's results. */

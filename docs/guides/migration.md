@@ -193,7 +193,7 @@ This happens automatically with the `migration` strategy.
 
 ### Step 4: Verify Migration
 
-Each import prints the path of its Markdown summary, which is written to the operating system's temp directory as `lingo-tracker-import-summary-<timestamp>.md`. Open it to check counts, warnings and any keys that were skipped or failed.
+Each import prints the path of its Markdown summary, which is written to the operating system's temp directory as `lingo-tracker-import-summary-<timestamp>.md`. Runs in a loop each get their own file: a name that is already taken gets a `-1`, `-2` suffix. Open it to check counts, warnings and any keys that were skipped or failed.
 
 Verify a few resources were created correctly:
 
