@@ -6,7 +6,7 @@ import type {
   UpdateResourceDto,
   UpdateResourceResponseDto,
 } from '@simoncodes-ca/data-transfer';
-import { resolveResourceKey } from '@simoncodes-ca/domain';
+import { type AppRuntime, resolveResourceKey } from '@simoncodes-ca/domain';
 import { catchError, firstValueFrom, map, type Observable, of } from 'rxjs';
 import { TRACKER_TOKENS } from '../../../../i18n-types/tracker-resources';
 import { ApiError } from '../../../shared/api-error/api-error';
@@ -14,7 +14,14 @@ import type { Feedback } from '../../feedback';
 import { doesUpdateMoveEntry } from '../../store/does-update-move-entry';
 import { refusedFeedback } from '../../store/write-refusal';
 import type { EditorFocusTarget } from './editor-focus';
-import { type ResourceEntryDraft, resolveDraftKey, toCreateDto, toUpdateDto } from './resource-entry-draft';
+import {
+  type ResourceEntryDraft,
+  resolveDraftKey,
+  toCreateDto,
+  toUpdateDto,
+  type UnrenderableWrite,
+  unrenderableWrites,
+} from './resource-entry-draft';
 
 /** The result consumed by the launcher, including the conflict hand-off owned by the dialog. */
 export type EditorOutcome =
@@ -113,21 +120,27 @@ interface EditorGateState {
   readOnly: boolean;
   validation: EditorValidationState;
   collision: boolean;
-  needsCommentConfirmation: boolean;
+  needsUnrenderableConfirmation: boolean;
 }
 
-type EditorGateReason = 'read-only' | 'invalid' | 'collision' | 'needs-comment-confirmation';
+type EditorGateReason = 'read-only' | 'invalid' | 'collision' | 'needs-unrenderable-confirmation';
 
-/** The first reason to stop submission, in the order the editor has always used. */
+/** The first reason to stop submission before the confirmations; the comment prompt follows the others. */
 function submitGate(state: EditorGateState): EditorGateReason | null {
   if (state.readOnly) return 'read-only';
   if (state.validation.invalid) return 'invalid';
   if (state.collision) return 'collision';
-  if (state.needsCommentConfirmation) return 'needs-comment-confirmation';
+  if (state.needsUnrenderableConfirmation) return 'needs-unrenderable-confirmation';
   return null;
 }
 
-export type EditorSubmitPhase = 'idle' | 'confirming-comment' | 'choosing-conflict' | 'writing' | 'done';
+export type EditorSubmitPhase =
+  | 'idle'
+  | 'confirming-unrenderable'
+  | 'confirming-comment'
+  | 'choosing-conflict'
+  | 'writing'
+  | 'done';
 
 /** Focus and panel changes chosen with the submit outcome. */
 export interface EditorReveal {
@@ -149,12 +162,13 @@ function validationReveal(state: Extract<EditorValidationState, { invalid: true 
 export type EditorSubmitDecision =
   | { kind: 'ignored' }
   | { kind: 'invalid'; reveal: EditorReveal }
-  | { kind: 'focus-comment'; reveal: EditorReveal }
+  | { kind: 'reveal'; reveal: EditorReveal }
   | { kind: 'message'; feedback: Feedback }
   | { kind: 'outcome'; outcome: EditorOutcome };
 
 export interface EditorSubmitSessionOptions {
   writes: EditorWrites;
+  confirmUnrenderable: (findings: readonly UnrenderableWrite[]) => Promise<boolean>;
   confirmMissingComment: () => Promise<boolean>;
   chooseConflict: (fullKey: string) => Promise<boolean>;
   onWriteStart: () => void;
@@ -164,6 +178,13 @@ export interface EditorSubmitTrigger extends Omit<EditorSubmitInput, 'writes'> {
   validation: EditorValidationState;
   readOnly: boolean;
   collision: boolean;
+  runtime: AppRuntime;
+  baseLocale: string;
+}
+
+/** A stable identity for a set of findings, values included, so one acknowledgement covers exactly those values. */
+function findingsSignature(findings: readonly UnrenderableWrite[]): string {
+  return JSON.stringify(findings.map(({ locale, kinds, value }) => [locale, kinds, value]));
 }
 
 /** Owns one save attempt from its first prompt through the final write or hand-off. */
@@ -171,27 +192,42 @@ export class EditorSubmitSession {
   readonly phase = signal<EditorSubmitPhase>('idle');
   readonly isSubmitting = computed(() => this.phase() === 'writing' || this.phase() === 'done');
   #saveAnyway = false;
+  readonly #acknowledgedFindings = new Set<string>();
 
   constructor(readonly options: EditorSubmitSessionOptions) {}
 
   async trigger(input: EditorSubmitTrigger): Promise<EditorSubmitDecision> {
     if (this.phase() !== 'idle') return { kind: 'ignored' };
 
+    const findings = unrenderableWrites(
+      input.draft,
+      input.mode === 'edit' ? input.original : undefined,
+      input.baseLocale,
+      input.runtime,
+    );
+    const signature = findingsSignature(findings);
+
     const gate = submitGate({
       readOnly: input.readOnly,
       validation: input.validation,
       collision: input.collision,
-      needsCommentConfirmation: !input.draft.comment.trim() && !this.#saveAnyway,
+      needsUnrenderableConfirmation: findings.length > 0 && !this.#acknowledgedFindings.has(signature),
     });
     if (gate === 'read-only') return { kind: 'ignored' };
     if (input.validation.invalid) return { kind: 'invalid', reveal: validationReveal(input.validation) };
 
     try {
       if (gate === 'collision') return await this.#chooseConflict(resolveDraftKey(input.draft));
-      if (gate === 'needs-comment-confirmation') {
+      if (gate === 'needs-unrenderable-confirmation') {
+        this.phase.set('confirming-unrenderable');
+        if (!(await this.options.confirmUnrenderable(findings)))
+          return { kind: 'reveal', reveal: unrenderableReveal(findings, input.baseLocale) };
+        this.#acknowledgedFindings.add(signature);
+      }
+      if (!input.draft.comment.trim() && !this.#saveAnyway) {
         this.phase.set('confirming-comment');
         if (!(await this.options.confirmMissingComment()))
-          return { kind: 'focus-comment', reveal: { focus: 'comment', panels: 'keep' } };
+          return { kind: 'reveal', reveal: { focus: 'comment', panels: 'keep' } };
         this.#saveAnyway = true;
       }
 
@@ -218,6 +254,13 @@ export class EditorSubmitSession {
     this.phase.set('done');
     return { kind: 'outcome', outcome: { kind: 'open-existing', fullKey } };
   }
+}
+
+/** A flagged base value is focused; otherwise the flagged locale rows are already showing their advisory. */
+function unrenderableReveal(findings: readonly UnrenderableWrite[], baseLocale: string): EditorReveal {
+  return findings.some(({ locale }) => locale === baseLocale)
+    ? { focus: 'base-value', panels: 'close-all' }
+    : { focus: 'drawer-first-control', panels: 'locales' };
 }
 
 function messageDecision(token: string, error?: ApiError): Extract<EditorSubmitDecision, { kind: 'message' }> {

@@ -26,7 +26,7 @@ import { EditorLocation, type EditorLocationPeek } from './editor-location';
 import { EditorPanels } from './editor-panels';
 import { EditorPresentation } from './editor-presentation';
 import { type EditorOutcome, type EditorReveal, type EditorSubmitDecision, EditorSubmitSession } from './editor-submit';
-import { resolveDraftKey } from './resource-entry-draft';
+import { resolveDraftKey, type UnrenderableWrite } from './resource-entry-draft';
 
 export interface TranslationEditorDialogData {
   mode: 'create' | 'edit';
@@ -146,6 +146,7 @@ export class EditorSession {
         create: (dto) => this.options.browser.createResource(this.data.collectionName, dto),
         update: (dto) => this.options.browser.updateResource(this.data.collectionName, dto),
       },
+      confirmUnrenderable: (findings) => this.#showRuntimeConfirmation(findings),
       confirmMissingComment: () => this.#showCommentConfirmation(),
       chooseConflict: (fullKey) => this.#showKeyConflictDialog(fullKey),
       onWriteStart: () => this.errorMessage.set(null),
@@ -380,6 +381,8 @@ export class EditorSession {
         firstInvalidLocaleIndex: this.entry.firstInvalidLocaleIndex(),
       },
       collision: this.location.keyCollision(),
+      runtime: this.options.config()?.runtime ?? DEFAULT_APP_RUNTIME,
+      baseLocale: this.data.baseLocale,
     });
     this.#renderSubmitDecision(decision);
   }
@@ -403,7 +406,7 @@ export class EditorSession {
       this.#applyReveal(decision.reveal);
       return;
     }
-    if (decision.kind === 'focus-comment') {
+    if (decision.kind === 'reveal') {
       this.#applyReveal(decision.reveal);
       return;
     }
@@ -429,6 +432,21 @@ export class EditorSession {
     };
 
     return this.options.confirm(spec, { width: '500px' });
+  }
+
+  #showRuntimeConfirmation(findings: readonly UnrenderableWrite[]): Promise<boolean> {
+    const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.RUNTIMECONFIRM;
+    const details = findings
+      .map(({ locale, kinds }) => `${this.presentation.getLocaleDisplayName(locale)}: ${kinds.join(', ')}`)
+      .join('; ');
+    const spec = {
+      title: tokens.TITLE,
+      message: { token: tokens.MESSAGEX, params: { details } },
+      confirmButtonText: tokens.SAVEANYWAY,
+      cancelButtonText: tokens.GOBACK,
+    };
+
+    return this.options.confirm(spec, { width: '460px', disableClose: true });
   }
 
   #showCommentConfirmation(): Promise<boolean> {

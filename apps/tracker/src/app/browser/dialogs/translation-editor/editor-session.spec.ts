@@ -312,6 +312,54 @@ describe('EditorSession', () => {
       expect(dialogRef.close).not.toHaveBeenCalled();
     });
   });
+  describe('Runtime Confirmation Flow', () => {
+    const fillPlural = (): void => {
+      session.entry.form.controls.key.setValue('test_key');
+      session.entry.form.controls.baseValue.setValue('{n, plural, one {# a} other {# b}}');
+      session.entry.form.controls.comment.setValue('Context');
+    };
+
+    it('confirms under plain transloco with the affected locales and constructs', async () => {
+      config.set({ runtime: 'transloco' } as LingoTrackerConfigDto);
+      fillPlural();
+
+      await session.onSubmit();
+
+      const tokens = TRACKER_TOKENS.BROWSER.TRANSLATIONEDITOR.RUNTIMECONFIRM;
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          title: tokens.TITLE,
+          message: { token: tokens.MESSAGEX, params: { details: `${session.presentation.baseLocaleName()}: plural` } },
+          confirmButtonText: tokens.SAVEANYWAY,
+          cancelButtonText: tokens.GOBACK,
+        }),
+        { width: '460px', disableClose: true },
+      );
+      expect(closedWith()?.kind).toBe('created');
+    });
+
+    it('does not save and focuses the base value when the user goes back', async () => {
+      config.set({ runtime: 'transloco' } as LingoTrackerConfigDto);
+      confirm.mockResolvedValue(false);
+      fillPlural();
+
+      await session.onSubmit();
+
+      expect(apiSpies.createResource).not.toHaveBeenCalled();
+      expect(focus).toHaveBeenCalledWith('base-value');
+    });
+
+    it('does not confirm under transloco-messageformat', async () => {
+      config.set({ runtime: 'transloco-messageformat' } as LingoTrackerConfigDto);
+      fillPlural();
+
+      await session.onSubmit();
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(closedWith()?.kind).toBe('created');
+    });
+  });
+
   describe('Comment Confirmation Flow', () => {
     it('should save directly when comment is present', async () => {
       session.entry.form.controls.key.setValue('test_key');

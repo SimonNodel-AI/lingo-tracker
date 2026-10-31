@@ -101,3 +101,33 @@ test('deletes a resource after confirmation and removes its entry and metadata',
   expect(meta).not.toHaveProperty('ok');
   expect(meta).toHaveProperty('cancel');
 });
+
+test('confirms before saving a plural that plain Transloco cannot render', async ({
+  project,
+  browserPage,
+  translationEditor,
+}) => {
+  await project.addCollection();
+  await project.setRuntime('transloco');
+  await browserPage.goto(project.collectionName);
+  await browserPage.addButton.click();
+  await translationEditor.key.fill('common.items');
+  await translationEditor.baseValue.fill('{count, plural, one {# item} other {# items}}');
+  await translationEditor.comment.fill('Item count');
+  await translationEditor.dialog.getByRole('button', { name: 'Create translation', exact: true }).click();
+
+  const confirmation = translationEditor.runtimeConfirmDialog;
+  await expect(confirmation).toContainText('English: plural');
+  await confirmation.getByRole('button', { name: 'Go back and edit', exact: true }).click();
+  await expect(confirmation).toBeHidden();
+  await expect(translationEditor.baseValue).toBeFocused();
+  const folder = join(project.translationsFolder, 'common');
+  await expect(readEntries(folder)).rejects.toThrow();
+
+  await translationEditor.dialog.getByRole('button', { name: 'Create translation', exact: true }).click();
+  await confirmation.getByRole('button', { name: 'Save anyway', exact: true }).click();
+  await expect(translationEditor.dialog).toBeHidden();
+  expect(await readEntries(folder)).toMatchObject({
+    items: { source: '{count, plural, one {# item} other {# items}}' },
+  });
+});

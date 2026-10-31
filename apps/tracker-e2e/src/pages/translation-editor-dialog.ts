@@ -18,6 +18,11 @@ export class TranslationEditorDialog {
     hasText: "This collection is read-only — you're viewing this resource in read-only mode.",
   });
 
+  readonly runtimeConfirmDialog = this.page.getByRole('dialog', {
+    name: "Plain Transloco can't render this",
+    exact: true,
+  });
+
   readonly exactMatchMessage = this.dialog.getByTestId('similar-exact-caption');
   readonly preferredTermHint = this.dialog.getByTestId('preferred-term-advisory');
   readonly keyCopied = this.page.getByRole('status').filter({ hasText: 'Similar resource key copied' });

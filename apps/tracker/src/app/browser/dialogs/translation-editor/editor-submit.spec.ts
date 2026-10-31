@@ -6,11 +6,11 @@ import { ApiError, type ApiErrorKind } from '../../../shared/api-error/api-error
 import { feedbackText } from '../../feedback';
 import {
   type EditorRefusal,
+  EditorSubmitSession,
+  type EditorSubmitTrigger,
   type EditorWrites,
   refusalDecision,
   submitEditor,
-  EditorSubmitSession,
-  type EditorSubmitTrigger,
 } from './editor-submit';
 import type { ResourceEntryDraft } from './resource-entry-draft';
 
@@ -201,6 +201,8 @@ describe('editor submit gate through its session', () => {
     readOnly: true,
     validation: { invalid: true, keyInvalid: true, baseValueInvalid: true, firstInvalidLocaleIndex: -1 },
     collision: true,
+    runtime: 'transloco',
+    baseLocale: 'en',
   };
   const setup = () => {
     const fake = writes();
@@ -208,6 +210,7 @@ describe('editor submit gate through its session', () => {
     const chooseConflict = vi.fn(async () => false);
     const submit = new EditorSubmitSession({
       writes: fake,
+      confirmUnrenderable: vi.fn(async () => true),
       confirmMissingComment,
       chooseConflict,
       onWriteStart: vi.fn(),
@@ -248,7 +251,7 @@ describe('editor submit gate through its session', () => {
     expect(
       await submit.trigger({ ...blocked, readOnly: false, validation: { invalid: false }, collision: false }),
     ).toEqual({
-      kind: 'focus-comment',
+      kind: 'reveal',
       reveal: { focus: 'comment', panels: 'keep' },
     });
     expect(confirmMissingComment).toHaveBeenCalledTimes(1);

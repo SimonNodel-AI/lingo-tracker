@@ -17,6 +17,7 @@ import {
   removeTag,
   toCreateDto,
   toUpdateDto,
+  unrenderableWrites,
 } from './resource-entry-draft';
 
 const entry = (fullKey: string): ResourceSummaryDto => {
@@ -505,5 +506,86 @@ describe('hasUnsavedChanges', () => {
   ])('%s', (_case, overrides, fieldsEdited, expected) => {
     const current = draft({ tags: ['browser', 'dialog'], ...overrides });
     expect(hasUnsavedChanges(current, initial, fieldsEdited)).toBe(expected);
+  });
+});
+
+describe('unrenderableWrites', () => {
+  const plural = '{n, plural, one {# a} other {# b}}';
+  const select = '{g, select, m {He} other {They}}';
+  const draft = (overrides: Partial<ResourceEntryDraft>): ResourceEntryDraft => ({
+    key: 'ok',
+    folderPath: 'common',
+    baseValue: 'OK',
+    comment: '',
+    tags: [],
+    translations: [],
+    ...overrides,
+  });
+  const original: ResourceSummaryDto = {
+    fullKey: 'common.ok',
+    folderPath: 'common',
+    entryKey: 'ok',
+    base: { locale: 'en', value: plural },
+    targets: [{ locale: 'fr', value: select, status: 'translated', needsWork: false, sameAsBase: false }],
+    tags: [],
+    inheritedTags: [],
+  };
+
+  it('on create flags the base value and every non-empty translation, base first', () => {
+    const result = unrenderableWrites(
+      draft({
+        baseValue: plural,
+        translations: [
+          { locale: 'fr', value: select, status: 'new' },
+          { locale: 'de', value: '   ', status: 'new' },
+          { locale: 'es', value: 'Hola', status: 'new' },
+        ],
+      }),
+      undefined,
+      'en',
+      'transloco',
+    );
+    expect(result).toEqual([
+      { locale: 'en', value: plural, kinds: ['plural'] },
+      { locale: 'fr', value: select, kinds: ['select'] },
+    ]);
+  });
+
+  it('detects constructs behind Transloco interpolation', () => {
+    const mixed = 'Hello {{name}}: {n, number}';
+    expect(unrenderableWrites(draft({ baseValue: mixed }), undefined, 'en', 'transloco')).toEqual([
+      { locale: 'en', value: mixed, kinds: ['number'] },
+    ]);
+  });
+
+  it('on edit ignores an unchanged base value and an unchanged locale', () => {
+    const unchanged = draft({
+      baseValue: plural,
+      translations: [{ locale: 'fr', value: select, status: 'translated' }],
+    });
+    expect(unrenderableWrites(unchanged, original, 'en', 'transloco')).toEqual([]);
+  });
+
+  it('on edit flags a changed base value and an edited locale', () => {
+    const edited = draft({
+      baseValue: `${plural} `,
+      translations: [{ locale: 'fr', value: `${select} `, status: 'translated' }],
+    });
+    expect(unrenderableWrites(edited, original, 'en', 'transloco')).toEqual([
+      { locale: 'en', value: `${plural} `, kinds: ['plural'] },
+      { locale: 'fr', value: `${select} `, kinds: ['select'] },
+    ]);
+  });
+
+  it('on edit does not flag a status-only change to an unrenderable locale that is otherwise unchanged', () => {
+    const statusOnly = draft({
+      baseValue: plural,
+      translations: [{ locale: 'fr', value: '', status: 'stale' }],
+    });
+    expect(unrenderableWrites(statusOnly, original, 'en', 'transloco')).toEqual([]);
+  });
+
+  it('flags nothing under transloco-messageformat', () => {
+    expect(unrenderableWrites(draft({ baseValue: plural }), undefined, 'en', 'transloco-messageformat')).toEqual([]);
   });
 });
