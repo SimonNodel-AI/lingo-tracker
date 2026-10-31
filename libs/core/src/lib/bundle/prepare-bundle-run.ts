@@ -154,12 +154,14 @@ function selectPreparedContent(
 ): PreparedBundleContent {
   const cache: CollectionReadCache = new Map();
   const warnings: string[] = [];
+  const reportedRuntimeWarnings = new Set<string>();
   const conflicts = new Set<string>();
   const select = (locale: string | typeof COLLECTION_BASE_LOCALE): BundleSelection =>
     selectBundleEntries(prepared.collections.collections, locale, {
       runtime: prepared.settings.runtime,
       transformICUToTransloco: prepared.settings.transformICUToTransloco,
       cache,
+      reportedRuntimeWarnings,
     });
   const locales = prepared.locales.map((locale, index) => {
     progress?.onLocale?.(locale, index + 1);

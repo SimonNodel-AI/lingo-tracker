@@ -337,7 +337,7 @@ describe('Translation Run', () => {
       missing: { source: 'Missing' },
       old: { source: 'Old', translations: { fr: 'Vieux' } },
     });
-    const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' });
     folder.setBase('old', 'Older');
     folder.save();
     const provider = new InMemoryTranslationProvider();
@@ -629,7 +629,7 @@ describe('Translation Run', () => {
       const target = collection();
       seedResources(target, { ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' });
         folder.setTranslation('ok', 'fr', 'Humain', 'translated');
         folder.save();
         return 'Machine';
@@ -665,7 +665,7 @@ describe('Translation Run', () => {
       const target = collection();
       seedResources(target, { ok: { source: 'OK', translations: { fr: { value: 'OK', status: 'new' } } } });
       const provider = new InMemoryTranslationProvider(() => {
-        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' });
         folder.setStatus('ok', 'fr', 'verified');
         folder.save();
         return 'Machine';
@@ -681,11 +681,14 @@ describe('Translation Run', () => {
     it('skips an old translation when the base value changes during the provider call', async () => {
       const target = collection();
       seedResources(target, { ok: { source: 'Old', translations: { fr: 'Old' } } });
-      const initialFolder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+      const initialFolder = openUnreportedResourceFolder(dir(), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      });
       initialFolder.setBase('ok', 'Older');
       initialFolder.save();
       const provider = new InMemoryTranslationProvider(({ text }) => {
-        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' });
         folder.setBase('ok', 'New');
         folder.save();
         return `[fr] ${text}`;
@@ -728,7 +731,7 @@ describe('Translation Run', () => {
     it('skips a resource whose entry was removed from disk while it was being translated', async () => {
       seedResources(collection(), { ok: { source: 'OK' } });
       const provider = new InMemoryTranslationProvider(({ text }) => {
-        const folder = openUnreportedResourceFolder(dir(), { baseLocale: 'en' });
+        const folder = openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' });
         folder.remove('ok');
         folder.save();
         return text;

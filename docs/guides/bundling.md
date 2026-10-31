@@ -281,7 +281,7 @@ Precedence is the `--no-transform-icu-to-transloco` flag, then the bundle settin
 
 The global `runtime` setting picks which conversion runs. The default, `transloco-messageformat`, is described above. With `"runtime": "transloco"` (plain `@jsverse/transloco`), a single `{` or `'` is literal text, so bundling also unquotes stored ICU: `'{'name'}'` becomes `{name}` and `It''s` becomes `It's`. Simple arguments, including dotted ones such as `{user.name}`, still become `{{ name }}`.
 
-Plain Transloco cannot render `plural`, `select`, `selectordinal`, `number`, `date` or `time`. Such a value is still written, in messageformat form, and the bundle warns `Key '<key>': uses ICU <kinds>, which the transloco runtime cannot render`. The exit code is unchanged; `validate` fails these values unless you pass `--skip-runtime`.
+Plain Transloco cannot render `plural`, `select`, `selectordinal`, `number`, `date`, `time` or `duration`. Such a value is converted entirely as under `transloco-messageformat`, so its literal braces and apostrophes stay ICU-quoted. The bundle warns once per bundled key and set of constructs per run, not once per locale: `Key '<key>': uses ICU <kinds>, which the transloco runtime cannot render`. `<key>` includes any `bundledKeyPrefix`; a key whose locales use different constructs warns once for each set. Under `transloco` the quoted-`{{` warning does not apply. The exit code is unchanged; `validate` fails these values unless you pass `--skip-runtime`.
 
 With `transformICUToTransloco: false`, bundles hold stored ICU and `runtime` has no effect, so quoted literals keep their quotes. Under `runtime: "transloco"` this combination warns once per bundle.
 

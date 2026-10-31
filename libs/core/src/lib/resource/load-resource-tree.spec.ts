@@ -141,6 +141,7 @@ describe('loadResourceTree (real fs)', () => {
   describe('depth=0 (current folder only)', () => {
     it('should load root folder resources with children marked unloaded', () => {
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: '',
@@ -170,6 +171,7 @@ describe('loadResourceTree (real fs)', () => {
   describe('depth=2 (recursive loading)', () => {
     it('should recursively load folders up to depth 2', () => {
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: '',
@@ -219,6 +221,7 @@ describe('loadResourceTree (real fs)', () => {
   describe('nested path loading', () => {
     it('should load from nested folder path', () => {
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: 'apps.common',
@@ -274,6 +277,7 @@ describe('loadResourceTree (real fs)', () => {
         .map((entry) => entry.name);
 
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: 'apps.common',
@@ -293,6 +297,7 @@ describe('loadResourceTree (real fs)', () => {
     it('should throw error for non-existent folder', () => {
       expect(() =>
         loadResourceTree({
+          runtime: 'transloco-messageformat',
           translationsFolder,
           baseLocale: 'en',
           path: 'nonexistent.folder',
@@ -305,6 +310,7 @@ describe('loadResourceTree (real fs)', () => {
     it('should handle folders with no resource files', () => {
       // Use the apps folder which has no resource files at the root level
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: 'apps',
@@ -320,6 +326,7 @@ describe('loadResourceTree (real fs)', () => {
   describe('metadata extraction', () => {
     it('should extract metadata for all locales', () => {
       const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
         translationsFolder,
         baseLocale: 'en',
         path: '',
@@ -347,7 +354,13 @@ describe('loadResourceTree (real fs)', () => {
     it('includes an entry without metadata, with empty metadata', () => {
       writeFolderFiles(translationsFolder, 'loose', { entries: { orphan: { source: 'Orphan' } } });
 
-      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'loose', depth: 0 });
+      const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
+        translationsFolder,
+        baseLocale: 'en',
+        path: 'loose',
+        depth: 0,
+      });
 
       expect(result.resources).toEqual([{ key: 'orphan', source: 'Orphan', translations: {}, metadata: {} }]);
     });
@@ -356,7 +369,14 @@ describe('loadResourceTree (real fs)', () => {
       const onProblem = vi.fn();
       writeFolderFiles(translationsFolder, 'apps.broken', { entries: '{ nope' });
 
-      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'apps', depth: 1, onProblem });
+      const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
+        translationsFolder,
+        baseLocale: 'en',
+        path: 'apps',
+        depth: 1,
+        onProblem,
+      });
 
       const broken = result.children.find((child) => child.name === 'broken');
       expect(broken?.loaded).toBe(true);
@@ -373,7 +393,13 @@ describe('loadResourceTree (real fs)', () => {
     it('reports a symlinked ancestor without loading resources through it', () => {
       symlinkSync(join(translationsFolder, 'apps'), join(translationsFolder, 'linked'));
       const onProblem = vi.fn();
-      const result = loadResourceTree({ translationsFolder, baseLocale: 'en', path: 'linked.common', onProblem });
+      const result = loadResourceTree({
+        runtime: 'transloco-messageformat',
+        translationsFolder,
+        baseLocale: 'en',
+        path: 'linked.common',
+        onProblem,
+      });
       expect(result.folderPathSegments).toEqual(['linked', 'common']);
       expect(result.resources).toEqual([]);
       expect(result.children).toEqual([]);
@@ -385,11 +411,19 @@ describe('loadResourceTree (real fs)', () => {
       const file = join(tempDir(), 'file');
       writeFileSync(file, 'not a folder');
 
-      expect(() => loadResourceTree({ translationsFolder: file, baseLocale: 'en' })).toThrow('Not a folder');
+      expect(() =>
+        loadResourceTree({ runtime: 'transloco-messageformat', translationsFolder: file, baseLocale: 'en' }),
+      ).toThrow('Not a folder');
     });
 
     it('treats a missing translations folder as an empty tree', () => {
-      expect(loadResourceTree({ translationsFolder: join(tempDir(), 'missing'), baseLocale: 'en' })).toEqual({
+      expect(
+        loadResourceTree({
+          runtime: 'transloco-messageformat',
+          translationsFolder: join(tempDir(), 'missing'),
+          baseLocale: 'en',
+        }),
+      ).toEqual({
         folderPathSegments: [],
         resources: [],
         children: [],

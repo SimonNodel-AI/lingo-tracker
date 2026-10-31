@@ -1,9 +1,21 @@
 import type { AppRuntime } from './app-runtime';
-import { type IcuFormat, icuQuotedRuns, parseIcuMessage, type SubMessageKeyword, visitIcuNodes } from './icu-message';
+import {
+  type IcuFormat,
+  type IcuParseOptions,
+  icuQuotedRuns,
+  parseIcuMessage,
+  type SubMessageKeyword,
+  visitIcuNodes,
+} from './icu-message';
 import { icuToTransloco } from './icu-to-transloco';
 import { translocoToICU } from './transloco-to-icu';
 
 export type IcuConstructKind = SubMessageKeyword | IcuFormat;
+
+/** The stored-value grammar for a resolved app runtime. */
+export function icuParseOptionsFor(runtime: AppRuntime): IcuParseOptions {
+  return { simpleArgumentPaths: runtime === 'transloco' };
+}
 
 /** Converts app-runtime syntax to the ICU syntax used in storage. Never throws. */
 export function toStoredIcu(value: string, runtime: AppRuntime): string {
@@ -38,16 +50,17 @@ function quoteLiteral(value: string, start: number, end: number): string {
 /** Converts stored ICU to the configured runtime, preserving malformed input. */
 export function toRuntimeValue(value: string, runtime: AppRuntime): string {
   if (runtime === 'transloco-messageformat') return icuToTransloco(value);
-  const message = parseIcuMessage(value, { simpleArgumentPaths: true });
+  const message = parseIcuMessage(value, icuParseOptionsFor(runtime));
   if (!message.ok) return value;
+  // Unsupported constructs retain today's messageformat representation for the whole
+  // value, including the extra braces around placeholder-only branch bodies.
+  if (unrenderableIcuConstructs(value, runtime).length > 0) return icuToTransloco(value, icuParseOptionsFor(runtime));
 
   return message.nodes
     .map((node) => {
       const text = value.slice(node.range.start, node.range.end);
       if (node.kind === 'literal') return unquoteLiteral(text);
       if (node.kind === 'argument' && node.format === undefined) return `{{ ${node.name} }}`;
-      // Unsupported constructs retain today's messageformat representation, including
-      // the extra braces around placeholder-only branch bodies.
       return icuToTransloco(text);
     })
     .join('');
@@ -67,7 +80,7 @@ function unquoteLiteral(text: string): string {
 /** Unsupported ICU constructs, deduplicated in source order; malformed input is checked elsewhere. */
 export function unrenderableIcuConstructs(value: string, runtime: AppRuntime): readonly IcuConstructKind[] {
   if (runtime === 'transloco-messageformat') return [];
-  const message = parseIcuMessage(value, { simpleArgumentPaths: true });
+  const message = parseIcuMessage(value, icuParseOptionsFor(runtime));
   if (!message.ok) return [];
   const kinds = new Set<IcuConstructKind>();
   visitIcuNodes(message.nodes, (node) => {

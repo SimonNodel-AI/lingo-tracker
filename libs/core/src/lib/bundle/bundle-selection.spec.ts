@@ -266,6 +266,21 @@ describe('Bundle Selection (real fs)', () => {
         expect(unconverted.warnings).toEqual([]);
       });
 
+      it('names the bundled key in the runtime warning, so prefixed collections warn separately', () => {
+        const first = seeded('first', { count: { source: '{n, plural, other {# items}}' } });
+        const second = seeded('second', { count: { source: '{n, plural, other {# items}}' } });
+        const reportedRuntimeWarnings = new Set<string>();
+        const selection = selectBundleEntries(
+          [bundled(first, { bundledKeyPrefix: 'a' }), bundled(second, { bundledKeyPrefix: 'b' })],
+          'en',
+          { ...transform, runtime: 'transloco', reportedRuntimeWarnings },
+        );
+        expect(selection.warnings.map((warning) => warning.slice(0, warning.indexOf(':')))).toEqual([
+          "Key 'a.count'",
+          "Key 'b.count'",
+        ]);
+      });
+
       it('reports deduplicated ICU kinds in source order in one runtime warning per value', () => {
         const common = seeded('common', {
           mixed: { source: '{d, date} {n, number} {g, select, other {{n, number} items}}' },
@@ -276,7 +291,7 @@ describe('Bundle Selection (real fs)', () => {
         ]);
       });
 
-      it('keeps the three existing conversion warnings under transloco', () => {
+      it('keeps malformed and unbundlable warnings under transloco', () => {
         const common = seeded('common', {
           malformed: { source: 'Hello {name' },
           quoted: { source: "'{{ name }}'" },
@@ -284,12 +299,23 @@ describe('Bundle Selection (real fs)', () => {
         });
         const selection = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
         expect(selection.warnings).toContain("Key 'malformed': value has malformed ICU syntax and was included as-is");
-        expect(selection.warnings).toContain(
+        expect(selection.warnings).not.toContain(
           "Key 'quoted': quoted literal '{{' or '}}' will be consumed by Transloco interpolation",
         );
         expect(selection.warnings).toContainEqual(
           expect.stringContaining("Key 'branch': a branch body cannot be carried"),
         );
+      });
+
+      it('warns about quoted interpolation delimiters only under MessageFormat', () => {
+        const common = seeded('common', { literal: { source: "'{{' user-name '}}'" } });
+        const plain = selectBundleEntries([bundled(common)], 'en', { ...transform, runtime: 'transloco' });
+        const messageformat = selectBundleEntries([bundled(common)], 'en', transform);
+        expect(selectionValues(plain)).toEqual({ literal: '{{ user-name }}' });
+        expect(plain.warnings).toEqual([]);
+        expect(messageformat.warnings).toEqual([
+          "Key 'literal': quoted literal '{{' or '}}' will be consumed by Transloco interpolation",
+        ]);
       });
 
       it('converts values when asked, and leaves them as stored otherwise', () => {

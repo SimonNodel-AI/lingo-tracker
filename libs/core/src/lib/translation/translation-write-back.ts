@@ -57,7 +57,7 @@ function isStale(current: ResourceFolderEntry | undefined, locale: string, snaps
  * already sent reindex through Resource Folder.
  */
 export function writeBackTranslations(
-  collection: Pick<Collection, 'baseLocale' | 'translationsFolder' | 'onMutation'>,
+  collection: Pick<Collection, 'baseLocale' | 'translationsFolder' | 'onMutation' | 'runtime'>,
   folderPath: string,
   pending: readonly PendingTranslation[],
 ): TranslationWriteBack {

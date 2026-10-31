@@ -43,6 +43,7 @@ describe('ResourceTreeIndex stored mutation patches (moved from the API)', () =>
   function writeEntry(collectionName: string, key: string, value: string): void {
     const segments = key.split('.');
     const folder = openUnreportedResourceFolder(path.join(root, collectionName, ...segments.slice(0, -1)), {
+      runtime: 'transloco-messageformat',
       baseLocale: 'en',
     });
     folder.setBase(segments[segments.length - 1], value);

@@ -1,6 +1,7 @@
 import {
   type AppRuntime,
   admitValue,
+  icuParseOptionsFor,
   isUntranslatedCopy,
   needsTranslation,
   normalizeTags,
@@ -223,12 +224,7 @@ function openEntryAt(collection: Collection, paths: ResolvedResourcePaths): Loca
 }
 
 function assertConversionSafe(locale: string, value: string, runtime: AppRuntime): void {
-  const admission = admitValue(
-    undefined,
-    value,
-    { name: 'stored-entry' },
-    { simpleArgumentPaths: runtime === 'transloco' },
-  );
+  const admission = admitValue(undefined, value, { name: 'stored-entry' }, icuParseOptionsFor(runtime));
   if (admission.admitted === false) {
     throw new BracedPlaceholderError(
       locale,

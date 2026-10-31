@@ -5,6 +5,7 @@ import {
   applyPreferredTerm,
   DEFAULT_APP_RUNTIME,
   findPreferredTermFindings,
+  type IcuConstructKind,
   type PreferredTermRule,
   unrenderableIcuConstructs,
 } from '@simoncodes-ca/domain';
@@ -34,9 +35,12 @@ export class EditorAdvisories {
   });
 
   /** ICU constructs plain Transloco cannot render; always empty under the default runtime. */
-  readonly unrenderableConstructs = computed(() =>
-    unrenderableIcuConstructs(this.#checkedValue(), this.config()?.runtime ?? DEFAULT_APP_RUNTIME),
-  );
+  readonly unrenderableConstructs = computed(() => this.unrenderableConstructsOf(this.#checkedValue()));
+
+  /** The same check for any other value, such as a locale's translation. Reads the config signal. */
+  unrenderableConstructsOf(value: string): readonly IcuConstructKind[] {
+    return unrenderableIcuConstructs(value, this.config()?.runtime ?? DEFAULT_APP_RUNTIME);
+  }
 
   readonly exactMatch = computed(() => exactSimilarMatch(this.baseValueText(), this.similarResources()));
 

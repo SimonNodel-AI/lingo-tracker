@@ -49,7 +49,10 @@ describe('importResources', () => {
     folderKey: string,
     entries: Record<string, { source: string; es?: string; esStatus?: 'translated' | 'verified' }>,
   ): void => {
-    const folder = openUnreportedResourceFolder(folderOf(folderKey), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(folderOf(folderKey), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    });
     for (const [key, { source, es, esStatus }] of Object.entries(entries)) {
       folder.setBase(key, source);
       if (es !== undefined) folder.setTranslation(key, 'es', es, esStatus ?? 'translated');
@@ -58,7 +61,9 @@ describe('importResources', () => {
   };
 
   const stored = (folderKey: string, key: string) =>
-    openUnreportedResourceFolder(folderOf(folderKey), { baseLocale: 'en' }).get(key);
+    openUnreportedResourceFolder(folderOf(folderKey), { runtime: 'transloco-messageformat', baseLocale: 'en' }).get(
+      key,
+    );
 
   it('tracks affected files without writing in a dry run', () => {
     seed('common', { ok: { source: 'OK', es: 'Bien' } });

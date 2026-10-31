@@ -186,12 +186,17 @@ describe('Collection folder safety (real fs)', () => {
 
   it('guards a direct Resource Folder open with a collection boundary', async () => {
     await refuses(() =>
-      openUnreportedResourceFolder(join(root(), 'link/b'), { baseLocale: 'en', translationsFolder: root() }),
+      openUnreportedResourceFolder(join(root(), 'link/b'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+        translationsFolder: root(),
+      }),
     );
   });
 
   it('rechecks the boundary before saving a folder replaced by a link', async () => {
     const folder = openUnreportedResourceFolder(join(root(), 'empty'), {
+      runtime: 'transloco-messageformat',
       baseLocale: 'en',
       translationsFolder: root(),
     });

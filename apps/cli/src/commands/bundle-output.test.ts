@@ -17,7 +17,7 @@ describe('bundle type output with a real command project', () => {
       exportFolder: 'export',
       importFolder: 'import',
       baseLocale: 'en',
-      locales: ['en'],
+      locales: ['en', 'fr', 'es'],
       runtime: 'transloco',
       collections: { main: { translationsFolder: 'resources' } },
       bundles: { main: { bundleName: '{locale}', dist: 'out', collections: 'All' } },
@@ -31,7 +31,9 @@ describe('bundle type output with a real command project', () => {
       expect(result.exitCode).toBe(0);
       expect(result.stderr).toBe(`⚠️  Warnings: 1\n${verbose ? `  - ${warning}\n` : ''}`);
       expect(result.stdout).not.toContain(warning);
-      expect(project.json('out/en.json')).toEqual({ count: plural });
+      for (const locale of ['en', 'fr', 'es']) {
+        expect(project.json(`out/${locale}.json`)).toEqual({ count: plural });
+      }
     }
   });
 

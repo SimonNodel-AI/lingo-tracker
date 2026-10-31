@@ -136,6 +136,7 @@ export {
 } from './lib/resource-summary';
 export {
   type IcuConstructKind,
+  icuParseOptionsFor,
   toRuntimeValue,
   toStoredIcu,
   unrenderableIcuConstructs,

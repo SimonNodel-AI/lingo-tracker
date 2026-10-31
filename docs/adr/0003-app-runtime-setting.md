@@ -38,7 +38,7 @@ Both boundaries read the same setting, so import and bundle cannot disagree.
 A missing field means `transloco-messageformat`, so existing projects behave exactly as before.
 
 Under `transloco`, import stores every literal `{`, `}` and `'` as ICU-quoted text, and bundle unquotes them.
-Values whose ICU constructs plain Transloco cannot render (`plural`, `select`, `selectordinal`, `number`, `date`, `time`) are still bundled, in today's messageformat form, with a generation warning.
+Values whose ICU constructs plain Transloco cannot render (`plural`, `select`, `selectordinal`, `number`, `date`, `time`, `duration`) are still bundled, in today's messageformat form, with a generation warning.
 Authoring paths (CLI `add-resource`/`edit-resource`, the Tracker editor, machine translation, `normalize`) keep writing ICU.
 Their stored-value checks accept dotted simple arguments under `transloco`.
 
@@ -154,7 +154,8 @@ It converts `baseValue` as well as `value`; today only `value` is converted, whi
 `runtime` comes from `session.collection.runtime`.
 XLIFF with `--strategy migration` follows the same rule, since the policy row, not `detectImportFormat`, decides.
 
-Order within `importResources` is unchanged: `resolveImportReferences`, `rejectUnsafeStoredValues`, normalization, `repairImportPlaceholders`, validation, `warnAboutRoundTripLoss`, `applyResourceGroups`.
+Under `transloco`, migration imports check unsafe stored values after conversion, so `Use {{{ name }}}` imports.
+Order within `importResources` is otherwise unchanged: `resolveImportReferences`, `rejectUnsafeStoredValues`, normalization, `repairImportPlaceholders`, validation, `warnAboutRoundTripLoss`, `applyResourceGroups`.
 Reference resolution (`libs/domain/src/lib/reference-resolver.ts`) runs before normalization and matches `{{t('key')}}` and `{{key}}` by regex; single braces never match, so plain-Transloco literals do not interact with it.
 The ICU auto-fixer (`libs/domain/src/lib/icu-auto-fixer.ts`, `extractICUPlaceholders`) runs after normalization on quote-aware parses, so quoted literals are not placeholders to repair.
 `admitValue` with the `import` policy (`libs/domain/src/lib/value-admission.ts`) compares arguments with `compareIcuArguments`, which is quote-aware, so `'{'first'}'` on both sides agrees.
@@ -169,9 +170,12 @@ That contract stays: the parsers do not receive `runtime`, and this spec owns ev
 `toTransloco` in `libs/core/src/lib/bundle/bundle-selection.ts` becomes runtime-aware through `SelectBundleEntriesOptions.runtime`, supplied from `prepared.settings.runtime` by `selectPreparedContent`.
 It calls `toRuntimeValue(resource.value, runtime)` instead of `icuToTransloco`.
 Its three existing warnings stay for every runtime.
-Under `transloco` it adds, per value with a non-empty `unrenderableIcuConstructs` result, one generation warning:
+Under `transloco` it adds, per key with a non-empty `unrenderableIcuConstructs` result, one generation warning per bundled key (including `bundledKeyPrefix`) and set of construct kinds per bundle run, rather than per locale:
 `Key '<key>': uses ICU <kinds>, which the transloco runtime cannot render; the bundled value is written in messageformat form. Set runtime to transloco-messageformat or rewrite the value without ICU constructs.`
 
+A value with an unrenderable construct is bundled entirely through the messageformat conversion, so its literals stay ICU-quoted.
+That conversion parses with `icuParseOptionsFor(runtime)`, so a top-level dotted argument still becomes `{{ user.name }}`.
+Under `transloco` the quoted-`{{` warning is skipped, because quoted braces are the stored form of literal text.
 The value is written, not skipped, so the key exists and the app shows the raw ICU rather than a missing-key fallback.
 Warnings do not change the exit code; `generate-bundles.ts` fails a bundle only on a thrown error or a failed type outcome, and this spec keeps that.
 `validate` is the strict gate (next section).
@@ -186,7 +190,7 @@ The debug-keys bundle and `transformICUToTransloco: false` skip conversion as th
 
 | Path | Runtime awareness | Why |
 |---|---|---|
-| Tracker editor (`apps/tracker/src/app/browser/dialogs/translation-editor/`) | Dotted arguments and advisory | Users author ICU in LingoTracker; the editor's ICU hint (`ICUHINTX`) documents it. Under `transloco`, `EditorAdvisories` (`editor-advisories.ts`) adds a non-blocking advisory from `unrenderableIcuConstructs(value, store.config()?.runtime ?? DEFAULT_APP_RUNTIME)`, and the hint text gains one sentence on `'{'` quoting. The existing `bracedPlaceholderValidator` passes the runtime to stored-value checks for dotted simple arguments. |
+| Tracker editor (`apps/tracker/src/app/browser/dialogs/translation-editor/`) | Dotted arguments and advisory | Users author ICU in LingoTracker; the editor's ICU hint (`ICUHINTX`) documents it. Under `transloco`, `EditorAdvisories` (`editor-advisories.ts`) adds a non-blocking advisory from `unrenderableIcuConstructs(value, store.config()?.runtime ?? DEFAULT_APP_RUNTIME)`, for the base value and beside each editable locale textarea, announced as a polite status and linked through `aria-describedby`, and the hint text gains one sentence on `'{'` quoting. The existing `bracedPlaceholderValidator` passes the runtime to stored-value checks for dotted simple arguments. |
 | CLI/API `add-resource`, `edit-resource` (`libs/core/src/lib/resource/resource-entry.ts`) | Dotted arguments only | Admission accepts dotted simple arguments under `transloco`. Inputs are ICU; `translocoToICU` on `{{ x }}` stays a convenience for every runtime. Adding runtime conversion here would make `{first}` mean different things in the editor and the import file, with no way to tell which the user meant. |
 | `validate` (`libs/core/src/lib/validate/`) | Yes, fails | The ICU compile check accepts dotted simple arguments under `transloco`, while retaining locale checks. New check `validateRuntimeRenderability` in `validate-resources.ts`: under `transloco`, a value with non-empty `unrenderableIcuConstructs` is a failure of kind `runtime-unrenderable`, per locale, listed with the ICU failures. `--skip-runtime` disables it, mirroring `--skip-icu`. Under `transloco-messageformat` the check is a no-op. Exit code follows `exitForRunOutcome`, so CI fails. |
 | Machine translation (`libs/core/src/lib/machine-translation/`) | Dotted arguments and quoted-run protection | Classification and admission accept dotted simple arguments under `transloco`. `classifyICUContent` (`libs/domain/src/lib/icu-classifier.ts`) is quote-aware and classifies `'{'first'}'` as `plain`, so the whole value goes to the provider raw. The provider may turn `'` into `’` or drop it, which `admitValue` cannot detect because `compareIcuArguments` returns `null` on the then-unparsable value. Fix in `placeholder-protector.ts`: `protectPlaceholders` also wraps every `icuQuotedRuns` span as a `notranslate` marker, and `prepare` in `translator.ts` sends a value through the protector whenever it has a placeholder or a quoted run. This is storage-level and applies to every runtime, so it is not keyed on the setting. |
@@ -213,7 +217,8 @@ Interactive mode adds a `select` prompt after `locales` and before `setupBundle`
 Non-interactive mode uses `--runtime <value>` when supplied, else the detected value, else the default, and prints `Detected runtime: transloco (from package.json)` through `ConsoleFormatter.info` when detection decided.
 `--runtime` is validated against `APP_RUNTIMES` by the flag record; an invalid value exits 1 with the allowed list.
 `initProject` writes `runtime` only when it differs from the default or was supplied explicitly, so a messageformat project's file does not gain a line it does not need.
-A detected or supplied `transloco-messageformat` with an explicit `--runtime` is written, so a later reader cannot mistake it for an unset field.
+The field is written only when `--runtime` is passed explicitly or the resolved value is `transloco`.
+A detected or interactively selected `transloco-messageformat` is not written.
 
 Existing configs need no migration.
 A missing field is `transloco-messageformat`, which is today's behaviour.
@@ -245,7 +250,7 @@ What counts as lossy per runtime:
 | Runtime | Lossy at import | Reported at bundle |
 |---|---|---|
 | `transloco-messageformat` | Round trip differs (literal braces, i18next formatters and `$t()`, `{{ '{' }}`) | Malformed ICU, quoted `{{`, unbundlable branch body (today's three) |
-| `transloco` | Nothing (lossless pair) | Today's three plus `unrenderableIcuConstructs` |
+| `transloco` | Nothing (lossless pair) | Malformed ICU and unbundlable branch body (quoted `{{` is skipped), plus `unrenderableIcuConstructs` |
 
 #156's grouped `Unresolved parameters kept as placeholders` line comes from reference resolution, which runs before conversion and is runtime-independent; it needs no change.
 

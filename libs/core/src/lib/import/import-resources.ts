@@ -2,6 +2,7 @@ import {
   bundledFormIfLost,
   checkStoredValue,
   describeStoredValueFinding,
+  icuParseOptionsFor,
   importStrategyPolicy,
   resolveAllReferences,
 } from '@simoncodes-ca/domain';
@@ -23,7 +24,7 @@ import type { ImportedResource, ImportResult, ImportRunOptions, ParsedImport } f
  * source. The run:
  * 1. Applies the strategy defaults, and refuses a base-locale import unless the strategy is `migration`.
  * 2. Resolves Transloco references (`{{t('key')}}`, `{{key}}`) between the resources (`migration` only).
- * 3. Rejects unsafe values and base values through Stored Value Check before conversion.
+ * 3. Rejects unsafe values and base values through Stored Value Check (after conversion for plain Transloco runtime input).
  * 4. Normalizes values and base values to stored ICU for the strategy and runtime.
  * 5. Repairs placeholders that differ from the stored base value (ICU auto-fix).
  * 6. Drops invalid resources: bad keys, hierarchical conflicts, empty values. Duplicate keys warn.
@@ -59,15 +60,18 @@ export function importResources(
   }
 
   const referenced = resolveImportReferences(session, resources);
-  const safe = rejectUnsafeStoredValues(session, referenced);
-  // Before any ICU parsing or auto-fixing, so later steps see one placeholder syntax.
-  const normalized = normalizeImportedValues(safe, {
+  const syntax = {
     runtime: session.collection.runtime,
     valueSyntax: importStrategyPolicy(session.options.strategy).valueSyntax,
-  });
-  const repaired = repairImportPlaceholders(session, normalized);
+  };
+  const checkAfterConversion = syntax.valueSyntax === 'runtime' && syntax.runtime === 'transloco';
+  const sources = checkAfterConversion ? referenced : rejectUnsafeStoredValues(session, referenced);
+  // Plain Transloco braces are literal until normalization makes them stored ICU.
+  const normalized = normalizeImportedValues(sources, syntax);
+  const safe = checkAfterConversion ? rejectUnsafeStoredValues(session, normalized) : normalized;
+  const repaired = repairImportPlaceholders(session, safe);
   const valid = validateResources(session, repaired);
-  warnAboutRoundTripLoss(session, safe, valid);
+  warnAboutRoundTripLoss(session, sources, valid);
   applyResourceGroups(session, valid);
 
   const result = sessionResult(session);
@@ -88,12 +92,12 @@ function resolveImportReferences(session: ImportSession, resources: readonly Imp
 function rejectUnsafeStoredValues(session: ImportSession, resources: ImportedResource[]): ImportedResource[] {
   return resources.filter((resource) => {
     const descriptions = [
-      ...checkStoredValue(resource.value, { simpleArgumentPaths: session.collection.runtime === 'transloco' }).map(
+      ...checkStoredValue(resource.value, icuParseOptionsFor(session.collection.runtime)).map(
         (found) => `Value: ${describeStoredValueFinding(found)}`,
       ),
       ...(resource.baseValue === undefined
         ? []
-        : checkStoredValue(resource.baseValue, { simpleArgumentPaths: session.collection.runtime === 'transloco' }).map(
+        : checkStoredValue(resource.baseValue, icuParseOptionsFor(session.collection.runtime)).map(
             (found) => `Base value: ${describeStoredValueFinding(found)}`,
           )),
     ];
@@ -115,7 +119,7 @@ function repairImportPlaceholders(session: ImportSession, resources: ImportedRes
   const baseValues = loadBaseLocaleValues(resources, session.collection);
   const autoFix = applyICUAutoFixToResources({
     resources,
-    simpleArgumentPaths: session.collection.runtime === 'transloco',
+    ...icuParseOptionsFor(session.collection.runtime),
     getBaseValue: (key) => baseValues.get(key),
     verbose,
     onProgress: verbose ? onProgress : undefined,

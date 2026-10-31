@@ -139,6 +139,7 @@ describe('domain public surface', () => {
       'hasTypeDistConfigured',
       'hasUnbundlableBranchBody',
       'honouredImportSourceStatus',
+      'icuParseOptionsFor',
       'icuQuotedRuns',
       'importStrategyPolicy',
       'importableLocales',

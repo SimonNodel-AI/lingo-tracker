@@ -21,8 +21,14 @@ describe('locale files', () => {
     const onSave = vi.fn();
     expect(seedLocaleFiles(openLocaleFolders(collection), 'fr', onSave)).toEqual({ entries: 2, filesUpdated: 1 });
     expect(onSave).toHaveBeenCalledTimes(1);
-    expect(openUnreportedResourceFolder(dir(), { baseLocale: 'en' }).treeEntry('ok')?.translations['fr']).toBe('Oui');
-    const nested = openUnreportedResourceFolder(join(dir(), 'nested'), { baseLocale: 'en' });
+    expect(
+      openUnreportedResourceFolder(dir(), { runtime: 'transloco-messageformat', baseLocale: 'en' }).treeEntry('ok')
+        ?.translations['fr'],
+    ).toBe('Oui');
+    const nested = openUnreportedResourceFolder(join(dir(), 'nested'), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    });
     expect(nested.treeEntry('save')?.translations['fr']).toBe('Save');
     expect(nested.treeEntry('save')?.metadata['fr']?.status).toBe('new');
     expect(seedLocaleFiles(openLocaleFolders(collection), 'fr', onSave)).toEqual({ entries: 0, filesUpdated: 0 });
@@ -37,7 +43,10 @@ describe('locale files', () => {
     });
     const onSave = vi.fn();
     expect(dropLocaleFiles(openLocaleFolders(collection), 'fr', onSave)).toEqual({ entries: 1, filesUpdated: 1 });
-    const entry = openUnreportedResourceFolder(dir(), { baseLocale: 'en' }).treeEntry('ok');
+    const entry = openUnreportedResourceFolder(dir(), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    }).treeEntry('ok');
     expect(entry?.translations).toEqual({ es: 'Sí' });
     expect(entry?.metadata['fr']).toBeUndefined();
     expect(dropLocaleFiles(openLocaleFolders(collection), 'fr', onSave)).toEqual({ entries: 0, filesUpdated: 0 });

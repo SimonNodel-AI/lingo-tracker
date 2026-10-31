@@ -3,7 +3,13 @@ import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { parseIcuMessage } from './icu-message';
 import { icuToTransloco } from './icu-to-transloco';
-import { type IcuConstructKind, toRuntimeValue, toStoredIcu, unrenderableIcuConstructs } from './runtime-conversion';
+import {
+  type IcuConstructKind,
+  icuParseOptionsFor,
+  toRuntimeValue,
+  toStoredIcu,
+  unrenderableIcuConstructs,
+} from './runtime-conversion';
 import { translocoToICU } from './transloco-to-icu';
 
 const workedResults = [
@@ -78,11 +84,19 @@ describe('plain Transloco conversion', () => {
     expect(toRuntimeValue(stored, 'transloco')).toBe(source);
   });
 
-  it('keeps group and formatted output beside dotted arguments in messageformat form', () => {
+  it('keeps the whole value in messageformat form when complex constructs accompany dotted arguments', () => {
     const group = '{n, plural, one {{name}} other {# items}}';
-    expect(toRuntimeValue(`{user.name} has ${group} {n, number}`, 'transloco')).toBe(
-      `{{ user.name }} has ${icuToTransloco(group)} {n, number}`,
+    const value = `{user.name} has ${group} {n, number}`;
+    expect(toRuntimeValue(value, 'transloco')).toBe(
+      '{{ user.name }} has {n, plural, one {{{name}}} other {# items}} {n, number}',
     );
+    expect(toRuntimeValue('Hi {user.name}, {n, plural, one {# file} other {# files}}', 'transloco')).toBe(
+      'Hi {{ user.name }}, {n, plural, one {# file} other {# files}}',
+    );
+    const nested = '{n, plural, other {Hello {user.name}}}';
+    expect(toRuntimeValue(nested, 'transloco')).toBe(icuToTransloco(nested, icuParseOptionsFor('transloco')));
+    // Inside a branch, messageformat form keeps arguments as ICU.
+    expect(toRuntimeValue(nested, 'transloco')).toBe(nested);
   });
 
   it('still returns otherwise malformed input containing dotted arguments unchanged', () => {
@@ -110,9 +124,10 @@ describe('plain Transloco conversion', () => {
     }
   });
 
-  it('emits complex constructs in the existing messageformat form beside unquoted literals', () => {
+  it('emits the whole value in messageformat form when it contains complex constructs', () => {
     const constructs = '{g, select, chosen {{name}} other {{n, number}}} {n, plural, one {#} other {#}}';
-    expect(toRuntimeValue(`'{'x'}' ${constructs} ''`, 'transloco')).toBe(`{x} ${icuToTransloco(constructs)} '`);
+    const value = `'{'x'}' ${constructs} ''`;
+    expect(toRuntimeValue(value, 'transloco')).toBe(icuToTransloco(value));
     for (const format of ['number', 'date', 'time', 'duration']) {
       expect(toRuntimeValue(`{value, ${format}}`, 'transloco')).toBe(icuToTransloco(`{value, ${format}}`));
     }
@@ -177,4 +192,18 @@ describe('unrenderableIcuConstructs', () => {
       expect(unrenderableIcuConstructs(value, 'transloco-messageformat')).toEqual([]);
     });
   }
+});
+
+describe('runtime parse options and MessageFormat fallback', () => {
+  it('selects dotted simple-argument support only for plain Transloco', () => {
+    expect(parseIcuMessage('{user.name}', icuParseOptionsFor('transloco')).ok).toBe(true);
+    expect(parseIcuMessage('{user.name}', icuParseOptionsFor('transloco-messageformat')).ok).toBe(false);
+    expect(parseIcuMessage('{user.name, number}', icuParseOptionsFor('transloco')).ok).toBe(false);
+  });
+
+  it('preserves MessageFormat quoting for the whole value when a plural is present', () => {
+    const value = "It''s '{'x'}' {n, plural, other {#}}";
+    expect(toRuntimeValue(value, 'transloco')).toBe(icuToTransloco(value));
+    expect(toRuntimeValue(value, 'transloco')).toBe(value);
+  });
 });

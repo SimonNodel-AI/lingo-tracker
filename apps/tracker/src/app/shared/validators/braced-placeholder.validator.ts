@@ -1,5 +1,5 @@
 import type { AbstractControl, ValidationErrors } from '@angular/forms';
-import { type AppRuntime, checkStoredValue, DEFAULT_APP_RUNTIME } from '@simoncodes-ca/domain';
+import { type AppRuntime, checkStoredValue, DEFAULT_APP_RUNTIME, icuParseOptionsFor } from '@simoncodes-ca/domain';
 
 /**
  * Rejects a Transloco interpolation inside literal braces, `{{{name}}}`, which
@@ -18,7 +18,7 @@ export function bracedPlaceholderValidator(
   if (typeof value !== 'string' || value.length === 0) {
     return null;
   }
-  const first = checkStoredValue(value, { simpleArgumentPaths: runtime === 'transloco' }).find(
+  const first = checkStoredValue(value, icuParseOptionsFor(runtime)).find(
     (finding) => finding.kind === 'braced-placeholder',
   );
   return first ? { bracedPlaceholder: { name: first.name, position: first.range.start } } : null;

@@ -4,8 +4,8 @@ import {
   type AppRuntime,
   admitValue,
   applyBaseChange,
-  DEFAULT_APP_RUNTIME,
   type ImportStrategy,
+  icuParseOptionsFor,
   importStrategyPolicy,
   type LocaleMetadata,
   normalizeTags,
@@ -175,7 +175,7 @@ export interface ResourceFolderSaveResult {
 }
 
 export interface UnreportedResourceFolderOptions {
-  readonly runtime?: AppRuntime;
+  readonly runtime: AppRuntime;
   /** Collection root for guarded reads and saves; omit only for standalone folder fixtures. */
   readonly translationsFolder?: string;
   /** Base locale of the collection. Needed to find the base checksum in metadata. */
@@ -183,8 +183,7 @@ export interface UnreportedResourceFolderOptions {
 }
 
 function convertStored(value: string, runtime: AppRuntime): string {
-  return admitValue(undefined, value, { name: 'stored-entry' }, { simpleArgumentPaths: runtime === 'transloco' })
-    .admitted
+  return admitValue(undefined, value, { name: 'stored-entry' }, icuParseOptionsFor(runtime)).admitted
     ? translocoToICU(value)
     : value;
 }
@@ -205,9 +204,7 @@ export function translationLocales(entry: Readonly<ResourceEntry>): string[] {
  */
 export function openResourceFolder(
   folderPath: string,
-  collection: Pick<OpenedCollection, 'baseLocale' | 'translationsFolder' | 'onMutation'> & {
-    readonly runtime?: AppRuntime;
-  },
+  collection: Pick<OpenedCollection, 'baseLocale' | 'translationsFolder' | 'onMutation' | 'runtime'>,
 ): ResourceFolder {
   const onMutation = collection.onMutation;
   if (typeof onMutation !== 'function') {
@@ -217,9 +214,9 @@ export function openResourceFolder(
   return new FileResourceFolder(
     folderPath,
     collection.baseLocale,
+    collection.runtime,
     collection.translationsFolder,
     onMutation,
-    collection.runtime,
   );
 }
 
@@ -237,7 +234,7 @@ export function openUnreportedResourceFolder(
   options: UnreportedResourceFolderOptions,
 ): ResourceFolder {
   if (options.translationsFolder !== undefined) assertCollectionFolderPath(options.translationsFolder, folderPath);
-  return new FileResourceFolder(folderPath, options.baseLocale, options.translationsFolder, undefined, options.runtime);
+  return new FileResourceFolder(folderPath, options.baseLocale, options.runtime, options.translationsFolder);
 }
 
 /** Checks presence without reading either file, for operations that require existing storage. */
@@ -292,9 +289,9 @@ class FileResourceFolder implements ResourceFolder {
   constructor(
     readonly folderPath: string,
     private readonly baseLocale: string,
+    private readonly runtime: AppRuntime,
     private readonly translationsFolder?: string,
     private readonly onMutation?: MutationSink,
-    private readonly runtime: AppRuntime = DEFAULT_APP_RUNTIME,
   ) {
     this.entriesPath = join(folderPath, RESOURCE_ENTRIES_FILENAME);
     this.metaPath = join(folderPath, TRACKER_META_FILENAME);

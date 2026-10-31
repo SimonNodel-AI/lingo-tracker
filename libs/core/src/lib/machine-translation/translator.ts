@@ -21,7 +21,13 @@ import type { KnownProviderErrorCode } from '../errors/error-codes';
  * @module translator
  */
 
-import { type AppRuntime, admitValue, classifyICUContent, icuQuotedRuns } from '@simoncodes-ca/domain';
+import {
+  type AppRuntime,
+  admitValue,
+  classifyICUContent,
+  icuParseOptionsFor,
+  icuQuotedRuns,
+} from '@simoncodes-ca/domain';
 import type { TranslationConfig } from '../../config/translation-config';
 import type { Collection } from '../config/open-collection';
 import { readProjectTerms } from '../config/project-terms';
@@ -167,7 +173,7 @@ type PreparedEntry =
     };
 
 function prepare(entry: TranslatorEntry, runtime: AppRuntime): PreparedEntry {
-  const classification = classifyICUContent(entry.source, { simpleArgumentPaths: runtime === 'transloco' });
+  const classification = classifyICUContent(entry.source, icuParseOptionsFor(runtime));
   if (classification === 'complex-icu') {
     return { entry, kind: 'complex-icu' };
   }
@@ -222,7 +228,7 @@ async function translateForLocale(
         name: 'machine-translation',
         protectedTerms,
       },
-      { simpleArgumentPaths: runtime === 'transloco' },
+      icuParseOptionsFor(runtime),
     );
     if (admission.admitted === false) {
       skipped.push(

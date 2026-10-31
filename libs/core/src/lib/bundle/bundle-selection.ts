@@ -12,6 +12,7 @@ import {
   type EntrySelectionRule,
   hasQuotedInterpolationDelimiter,
   hasUnbundlableBranchBody,
+  icuParseOptionsFor,
   toRuntimeValue,
   unrenderableIcuConstructs,
   validateICUSyntax,
@@ -68,6 +69,8 @@ export interface SelectBundleEntriesOptions {
   readonly transformICUToTransloco: boolean;
   /** The run's read cache, so every locale of a run reads each collection once. */
   readonly cache?: CollectionReadCache;
+  /** Renderability warnings already reported by another locale in this bundle run. */
+  readonly reportedRuntimeWarnings?: Set<string>;
 }
 
 /**
@@ -123,7 +126,9 @@ export function selectBundleEntries(
       if (!isSelected(resource, definition.entriesSelectionRules)) continue;
 
       const finalKey = definition.bundledKeyPrefix ? `${definition.bundledKeyPrefix}.${resource.key}` : resource.key;
-      const value = options.transformICUToTransloco ? toTransloco(resource, options.runtime, warnings) : resource.value;
+      const value = options.transformICUToTransloco
+        ? toTransloco(resource, finalKey, options.runtime, warnings, options.reportedRuntimeWarnings)
+        : resource.value;
 
       if (entries.has(finalKey)) {
         conflicts.add(finalKey);
@@ -152,12 +157,18 @@ function matchesRule(resource: FlatResource, rule: EntrySelectionRule): boolean 
   );
 }
 
-function toTransloco(resource: FlatResource, runtime: AppRuntime, warnings: string[]): string {
-  const options = { simpleArgumentPaths: runtime === 'transloco' };
+function toTransloco(
+  resource: FlatResource,
+  finalKey: string,
+  runtime: AppRuntime,
+  warnings: string[],
+  reportedRuntimeWarnings?: Set<string>,
+): string {
+  const options = icuParseOptionsFor(runtime);
   if (resource.value.includes('{') && !validateICUSyntax(resource.value, options)) {
     warnings.push(`Key '${resource.key}': value has malformed ICU syntax and was included as-is`);
   }
-  if (hasQuotedInterpolationDelimiter(resource.value)) {
+  if (runtime === 'transloco-messageformat' && hasQuotedInterpolationDelimiter(resource.value)) {
     warnings.push(`Key '${resource.key}': quoted literal '{{' or '}}' will be consumed by Transloco interpolation`);
   }
   if (hasUnbundlableBranchBody(resource.value, options)) {
@@ -172,11 +183,12 @@ function toTransloco(resource: FlatResource, runtime: AppRuntime, warnings: stri
   }
   const kinds = unrenderableIcuConstructs(resource.value, runtime);
   if (kinds.length > 0) {
-    warnings.push(
-      `Key '${resource.key}': uses ICU ${kinds.join(', ')}, which the transloco runtime cannot render; ` +
-        'the bundled value is written in messageformat form. Set runtime to transloco-messageformat ' +
-        'or rewrite the value without ICU constructs.',
-    );
+    const warning =
+      `Key '${finalKey}': uses ICU ${kinds.join(', ')}, which the transloco runtime cannot render; ` +
+      'the bundled value is written in messageformat form. Set runtime to transloco-messageformat ' +
+      'or rewrite the value without ICU constructs.';
+    if (!reportedRuntimeWarnings?.has(warning)) warnings.push(warning);
+    reportedRuntimeWarnings?.add(warning);
   }
   return toRuntimeValue(resource.value, runtime);
 }

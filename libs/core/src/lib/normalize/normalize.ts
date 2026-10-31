@@ -1,4 +1,4 @@
-import { checkStoredValue, describeStoredValueFinding } from '@simoncodes-ca/domain';
+import { checkStoredValue, describeStoredValueFinding, icuParseOptionsFor } from '@simoncodes-ca/domain';
 import type { Collection } from '../config/open-collection';
 import { ReadOnlyCollectionError } from '../errors/lingo-tracker-error';
 import type { CollectionFolderProblem } from '../resource/collection-folders';
@@ -106,7 +106,7 @@ function normalizeFolder(
         const address = { key: fullKeyOf(folderPath, key), locale: prop === 'source' ? collection.baseLocale : prop };
         for (const found of checkStoredValue(value, {
           rules: ['collapsed-case-body', 'braced-placeholder'],
-          simpleArgumentPaths: collection.runtime === 'transloco',
+          ...icuParseOptionsFor(collection.runtime),
         })) {
           if (found.kind === 'collapsed-case-body' || found.kind === 'braced-placeholder') {
             findings.push({ ...address, kind: found.kind, detail: describeStoredValueFinding(found) });

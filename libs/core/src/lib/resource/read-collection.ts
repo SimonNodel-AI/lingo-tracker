@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { effectiveTags, joinFolderPath } from '@simoncodes-ca/domain';
+import { type AppRuntime, effectiveTags, joinFolderPath } from '@simoncodes-ca/domain';
 import { RESOURCE_ENTRIES_FILENAME } from '../../constants';
 import type { Collection } from '../config/open-collection';
 import { CoreOperationError } from '../errors/lingo-tracker-error';
@@ -32,7 +32,7 @@ import type { ResourceTreeEntry } from './resource-tree-types';
  */
 
 /** What the reader needs from a collection. A resolved `Collection` fits. */
-export type CollectionReadTarget = Pick<Collection, 'name' | 'translationsFolder' | 'baseLocale' | 'tags'>;
+export type CollectionReadTarget = Pick<Collection, 'name' | 'translationsFolder' | 'baseLocale' | 'tags' | 'runtime'>;
 
 /** One resource entry as stored, with its address in the collection. */
 export interface StoredResource {
@@ -125,6 +125,7 @@ export function* readCollectionFolders(
         collection.baseLocale,
         collectionTags,
         collection.translationsFolder,
+        collection.runtime,
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -146,9 +147,10 @@ function readFolder(
   baseLocale: string,
   collectionTags: string[],
   translationsFolder: string,
+  runtime: AppRuntime,
 ): StoredResource[] {
   // This reader never saves resource files.
-  const folder = openReadonlyResourceFolder(absolutePath, { baseLocale, translationsFolder });
+  const folder = openReadonlyResourceFolder(absolutePath, { baseLocale, translationsFolder, runtime });
   const resources: StoredResource[] = [];
 
   for (const entryKey of folder.keys()) {

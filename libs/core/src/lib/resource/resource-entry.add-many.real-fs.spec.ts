@@ -372,7 +372,10 @@ describe('addResources (real fs)', () => {
     let entriesAfterProvider: Buffer | undefined;
     let metaAfterProvider: Buffer | undefined;
     const provider = new InMemoryTranslationProvider(() => {
-      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), { baseLocale: 'en' });
+      const folder = openUnreportedResourceFolder(join(root, 'translations', 'common'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      });
       folder.setEntry('ok', { source: 'Concurrent' }, {});
       folder.setBase('ok', 'Concurrent');
       folder.save();

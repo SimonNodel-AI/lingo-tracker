@@ -31,8 +31,7 @@ import {
  */
 
 /** What the sweep needs from a collection. A resolved `Collection` fits. */
-export type CollectionSweepTarget = Pick<Collection, 'translationsFolder' | 'baseLocale'> &
-  Partial<Pick<Collection, 'runtime'>>;
+export type CollectionSweepTarget = Pick<Collection, 'translationsFolder' | 'baseLocale' | 'runtime'>;
 
 /** One folder of a sweep: opened, or a problem. */
 export type SweptFolder<Folder extends ReadonlyResourceFolder = ReadonlyResourceFolder> =

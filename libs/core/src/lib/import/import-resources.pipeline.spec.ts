@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { selectBundleEntries, selectionValues } from '../bundle/bundle-selection';
 import { type Collection, openCollection } from '../config/open-collection';
 import { calculateChecksum } from '../resource/checksum';
 // Standalone fixtures and readback retain unreported saves.
@@ -41,7 +42,10 @@ describe('importResources pipeline', () => {
     return path;
   };
   const folder = (key: string) =>
-    openUnreportedResourceFolder(join(collection.translationsFolder, ...key.split('.')), { baseLocale: 'en' });
+    openUnreportedResourceFolder(join(collection.translationsFolder, ...key.split('.')), {
+      runtime: collection.runtime,
+      baseLocale: 'en',
+    });
   const seed = (
     folderKey: string,
     entries: Record<string, { source: string; es?: string; status?: 'translated' | 'verified' }>,
@@ -106,6 +110,47 @@ describe('importResources pipeline', () => {
       }
     });
   }
+
+  for (const runtime of ['transloco', 'transloco-messageformat'] as const) {
+    it(`checks literal-braced migration input in the correct syntax for ${runtime}`, () => {
+      collection = { ...collection, runtime };
+      const value = 'Use {{{ name }}}';
+      const result = importResources(collection, [{ key: 'common.braced', value, baseValue: value }], {
+        locale: 'en',
+        strategy: 'migration',
+      });
+      if (runtime === 'transloco-messageformat') {
+        expect(result.resourcesFailed).toBe(1);
+        expect(result.resourcesCreated).toBe(0);
+        expect(result.errors).toContainEqual(expect.stringContaining('Braced placeholder'));
+        return;
+      }
+      expect(result.resourcesCreated).toBe(1);
+      expect(result.resourcesFailed).toBe(0);
+      expect(result.errors).toEqual([]);
+      expect(result.icuAutoFixErrors).toEqual([]);
+      expect(folder('common').get('braced')?.entry.source).toBe("Use '{'{name}'}'");
+      const selection = selectBundleEntries(
+        [{ collection, definition: { name: collection.name, entriesSelectionRules: 'All' } }],
+        'en',
+        { runtime, transformICUToTransloco: true },
+      );
+      expect(selectionValues(selection)).toEqual({ 'common.braced': value });
+      expect(selection.warnings).toEqual([]);
+      expect(result.warnings.some((warning) => warning.includes('round trip'))).toBe(false);
+    });
+  }
+
+  it('still rejects braced stored-syntax input under plain Transloco', () => {
+    collection = { ...collection, runtime: 'transloco' };
+    seed('common', { braced: { source: 'Use {name}' } });
+    const result = importResources(collection, [{ key: 'common.braced', value: 'Use {{{ name }}}' }], {
+      locale: 'es',
+      strategy: 'translation-service',
+    });
+    expect(result.resourcesFailed).toBe(1);
+    expect(result.errors).toContainEqual(expect.stringContaining('Braced placeholder'));
+  });
 
   it('imports dotted Transloco arguments without repair, mismatch or round-trip warnings', () => {
     collection = { ...collection, runtime: 'transloco' };

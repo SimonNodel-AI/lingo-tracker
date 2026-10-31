@@ -171,7 +171,10 @@ describe('translateExistingResource', () => {
   it('translates a stale locale', async () => {
     const target = collection({ locales: ['en', 'fr'] });
     seedResources(target, { 'common.save': { source: 'Save', translations: { fr: 'Sauvegarder' } } });
-    const folder = openUnreportedResourceFolder(join(dir(), 'common'), { baseLocale: 'en' });
+    const folder = openUnreportedResourceFolder(join(dir(), 'common'), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    });
     folder.setBase('save', 'Save all');
     folder.save();
     expect(read(TRACKER_META_FILENAME, 'common').save.fr.status).toBe('stale');

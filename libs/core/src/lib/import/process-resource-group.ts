@@ -1,6 +1,7 @@
 import {
   admitValue,
   honouredImportSourceStatus,
+  icuParseOptionsFor,
   importStrategyPolicy,
   resolveImportStatus,
   type TranslationStatus,
@@ -259,7 +260,7 @@ export function processResourceGroup(session: ImportSession, group: FolderGroup<
         referencesResolved: resolvesReferences,
         protectedTerms: terms.protectedTerms,
       },
-      { simpleArgumentPaths: session.collection.runtime === 'transloco' },
+      icuParseOptionsFor(session.collection.runtime),
     );
     if (admission.admitted === true) return false;
 

@@ -433,6 +433,44 @@ describe('TranslationEditorDialog', () => {
       expect(spectator.query('[data-testid="locales-drawer"]')).toBeNull();
     });
 
+    it('should advise on an unrenderable translation under plain transloco, for that locale only', () => {
+      const select = '{name, select, other {Hello}}';
+      mockConfig.set({
+        baseLocale: 'en',
+        locales: ['en', 'fr', 'de'],
+        collections: {},
+        runtime: 'transloco',
+      } as LingoTrackerConfigDto);
+      component.session.panels.openLocalesDrawer();
+      component.session.entry.getLocaleFormGroup(1).controls.value.setValue(select);
+      spectator.detectChanges();
+
+      const advisories = spectator.queryAll<HTMLElement>('[data-testid="locale-runtime-advisory"]');
+      expect(advisories).toHaveLength(1);
+      expect(advisories[0].id).toBe('translation-editor-locale-runtime-advisory-1');
+      expect(advisories[0].getAttribute('role')).toBe('status');
+      const rows = spectator.queryAll<HTMLTextAreaElement>('[data-testid="locales-drawer"] textarea');
+      expect(rows[0].getAttribute('aria-describedby')).toBeNull();
+      expect(rows[1].getAttribute('aria-describedby')).toBe('translation-editor-locale-runtime-advisory-1');
+
+      mockConfig.set({ baseLocale: 'en', locales: ['en', 'fr', 'de'], collections: {} } as LingoTrackerConfigDto);
+      spectator.detectChanges();
+      expect(spectator.query('[data-testid="locale-runtime-advisory"]')).toBeNull();
+    });
+
+    it('should describe the base value by the runtime advisory while it shows', () => {
+      mockConfig.set({
+        baseLocale: 'en',
+        locales: ['en', 'fr', 'de'],
+        collections: {},
+        runtime: 'transloco',
+      } as LingoTrackerConfigDto);
+      renderDialog(createMockData('edit', summary('common.buttons.count', '{n, plural, other {#}}')));
+      const base = spectator.query<HTMLTextAreaElement>('#translation-editor-base-value');
+      expect(base?.getAttribute('aria-describedby')).toContain('translation-editor-runtime-advisory');
+      expect(spectator.query('#translation-editor-runtime-advisory')?.getAttribute('role')).toBe('status');
+    });
+
     it('should show the braced-placeholder error for the base value and a translation row', () => {
       component.session.panels.openLocalesDrawer();
       component.session.entry.form.controls.baseValue.markAsTouched();

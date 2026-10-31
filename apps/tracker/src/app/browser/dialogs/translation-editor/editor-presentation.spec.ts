@@ -146,6 +146,16 @@ describe('EditorPresentation', () => {
     expect(presentation.baseValueDescribedBy()).toBe('translation-editor-icu-hint');
   });
 
+  it('joins only the applicable ids for aria-describedby', () => {
+    expect(presentation.describedBy(presentation.baseValueDescribedBy(), presentation.runtimeAdvisoryId)).toBe(
+      'translation-editor-icu-hint translation-editor-runtime-advisory',
+    );
+    expect(presentation.describedBy(false, null)).toBeNull();
+    expect(presentation.describedBy(false, presentation.localeRuntimeAdvisoryId(2))).toBe(
+      'translation-editor-locale-runtime-advisory-2',
+    );
+  });
+
   it('builds braced-placeholder params only when the control has the error', () => {
     const control = entry.form.controls.baseValue;
     control.setValue('Hi {{name}}');

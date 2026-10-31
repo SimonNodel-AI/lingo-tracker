@@ -26,6 +26,18 @@ export interface EditorPresentationOptions {
 /** Display-only derivations for one editor; no injector, DOM or lifecycle required. */
 export class EditorPresentation {
   readonly preferredTermAdvisoriesId = 'translation-editor-preferred-terms';
+  readonly runtimeAdvisoryId = 'translation-editor-runtime-advisory';
+
+  /** Id of the runtime advisory beside one locale's translation field. */
+  localeRuntimeAdvisoryId(index: number): string {
+    return `translation-editor-locale-runtime-advisory-${index}`;
+  }
+
+  /** Joins the ids that apply into an `aria-describedby` value, or `null` when none do. */
+  describedBy(...ids: readonly (string | false | null)[]): string | null {
+    const present = ids.filter((id): id is string => !!id);
+    return present.length > 0 ? present.join(' ') : null;
+  }
 
   /**
    * The base value's `aria-describedby`: the error or ICU hint as before, plus

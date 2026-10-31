@@ -235,6 +235,7 @@ function successMutations(write: Write, collection: OpenedCollection): readonly 
     const entryKey = segments.pop() ?? key;
     // Assertion readback never saves resource files.
     const folder = openUnreportedResourceFolder(join(targetRoot, ...segments), {
+      runtime: 'transloco-messageformat',
       baseLocale: collection.baseLocale,
       translationsFolder: targetRoot,
     });

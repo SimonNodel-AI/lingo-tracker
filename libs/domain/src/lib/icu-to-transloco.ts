@@ -118,14 +118,16 @@ function prepareTextSegment(text: string, beforeComplex = false, preserveDoubled
  * icuToTransloco("Hello {name}: {count, plural, one {# item} other {# items}}");
  * // → "Hello {{ name }}: {count, plural, one {# item} other {# items}}"
  * ```
+ *
+ * @param options - Parse options; plain Transloco passes `simpleArgumentPaths` so dotted arguments convert.
  */
-export function icuToTransloco(value: string): string {
+export function icuToTransloco(value: string, options: IcuParseOptions = {}): string {
   // Values with no `'` and no `{` need no processing at all.
   if (!value.includes('{') && !value.includes("'")) {
     return value;
   }
 
-  const message = parseIcuMessage(value);
+  const message = parseIcuMessage(value, options);
   if (!message.ok) {
     return value;
   }

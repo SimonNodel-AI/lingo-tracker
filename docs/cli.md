@@ -359,7 +359,7 @@ lingo-tracker validate [options]
 | `--skip-protected-terms` | Do not check protected terms |
 | `--require-portable-plurals` | Warn when a source plural selects by category instead of `=N` |
 
-Failures, each of which exits 1: a locale that is `new`, `stale`, `translated` without `--allow-translated`, or has no metadata; a value that does not compile as ICU for its locale; under `runtime: "transloco"`, a value with ICU `plural`, `select`, `selectordinal`, `number`, `date` or `time`; a translation whose ICU argument names differ from the source; a translation missing a protected term; a folder whose files are not valid JSON; a preferred-terminology file that exists but cannot be loaded. Preferred-terminology findings and portable-plural findings are warnings. The command never prompts and has no collection filter.
+Failures, each of which exits 1: a locale that is `new`, `stale`, `translated` without `--allow-translated`, or has no metadata; a value that does not compile as ICU for its locale; under `runtime: "transloco"`, a value with ICU `plural`, `select`, `selectordinal`, `number`, `date`, `time` or `duration`; a translation whose ICU argument names differ from the source; a translation missing a protected term; a folder whose files are not valid JSON; a preferred-terminology file that exists but cannot be loaded. Preferred-terminology findings and portable-plural findings are warnings. The command never prompts and has no collection filter.
 
 ---
 

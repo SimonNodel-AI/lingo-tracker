@@ -1,4 +1,4 @@
-import { unrenderableIcuConstructs } from '@simoncodes-ca/domain';
+import { icuParseOptionsFor, unrenderableIcuConstructs } from '@simoncodes-ca/domain';
 import {
   type CollectionSetResource,
   collectionResourceStatus,
@@ -144,7 +144,7 @@ export function validateResources(
       requirePortablePlurals: false,
       ...options.icu,
       baseLocale: collection.baseLocale,
-      simpleArgumentPaths: collection.runtime === 'transloco',
+      ...icuParseOptionsFor(collection.runtime),
     });
     icuResults.push({
       ...icuResult,
@@ -158,7 +158,7 @@ export function validateResources(
     if (!terms) throw new Error(`Project Terms were not supplied for collection '${collection.name}'`);
     if (options.placeholders || options.protectedTerms) {
       const checked = validateTranslatedValues(resources, targetLocales, collection.baseLocale, {
-        simpleArgumentPaths: collection.runtime === 'transloco',
+        ...icuParseOptionsFor(collection.runtime),
         protectedTerms: terms.protectedTerms,
         checkArguments: options.placeholders ?? false,
         checkProtectedTerms: options.protectedTerms ?? false,

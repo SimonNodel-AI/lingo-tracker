@@ -184,9 +184,11 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(0);
     expect(collected).toEqual([]);
-    expect(openUnreportedResourceFolder(join(root(), 'apps'), { baseLocale: 'en' }).get('one')?.entry.source).toBe(
-      'One',
-    );
+    expect(
+      openUnreportedResourceFolder(join(root(), 'apps'), { runtime: 'transloco-messageformat', baseLocale: 'en' }).get(
+        'one',
+      )?.entry.source,
+    ).toBe('One');
   });
 
   it('nests a depth-two source under the root', async () => {
@@ -200,9 +202,11 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
-    expect(openUnreportedResourceFolder(join(root(), 'deep'), { baseLocale: 'en' }).get('one')?.entry.source).toBe(
-      'One',
-    );
+    expect(
+      openUnreportedResourceFolder(join(root(), 'deep'), { runtime: 'transloco-messageformat', baseLocale: 'en' }).get(
+        'one',
+      )?.entry.source,
+    ).toBe('One');
     expect(existsSync(join(root(), 'apps', 'deep'))).toBe(false);
     expect(collected.map((mutation) => [mutation.kind, 'key' in mutation ? mutation.key : ''])).toEqual([
       ['remove', 'apps.deep.one'],
@@ -224,9 +228,12 @@ describe('executeMove for folders to the root without nesting (real fs)', () => 
     expect(result.errors).toEqual([]);
     expect(result.movedCount).toBe(1);
     expect(result.foldersDeleted).toBe(1);
-    expect(openUnreportedResourceFolder(join(root(), 'testdata'), { baseLocale: 'en' }).get('foo')?.entry.source).toBe(
-      'Foo',
-    );
+    expect(
+      openUnreportedResourceFolder(join(root(), 'testdata'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      }).get('foo')?.entry.source,
+    ).toBe('Foo');
     expect(existsSync(join(root(), 'testdata', 'resource_entries.json'))).toBe(true);
     expect(existsSync(join(root(), 'common', 'testdata'))).toBe(false);
   });
@@ -262,13 +269,21 @@ describe('executeMove for folders with a destination collision (real fs)', () =>
     expect(result.warnings).toEqual(expect.arrayContaining([expect.stringContaining('src.a')]));
 
     expect(existsSync(join(root, 'src'))).toBe(true);
-    expect(openUnreportedResourceFolder(join(root, 'src'), { baseLocale: 'en' }).keys()).toEqual(['a']);
-    expect(openUnreportedResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('b')?.entry.source).toBe(
-      'Source B',
-    );
-    expect(openUnreportedResourceFolder(join(root, 'dst', 'src'), { baseLocale: 'en' }).get('a')?.entry.source).toBe(
-      'Existing A',
-    );
+    expect(
+      openUnreportedResourceFolder(join(root, 'src'), { runtime: 'transloco-messageformat', baseLocale: 'en' }).keys(),
+    ).toEqual(['a']);
+    expect(
+      openUnreportedResourceFolder(join(root, 'dst', 'src'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      }).get('b')?.entry.source,
+    ).toBe('Source B');
+    expect(
+      openUnreportedResourceFolder(join(root, 'dst', 'src'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      }).get('a')?.entry.source,
+    ).toBe('Existing A');
 
     expect(collected.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
     expect(collected.some((mutation) => mutation.kind === 'remove' && mutation.key === 'src.a')).toBe(false);
@@ -313,6 +328,7 @@ describe('executeMove for folders across collections and around content outside 
     expect(existsSync(join(source.translationsFolder, 'apps', 'nested'))).toBe(false);
     expect(
       openUnreportedResourceFolder(join(source.translationsFolder, 'shared', 'apps', 'nested'), {
+        runtime: 'transloco-messageformat',
         baseLocale: 'en',
       }).keys(),
     ).toEqual(['two']);
@@ -498,7 +514,10 @@ describe('executeMove for folders across collections and around content outside 
           onMutation(mutation);
           // Relocation saved the emptied source; simulate another writer before pruning begins.
           if (mutation.kind === 'remove' && mutation.key === 'apps.one') {
-            const folder = openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' });
+            const folder = openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), {
+              runtime: 'transloco-messageformat',
+              baseLocale: 'en',
+            });
             folder.setBase('fresh', 'Added during the move');
             folder.save();
           }
@@ -513,9 +532,12 @@ describe('executeMove for folders across collections and around content outside 
       warnings: [expect.stringContaining('it has resources again')],
       errors: [],
     });
-    expect(openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), { baseLocale: 'en' }).keys()).toEqual([
-      'fresh',
-    ]);
+    expect(
+      openUnreportedResourceFolder(join(source.translationsFolder, 'apps'), {
+        runtime: 'transloco-messageformat',
+        baseLocale: 'en',
+      }).keys(),
+    ).toEqual(['fresh']);
     expect(collected.some((mutation) => mutation.kind === 'remove-folder')).toBe(false);
   });
 
@@ -569,7 +591,10 @@ describe('executeMove for folders across collections and around content outside 
     );
 
     expect(result.movedCount).toBe(1);
-    const moved = openUnreportedResourceFolder(join(target.translationsFolder, 'apps'), { baseLocale: 'en' }).get('ok');
+    const moved = openUnreportedResourceFolder(join(target.translationsFolder, 'apps'), {
+      runtime: 'transloco-messageformat',
+      baseLocale: 'en',
+    }).get('ok');
     expect(moved?.entry).toEqual({ source: 'OK', fr: 'Bien', de: 'OK' });
     expect(moved?.meta?.['de']?.status).toBe('new');
     expect(moved?.meta?.['es']).toBeUndefined();

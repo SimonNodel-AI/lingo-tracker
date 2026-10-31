@@ -165,6 +165,13 @@ describe('EditorAdvisories', () => {
       }
     });
 
+    it('checks another value, such as a locale translation, against the same runtime', () => {
+      const select = '{name, select, other {Hello}}';
+      expect(withRuntime('transloco').unrenderableConstructsOf(select)).toEqual(['select']);
+      expect(withRuntime('transloco').unrenderableConstructsOf('Hello')).toEqual([]);
+      expect(withRuntime().unrenderableConstructsOf(select)).toEqual([]);
+    });
+
     it('flags nothing for a simple value under plain transloco', () => {
       const advisories = withRuntime('transloco');
       advisories.observe('Hello {name}', EMPTY, EMPTY);
